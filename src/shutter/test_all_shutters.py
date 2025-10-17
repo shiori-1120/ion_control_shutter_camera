@@ -1,3 +1,7 @@
+# シーケンスを組んでいる
+# lineごとにタスクを作成しないとうまく制御できない
+# TrueとFalseが逆かもしれない。アクティブローかも。
+
 import nidaqmx
 import time
 
@@ -31,31 +35,29 @@ try:
         task.write(False)
     
     while True:
-        # 397:ON, 397_SIGMA:ON, 729:OFF, 854:ON
         tasks[Shutter.NM_397].write(True)
+        # delay about 0.6 ms
         tasks[Shutter.NM_397_SIGMA].write(True)
-        tasks[Shutter.NM_854].write(True)
-        time.sleep(0.002)
-
-        # 397:OFF, 397_SIGMA:ON, 729:OFF, 854:OFF
-        tasks[Shutter.NM_397].write(False)
-        tasks[Shutter.NM_854].write(False)
-        time.sleep(0.002)
-
-        # 397:OFF, 397_SIGMA:OFF, 729:ON, 854:OFF
-        tasks[Shutter.NM_397_SIGMA].write(False)
+        # delay about 0.6 ms
         tasks[Shutter.NM_729].write(True)
-        time.sleep(0.010)
-
-        # 397:ON, 397_SIGMA:OFF, 729:OFF, 854:OFF
-        tasks[Shutter.NM_729].write(False)
-        tasks[Shutter.NM_397].write(True)
-        time.sleep(0.004)
-
-        # 397:ON, 397_SIGMA:ON, 729:OFF, 854:ON
-        tasks[Shutter.NM_397_SIGMA].write(True)
+        # delay about 0.6 ms
         tasks[Shutter.NM_854].write(True)
-        time.sleep(0.010)
+        # delay about 0.6 ms
+        time.sleep(0.001)
+        # delay about 0.6 ms
+        
+        tasks[Shutter.NM_397].write(False)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_397_SIGMA].write(False)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_729].write(False)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_854].write(False)
+        # delay about 0.6 ms
+        time.sleep(0.001)
+        # delay about 0.6 ms
+
+
 
 except KeyboardInterrupt:
     print("\n停止要求を受け取りました。タスクをクリーンアップします...")

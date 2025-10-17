@@ -1,0 +1,129 @@
+==================================================
+            WAVEFORM ANALYSIS REPORT
+==================================================
+Source File: 20251015_180254_waveform_4ch.csv
+Generated on: 2025-10-16 22:22:42
+
+--------------------------------------------------
+                 CHANNEL METRICS
+--------------------------------------------------
+
+--- Channel: CH1 ---
+  Voltage Levels:
+    - V_high     : 3.4000 V
+    - V_low      : 0.0000 V
+    - V_amplitude: 3.4000 V
+
+  Timing & Jitter:
+    - Frequency  : 164.8610 Hz
+    - Period     : 6.0657 ms (Std: 0.5733 ms)
+    - Jitter Pk-Pk: 1.6000 ms
+    - Jitter RMS : 0.5733 ms
+
+  Edge Characteristics:
+    - Rise Time  : 0.016875 ms (Std: 0.000331 ms)
+    - Fall Time  : 0.016556 ms (Std: 0.000497 ms)
+
+  Signal Integrity:
+    - Overshoot  : 0.2000 V (Mean: 0.0500 V)
+    - Undershoot : 0.0000 V (Mean: 0.0000 V)
+
+--- Channel: CH2 ---
+  Voltage Levels:
+    - V_high     : 3.4000 V
+    - V_low      : 0.0000 V
+    - V_amplitude: 3.4000 V
+
+  Timing & Jitter:
+    - Frequency  : 164.3192 Hz
+    - Period     : 6.0857 ms (Std: 0.5933 ms)
+    - Jitter Pk-Pk: 1.6200 ms
+    - Jitter RMS : 0.5933 ms
+
+  Edge Characteristics:
+    - Rise Time  : 0.016767 ms (Std: 0.000694 ms)
+    - Fall Time  : 0.016375 ms (Std: 0.000484 ms)
+
+  Signal Integrity:
+    - Overshoot  : 0.0000 V (Mean: 0.0000 V)
+    - Undershoot : 0.0000 V (Mean: 0.0000 V)
+
+--- Channel: CH3 ---
+  Voltage Levels:
+    - V_high     : 3.4000 V
+    - V_low      : 0.0000 V
+    - V_amplitude: 3.4000 V
+
+  Timing & Jitter:
+    - Frequency  : 163.6279 Hz
+    - Period     : 6.1114 ms (Std: 0.6307 ms)
+    - Jitter Pk-Pk: 1.6381 ms
+    - Jitter RMS : 0.6307 ms
+
+  Edge Characteristics:
+    - Rise Time  : 0.016625 ms (Std: 0.000484 ms)
+    - Fall Time  : 0.016750 ms (Std: 0.000433 ms)
+
+  Signal Integrity:
+    - Overshoot  : 0.2000 V (Mean: 0.1429 V)
+    - Undershoot : 0.0000 V (Mean: 0.0000 V)
+
+--- Channel: CH4 ---
+  Voltage Levels:
+    - V_high     : 3.6000 V
+    - V_low      : 0.2000 V
+    - V_amplitude: 3.4000 V
+
+  Timing & Jitter:
+    - Frequency  : 162.4908 Hz
+    - Period     : 6.1542 ms (Std: 0.6286 ms)
+    - Jitter Pk-Pk: 1.5788 ms
+    - Jitter RMS : 0.6286 ms
+
+  Edge Characteristics:
+    - Rise Time  : 0.016625 ms (Std: 0.000484 ms)
+    - Fall Time  : 0.017017 ms (Std: 0.000534 ms)
+
+  Signal Integrity:
+    - Overshoot  : 0.0000 V (Mean: 0.0000 V)
+    - Undershoot : 0.2000 V (Mean: 0.0750 V)
+
+
+--------------------------------------------------
+                   SKEW METRICS
+--------------------------------------------------
+
+Reference Channel: CH1
+
+--- Skew: CH2_vs_CH1 ---
+    - Mean : 0.4434 ms (平均のズレ)
+--- Skew: CH3_vs_CH1 ---
+    - Mean : 0.8827 ms (平均のズレ)
+--- Skew: CH4_vs_CH1 ---
+    - Mean : 1.3959 ms (平均のズレ)
+
+--------------------------------------------------
+           [ RAW EDGE TIMESTAMPS (ms) ]
+--------------------------------------------------
+# 各エッジが振幅の50%を通過した時刻 [ミリ秒] のリストです。
+
+--- Channel: CH1 ---
+  Rising Edges  : [ -21.950625, -16.110000, -10.630625, -3.570625, 2.069375, 7.529375, 14.089375, 20.509375 ]
+  Falling Edges : [ -24.950000, -19.130000, -13.329375, -6.889375, -0.649375, 4.870000, 10.830625, 17.370625, 24.350000 ]
+
+--- Channel: CH2 ---
+  Rising Edges  : [ -21.489375, -15.710000, -10.210000, -3.170000, 2.510625, 7.930625, 14.510000, 21.110625 ]
+  Falling Edges : [ -24.490625, -18.730000, -12.950000, -6.430000, -0.210000, 5.270000, 11.429375, 17.789375 ]
+
+--- Channel: CH3 ---
+  Rising Edges  : [ -21.070625, -15.210000, -9.809375, -2.770625, 2.909375, 8.330000, 14.908824, 21.709375 ]
+  Falling Edges : [ -24.070000, -18.329375, -12.489375, -5.989375, 0.190625, 5.670000, 11.850625, 18.190625 ]
+
+--- Channel: CH4 ---
+  Rising Edges  : [ -20.689375, -14.809375, -9.269375, -2.190000, 3.310625, 9.030625, 15.330000, 22.390000 ]
+  Falling Edges : [ -23.670625, -17.770625, -12.090625, -5.570625, 0.589375, 6.070000, 12.269375, 18.710000 ]
+
+
+==================================================
+             END OF REPORT
+==================================================
