@@ -5,17 +5,11 @@
 import nidaqmx
 import time
 
-class Shutter:
-    NM_397 = 0
-    NM_397_SIGMA = 1
-    NM_729 = 2
-    NM_854 = 3
+class channel:
+    camera = 0
 
 SHUTTER_MAP = {
-    Shutter.NM_397:       "Dev1/port0/line4",
-    Shutter.NM_397_SIGMA: "Dev1/port0/line5",
-    Shutter.NM_729:       "Dev1/port0/line6",
-    Shutter.NM_854:       "Dev1/port0/line7",
+    channel.camera:       "Dev1/port0/line4",
 }
 
 tasks = {}
@@ -35,31 +29,14 @@ try:
         task.write(False)
     
     while True:
-        # 397:ON, 397_SIGMA:ON, 729:OFF, 854:ON
-        tasks[Shutter.NM_397].write(True)
-        tasks[Shutter.NM_397_SIGMA].write(True)
-        tasks[Shutter.NM_854].write(True)
-        time.sleep(0.002)
+        # 0.5 secごとにカメラトリガーのON/OFFを切り替え
+        # 1 secごとに撮影
+        tasks[channel.camera].write(True)
+        time.sleep(1)
 
-        # 397:OFF, 397_SIGMA:ON, 729:OFF, 854:OFF
-        tasks[Shutter.NM_397].write(False)
-        tasks[Shutter.NM_854].write(False)
-        time.sleep(0.002)
+        tasks[channel.camera].write(False)
+        time.sleep(1)
 
-        # 397:OFF, 397_SIGMA:OFF, 729:ON, 854:OFF
-        tasks[Shutter.NM_397_SIGMA].write(False)
-        tasks[Shutter.NM_729].write(True)
-        time.sleep(0.010)
-
-        # 397:ON, 397_SIGMA:OFF, 729:OFF, 854:OFF
-        tasks[Shutter.NM_729].write(False)
-        tasks[Shutter.NM_397].write(True)
-        time.sleep(0.004)
-
-        # 397:ON, 397_SIGMA:ON, 729:OFF, 854:ON
-        tasks[Shutter.NM_397_SIGMA].write(True)
-        tasks[Shutter.NM_854].write(True)
-        time.sleep(0.010)
 
 except KeyboardInterrupt:
     print("\n停止要求を受け取りました。タスクをクリーンアップします...")
