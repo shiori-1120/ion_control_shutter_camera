@@ -2,12 +2,13 @@ import numpy as np
 import time
 import os
 import datetime
-import pyvisa
 import matplotlib.pyplot as plt
 from lib.controlDevice import Control_CONTEC
 from lib.controlDevice import Control_qCMOScamera
 
+# TODO: miniforgeのpathを通して、ターミナルの規定値に登録できるようにする
 
+# トリガーを送るのではなく、エクスターナルモードで
 # check camera connectionの中でOpen/SetParameters/StartCaptureを済ませる
 def check_camera_connection():
     connected = Control_CONTEC.is_connected()
