@@ -94,13 +94,13 @@ def evaluate_thresholds(bright_imgs, dark_imgs, nbins=1000, target_total_error=N
 
 # 保存された画像から行うようにする
 def collect_threshold_calibration(qcmos: Control_qCMOScamera,
-                                  usb_io: Control_CONTEC,
-                                  n_per_state: int = 50,
-                                  roi: tuple = None,
-                                  marker_read: callable = None,
-                                  target_total_error: float = None,
-                                  out_path: str = "threshold_calibration.npz",
-                                  send_trigger: bool = False):
+                                                                    usb_io: Control_CONTEC,
+                                                                    n_per_state: int = 50,
+                                                                    roi: tuple = None,
+                                                                    marker_read: callable = None,
+                                                                    target_total_error: float = None,
+                                                                    out_path: str = "threshold_calibration.npz",
+                                                                    send_trigger: bool = False):
     """
     キャリブレーションを行って閾値を保存する。
     - qcmos, usb_io: インスタンス（すでに Open/SetParameters/StartCapture 済みが望ましい）
