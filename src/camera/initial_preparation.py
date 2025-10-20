@@ -2,75 +2,32 @@ import numpy as np
 import time
 import os
 import datetime
-import pyvisa
+import json
 import matplotlib.pyplot as plt
 from lib.controlDevice import Control_CONTEC
 from lib.controlDevice import Control_qCMOScamera
 
+expose_time = 0.100
 
-# check camera connectionの中でOpen/SetParameters/StartCaptureを済ませる
-def check_camera_connection():
-    connected = Control_CONTEC.is_connected()
-    if connected:
-        print("接続済み")
-    else:
-        ok, info = Control_CONTEC.check_connection()
-        print("接続詳細:", ok, info)
+def get_frame_from_buffer(camera, timeout=2.0, poll=0.01):
+    """
+    バッファからフレームを取得する汎用関数。
+    """
+    # TODO: 
+    # output ディレクトリにファイル名を指定（タイムスタンプ付き）
+    # カメラの取得
+    # getHandle
+    # startCapture
+    # np.save
 
 
-def decide_threshold_value():
-    usb_io = Control_CONTEC()
-    qCMOS = Control_qCMOScamera()
 
-    exposureTime = 0.300
 
-    h_pos = 2536
-    v_pos = 1624
-    # TODO: h_width, v_width値確認
-    h_width = 1152
-    v_width = 372
 
-    qCMOS.OpenCamera_GetHandle()
-    qCMOS.SetParameters(exposureTime, h_width, v_width, h_pos, v_pos)
-    qCMOS.StartCapture()
+# TODO: miniforgeのpathを通して、ターミナルの規定値に登録できるようにする
 
-    freq_list = list(range(220900, 221000, 10))
-    print(freq_list)
+# cameraの接続確認はoneshotの関数内で撮影で行う
 
-    # 保存用ディレクトリ（今日の日付を使用）
-    d = datetime.date.today().isoformat()
-    if not os.path.exists(d):
-        os.makedirs(d, exist_ok=True)
-
-    try:
-        for i in freq_list:
-            print(i)
-
-            # qCMOSカメラにトリガを送る
-            usb_io.SendTrigger()
-            # 露光時間だけスリープする
-            time.sleep(exposureTime)
-            time.sleep(0.1)
-            # qCMOSカメラから画像データを持ってくる
-            aFrame, img = qCMOS.GetLastFrame()
-            time.sleep(0.1)
-
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.imshow(img)
-
-            plt.savefig(f"{d}/{d}_{i}.png", dpi=100)
-            plt.close()
-
-            np.save(f"{d}/{d}_{i}.npy", img)
-
-    finally:
-        qCMOS.StopCapture()
-        qCMOS.ReleaseBuf()
-        time.sleep(0.01)
-        qCMOS.CloseUninitCamera()
-
-# ...existing code...
 # 新しい閾値評価関数を追加
 
 
@@ -135,14 +92,15 @@ def evaluate_thresholds(bright_imgs, dark_imgs, nbins=1000, target_total_error=N
         'total_rates': total_rates
     }
 
-
+# 保存された画像から行うようにする
 def collect_threshold_calibration(qcmos: Control_qCMOScamera,
                                   usb_io: Control_CONTEC,
                                   n_per_state: int = 50,
                                   roi: tuple = None,
                                   marker_read: callable = None,
                                   target_total_error: float = None,
-                                  out_path: str = "threshold_calibration.npz"):
+                                  out_path: str = "threshold_calibration.npz",
+                                  send_trigger: bool = False):
     """
     キャリブレーションを行って閾値を保存する。
     - qcmos, usb_io: インスタンス（すでに Open/SetParameters/StartCapture 済みが望ましい）
@@ -162,26 +120,45 @@ def collect_threshold_calibration(qcmos: Control_qCMOScamera,
     if marker_read is None:
         marker_read = default_marker
 
+    # 試行回数制限
     total_needed = n_per_state * 2
     attempt = 0
     max_attempts = total_needed * 3
+
+    # dataset.json から露光時間を参照してバッファ取得の待ち時間を決める
+    try:
+        with open('./dataset.json') as f:
+            _json = json.load(f)
+            expose_time = float(_json.get('qCMOS.expose-time', 0.05))
+    except Exception:
+        expose_time = 0.05
 
     while (len(bright_imgs) < n_per_state or len(dark_imgs) < n_per_state) and attempt < max_attempts:
         attempt += 1
         # 外部システム同期があるならここで待機／確認する（marker_readに任せる）
         is_bright = marker_read()
 
-        # カメラにトリガ（必要な場合）
-        try:
-            usb_io.SendTrigger()
-        except Exception:
-            # SendTrigger を使わない運用でも動くように例外吸収
-            pass
+        # (外部トリガ運用) デフォルトではトリガは送らない
+        if send_trigger:
+            try:
+                usb_io.SendTrigger()
+            except Exception:
+                # SendTrigger が使えない環境でも続行
+                pass
 
-        # 露光時間と余裕を置いて取得
-        time.sleep(0.05)
-        aFrame, img = qcmos.GetLastFrame()
+        # 露光時間分待ってから、バッファから取得する
+        time.sleep(expose_time)
+        # 少し余裕を与える
+        time.sleep(0.01)
+        img = get_frame_from_buffer(qcmos, timeout=max(1.0, expose_time + 1.0))
+        if img is None:
+            # 取得できない場合はログを残して次へ（またはカウントしない）
+            print(f"Warning: フレーム取得失敗 attempt={attempt}")
+            # 小休止して再試行ループへ
+            time.sleep(0.02)
+            continue
         # img は numpy ndarray
+        # ROI と型変換（1 回だけ実行）
         if roi is not None:
             y0, y1, x0, x1 = roi
             img = img[y0:y1, x0:x1]
@@ -267,6 +244,7 @@ def collect_threshold_calibration(qcmos: Control_qCMOScamera,
 # cam.StopCapture(); cam.ReleaseBuf(); cam.CloseUninitCamera()
 # ...existing code...
 
+# 画像を
 
 # TODO: check_camera_settings()
 # 画像がとれているか確認

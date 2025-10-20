@@ -34,7 +34,8 @@ class Control_CONTEC():
             self.Ret.value = caio.AioOutputDoBit(self.Id, 1, 0x0000)
         if onoff == 0:
             self.Ret.value = caio.AioOutputDoBit(self.Id, 1, 0x0001)
-            def is_connected(self) -> bool:
+
+    def is_connected(self) -> bool:
         """簡易判定: 初期化リターンが成功コード(0)かつ Id が妥当であることを確認
         使い方(例): connected = ctrl.is_connected()
         """
@@ -291,6 +292,33 @@ class Control_qCMOScamera():
         dcamapi4.dcambuf_copyframe(self.__hdcam, c.byref(aFrame))
 
         return (aFrame, npBuf)
+
+    # ---- Status helper methods ----
+    def get_capture_status(self):
+        """Return raw DCAM capture status integer (use DCAMCAP_STATUS to interpret)."""
+        cInt32 = c.c_int32()
+        dcamapi4.dcamcap_status(self.__hdcam, c.byref(cInt32))
+        return int(cInt32.value)
+
+    def get_buffered_frame_count(self):
+        """Return number of frames currently transferred into the capture buffer."""
+        info = dcamapi4.DCAMCAP_TRANSFERINFO()
+        dcamapi4.dcamcap_transferinfo(self.__hdcam, info)
+        return int(info.nFrameCount)
+
+    def get_trigger_source(self):
+        """Return current TRIGGERSOURCE property value (numeric)."""
+        fValue = c.c_double()
+        idprop = dcamapi4.DCAM_IDPROP.TRIGGERSOURCE
+        dcamapi4.dcamprop_getvalue(self.__hdcam, idprop, c.byref(fValue))
+        return float(fValue.value)
+
+    def get_exposure_time(self):
+        """Return current EXPOSURETIME value in seconds."""
+        fValue = c.c_double()
+        idprop = dcamapi4.DCAM_IDPROP.EXPOSURETIME
+        dcamapi4.dcamprop_getvalue(self.__hdcam, idprop, c.byref(fValue))
+        return float(fValue.value)
 
     def is_connected(self):
         """簡易判定: 初期化時に検出したカメラ台数が1以上か
