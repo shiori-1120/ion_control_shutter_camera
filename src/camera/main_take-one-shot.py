@@ -7,7 +7,6 @@ import os
 import numpy as np
 
 import sys
-sys.path.append('/lib')  # camera から見て lib は2階層上
 # my module
 from lib.ControlDevice import Control_qCMOScamera
 
