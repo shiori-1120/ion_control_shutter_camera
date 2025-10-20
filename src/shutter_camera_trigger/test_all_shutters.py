@@ -5,11 +5,17 @@
 import nidaqmx
 import time
 
-class channel:
-    camera = 0
+class Shutter:
+    NM_397 = 0
+    NM_397_SIGMA = 1
+    NM_729 = 2
+    NM_854 = 3
 
 SHUTTER_MAP = {
-    channel.camera:       "Dev1/port0/line4",
+    Shutter.NM_397:       "Dev1/port0/line4",
+    Shutter.NM_397_SIGMA: "Dev1/port0/line5",
+    Shutter.NM_729:       "Dev1/port0/line6",
+    Shutter.NM_854:       "Dev1/port0/line7",
 }
 
 tasks = {}
@@ -29,13 +35,28 @@ try:
         task.write(False)
     
     while True:
-        # 0.5 secごとにカメラトリガーのON/OFFを切り替え
-        # 1 secごとに撮影
-        tasks[channel.camera].write(True)
-        time.sleep(1)
+        tasks[Shutter.NM_397].write(True)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_397_SIGMA].write(True)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_729].write(True)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_854].write(True)
+        # delay about 0.6 ms
+        time.sleep(0.001)
+        # delay about 0.6 ms
+        
+        tasks[Shutter.NM_397].write(False)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_397_SIGMA].write(False)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_729].write(False)
+        # delay about 0.6 ms
+        tasks[Shutter.NM_854].write(False)
+        # delay about 0.6 ms
+        time.sleep(0.001)
+        # delay about 0.6 ms
 
-        tasks[channel.camera].write(False)
-        time.sleep(1)
 
 
 except KeyboardInterrupt:
