@@ -6,6 +6,8 @@ import os
 # third party
 import numpy as np
 
+import sys
+sys.path.append('/lib')  # camera から見て lib は2階層上
 # my module
 from lib.ControlDevice import Control_qCMOScamera
 
@@ -32,7 +34,7 @@ def makeDir(path):
         os.makedirs(path)
     
     
-parent_path = "C:/Users/tanak/documents/data"
+parent_path = "output/one-shot"
 makeDir(parent_path)
 timestamp = time.time()
 
@@ -66,6 +68,7 @@ try:
     time.sleep(JSON["qCMOS.expose-time"])
     time.sleep(0.1)
     data = qCMOS.GetLastFrame()
+    print("data=", data)
     time.sleep(0.006)
     img = data[1].astype(np.float64)
     np.save(today_path + "/" + dir_name + "/img-%d.npy"   %meas_id, img)
