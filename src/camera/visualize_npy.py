@@ -11,6 +11,9 @@ Usage examples:
 
 依存: numpy, matplotlib
 """
+
+# npyに複数の画像が入っている？？
+
 import argparse
 import os
 import sys

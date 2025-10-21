@@ -2,254 +2,379 @@ import numpy as np
 import time
 import os
 import datetime
-import json
 import matplotlib.pyplot as plt
-from lib.controlDevice import Control_CONTEC
-from lib.controlDevice import Control_qCMOScamera
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
+from matplotlib.patches import Rectangle
+try:
+    from lib.ControlDevice import Control_CONTEC, Control_qCMOScamera
+except Exception:
+    # Camera control module may not be available in this environment.
+    Control_CONTEC = None
+    Control_qCMOScamera = None
+
 
 expose_time = 0.100
 
-def get_frame_from_buffer(camera, timeout=2.0, poll=0.01):
-    """
-    バッファからフレームを取得する汎用関数。
-    """
-    # TODO: 
-    # output ディレクトリにファイル名を指定（タイムスタンプ付き）
-    # カメラの取得
-    # getHandle
-    # startCapture
-    # np.save
 
+def get_n_frames_from_buffer(n_frames, expose_time=0.100, rois=None):
+    # rois = [h-width, v-width, h-start, v-start]
+    now = datetime.datetime.now()
+    timestamp_dir = now.strftime("%Y%m%d_%H%M")
+    base_output = os.path.join(os.path.dirname(__file__), "output")
+    output_path = os.path.join(base_output, timestamp_dir)
+    os.makedirs(output_path, exist_ok=True)
+    try:
+        qCMOS = Control_qCMOScamera()
+        qCMOS.OpenCamera_GetHandle()
+        for roi in rois:
+            qCMOS.SetParameters(expose_time, roi[0], roi[1], roi[2], roi[3])
+            qCMOS.StartCapture()
+            count = 1
+            if count <= n_frames:
+                time.sleep(expose_time)
+                time.sleep(0.1)
+                data = qCMOS.GetLastFrame()
+                time.sleep(0.006)
+                img = data[1].astype(np.float64)
+                filename = datetime.datetime.now().strftime(f"{output_path}_{count}.npy")
+                out_file = os.path.join(output_path, filename)
+                np.save(out_file, img)
+                # TODO: 保存が成功したら count をインクリメントする
+                count += 1
 
-
-
+    finally:
+        qCMOS.StopCapture()
+        qCMOS.ReleaseBuf()
+        qCMOS.CloseUninitCamera()
 
 # TODO: miniforgeのpathを通して、ターミナルの規定値に登録できるようにする
-
 # cameraの接続確認はoneshotの関数内で撮影で行う
-
 # 新しい閾値評価関数を追加
 
-
-def evaluate_thresholds(bright_imgs, dark_imgs, nbins=1000, target_total_error=None):
+def apply_roi_npy(npy_path: str, roi: list):
     """
-    bright_imgs, dark_imgs: list of ndarray (ROI済み推奨)
-    nbins: 閾値スイープ分解能
-    target_total_error: 目標の (FP+FN) 合計率 (例 0.01) を満たす閾値を探す（なければ None）
-    戻り値: dict with
-      - 'best_min_total': {'threshold','fp_rate','fn_rate','total_error'}
-      - 'best_target_error' (存在すれば同様の dict)
-      - 'thresholds','fp_rates','fn_rates','total_rates' (arrays)
+    指定された ROI を用いて npy 画像をトリミングする。
+    roi = [h-width, v-width, h-start, v-start]
+    戻り値: トリミングされた 2D numpy 配列
     """
-    import numpy as _np
+    img = np.load(npy_path)
+    h_width, v_width, h_start, v_start = map(int, roi)
+    img_cropped = img[v_start:v_start+v_width, h_start:h_start+h_width]
+    return img_cropped
 
-    bright = _np.concatenate([img.ravel() for img in bright_imgs])
-    dark = _np.concatenate([img.ravel() for img in dark_imgs])
 
-    lo = float(min(bright.min(), dark.min()))
-    hi = float(max(bright.max(), dark.max()))
-    if lo == hi:
-        thresholds = _np.array([lo])
-    else:
-        thresholds = _np.linspace(lo, hi, nbins)
-
-    fp_rates = _np.empty(len(thresholds))
-    fn_rates = _np.empty(len(thresholds))
-    total_rates = _np.empty(len(thresholds))
-
-    for i, thr in enumerate(thresholds):
-        fn = _np.mean(bright < thr)       # 明 を 0 と判定する割合
-        fp = _np.mean(dark >= thr)       # 暗 を 1 と判定する割合
-        fp_rates[i] = fp
-        fn_rates[i] = fn
-        total_rates[i] = fp + fn
-
-    # 最小合計誤判定率
-    idx_min = int(_np.argmin(total_rates))
-    best_min = {'threshold': float(thresholds[idx_min]),
-                'fp_rate': float(fp_rates[idx_min]),
-                'fn_rate': float(fn_rates[idx_min]),
-                'total_error': float(total_rates[idx_min])}
-
-    best_target = None
-    if target_total_error is not None:
-        # 目標を満たす閾値のうち、合計誤判定率が最小のものを選ぶ
-        mask = total_rates <= float(target_total_error)
-        if mask.any():
-            idxs = _np.where(mask)[0]
-            idx_pick = int(idxs[_np.argmin(total_rates[idxs])])
-            best_target = {'threshold': float(thresholds[idx_pick]),
-                           'fp_rate': float(fp_rates[idx_pick]),
-                           'fn_rate': float(fn_rates[idx_pick]),
-                           'total_error': float(total_rates[idx_pick])}
-
-    return {
-        'best_min_total': best_min,
-        'best_target_error': best_target,
-        'thresholds': thresholds,
-        'fp_rates': fp_rates,
-        'fn_rates': fn_rates,
-        'total_rates': total_rates
-    }
-
-# 保存された画像から行うようにする
-def collect_threshold_calibration(qcmos: Control_qCMOScamera,
-                                                                    usb_io: Control_CONTEC,
-                                                                    n_per_state: int = 50,
-                                                                    roi: tuple = None,
-                                                                    marker_read: callable = None,
-                                                                    target_total_error: float = None,
-                                                                    out_path: str = "threshold_calibration.npz",
-                                                                    send_trigger: bool = False):
+def plot_profile(profile, xs=None, axis_name='x', fitted_curve=None, centers_fwhm=None, peaks=None, title=None, figsize=(6,3)):
     """
-    キャリブレーションを行って閾値を保存する。
-    - qcmos, usb_io: インスタンス（すでに Open/SetParameters/StartCapture 済みが望ましい）
-    - n_per_state: 明・暗それぞれのフレーム枚数目標
-    - roi: (y0, y1, x0, x1) で ROI 指定。None で全体。
-    - marker_read: 各フレームを撮る直前に呼ぶコールバック。True=bright, False=dark を返す。
-                   省略時は手動プロンプトでラベルを付ける。
-    戻り値: dict を返し、ファイルにも保存する。
+    汎用プロファイルプロット
+    - profile: 1D array of summed intensities
+    - xs: x coordinates (optional)
+    - axis_name: 'x' or 'y' for labeling
+    - fitted_curve: tuple (xs, ys) to overplot fitted curve
+    - centers_fwhm: list of (center, fwhm) tuples to draw center and FWHM lines
+    - peaks: list of peak indices (optional)
     """
-    bright_imgs = []
-    dark_imgs = []
-
-    def default_marker():
-        ans = input("現在レーザーを明にしていますか？ (y/n): ").strip().lower()
-        return ans.startswith('y')
-
-    if marker_read is None:
-        marker_read = default_marker
-
-    # 試行回数制限
-    total_needed = n_per_state * 2
-    attempt = 0
-    max_attempts = total_needed * 3
-
-    # dataset.json から露光時間を参照してバッファ取得の待ち時間を決める
     try:
-        with open('./dataset.json') as f:
-            _json = json.load(f)
-            expose_time = float(_json.get('qCMOS.expose-time', 0.05))
+        if xs is None:
+            xs = np.arange(len(profile))
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.plot(xs, profile, color='C0', lw=1, label='profile')
+        ax.set_xlabel(f'{axis_name} (pixel)')
+        ax.set_ylabel('summed intensity')
+        if title:
+            ax.set_title(title)
+        ax.grid(True, linestyle=':', alpha=0.6)
+
+        if fitted_curve is not None:
+            fx, fy = fitted_curve
+            ax.plot(fx, fy, color='red', lw=1, label='fit')
+
+        if centers_fwhm:
+            for c, fwhm in centers_fwhm:
+                left = c - fwhm / 2.0
+                right = c + fwhm / 2.0
+                ax.axvline(c, color='magenta', linestyle='--', linewidth=0.8)
+                ax.axvline(left, color='orange', linestyle=':', linewidth=0.6)
+                ax.axvline(right, color='orange', linestyle=':', linewidth=0.6)
+
+        if peaks is not None:
+            ax.plot(xs[peaks], profile[peaks], 'x', color='k', markersize=6, label='peaks')
+
+        ax.legend(fontsize=8)
+        plt.tight_layout()
+        plt.show()
+        return fig, ax
     except Exception:
-        expose_time = 0.05
+        # プロット環境がない場合は何もしない
+        return None, None
 
-    while (len(bright_imgs) < n_per_state or len(dark_imgs) < n_per_state) and attempt < max_attempts:
-        attempt += 1
-        # 外部システム同期があるならここで待機／確認する（marker_readに任せる）
-        is_bright = marker_read()
 
-        # (外部トリガ運用) デフォルトではトリガは送らない
-        if send_trigger:
-            try:
-                usb_io.SendTrigger()
-            except Exception:
-                # SendTrigger が使えない環境でも続行
-                pass
+def roi_settings_nofit(img2: np.ndarray):
+    """
+    ローレンツフィットを行わない ROI 検出（旧実装）。
+    img2 は 2D numpy 配列（H, W）を想定し、
+    戻り値は [[h_width, v_width, h_start, v_start], ...]
+    """
+    H, W = img2.shape
 
-        # 露光時間分待ってから、バッファから取得する
-        time.sleep(expose_time)
-        # 少し余裕を与える
-        time.sleep(0.01)
-        img = get_frame_from_buffer(qcmos, timeout=max(1.0, expose_time + 1.0))
-        if img is None:
-            # 取得できない場合はログを残して次へ（またはカウントしない）
-            print(f"Warning: フレーム取得失敗 attempt={attempt}")
-            # 小休止して再試行ループへ
-            time.sleep(0.02)
-            continue
-        # img は numpy ndarray
-        # ROI と型変換（1 回だけ実行）
-        if roi is not None:
-            y0, y1, x0, x1 = roi
-            img = img[y0:y1, x0:x1]
+    def smooth1d(a, window=5):
+        if window <= 1:
+            return a
+        pad = window // 2
+        a_pad = np.pad(a, pad, mode='reflect')
+        kernel = np.ones(window, dtype=float) / window
+        res = np.convolve(a_pad, kernel, mode='valid')
+        return res
 
-        if is_bright:
-            if len(bright_imgs) < n_per_state:
-                bright_imgs.append(img.astype(np.float64))
-        else:
-            if len(dark_imgs) < n_per_state:
-                dark_imgs.append(img.astype(np.float64))
+    def detect_peaks_1d(a):
+        peaks = []
+        for i in range(1, len(a)-1):
+            if a[i] >= a[i-1] and a[i] >= a[i+1]:
+                peaks.append(i)
+        return peaks
 
-        # 小休止
-        time.sleep(0.02)
+    def estimate_fwhm_simple(a, idx):
+        peak = float(a[idx])
+        win = 8
+        left_bg = a[max(0, idx-win):idx]
+        right_bg = a[idx+1:min(len(a), idx+1+win)]
+        bg_candidates = []
+        if left_bg.size > 0:
+            bg_candidates.append(np.median(left_bg))
+        if right_bg.size > 0:
+            bg_candidates.append(np.median(right_bg))
+        bg = float(np.median(bg_candidates)) if bg_candidates else 0.0
+        amp = max(peak - bg, 0.0)
+        if amp <= 0:
+            return 1.0
+        half = bg + amp / 2.0
+        i_left = idx
+        while i_left > 0 and a[i_left] > half:
+            i_left -= 1
+        i_right = idx
+        while i_right < len(a)-1 and a[i_right] > half:
+            i_right += 1
 
-    if len(bright_imgs) == 0 or len(dark_imgs) == 0:
-        raise RuntimeError(
-            "bright または dark のサンプルが不足しています。接続と marker を確認してください。")
+        def interp(i0, i1):
+            v0 = a[i0]
+            v1 = a[i1]
+            if v1 == v0:
+                return float(i0)
+            return i0 + (half - v0) / (v1 - v0) * (i1 - i0)
+        left_x = interp(max(0, i_left), min(len(a)-1, i_left+1))
+        right_x = interp(max(0, i_right-1), min(len(a)-1, i_right))
+        fwhm = max(1.0, right_x - left_x)
+        return fwhm
 
-    bright_mean = np.mean(np.stack(bright_imgs), axis=0)
-    bright_std = np.std(np.stack(bright_imgs), axis=0)
-    dark_mean = np.mean(np.stack(dark_imgs), axis=0)
-    dark_std = np.std(np.stack(dark_imgs), axis=0)
+    # 垂直プロフィール
+    y_profile = img2.sum(axis=1)
+    y_smooth = smooth1d(y_profile, window=7)
+    y_peaks = detect_peaks_1d(y_smooth)
+    if len(y_peaks) == 0:
+        return []
+    y_vals = np.array([y_smooth[p] for p in y_peaks])
+    y_peak_idx = int(y_peaks[np.argmax(y_vals)])
+    y_fwhm = estimate_fwhm_simple(y_smooth, y_peak_idx)
+    v_half = int(np.ceil(y_fwhm / 2.0))
+    v_width = max(2, v_half * 2)
+    v_start = max(0, y_peak_idx - v_half)
+    v_start = min(v_start, H - v_width)
 
-    # 閾値案（ピクセル毎）
-    thresh_pixel = (bright_mean + dark_mean) / 2.0
-    # ROI 単位の閾値（全体統計）
-    thresh_global = (bright_mean.mean() + dark_mean.mean()) / 2.0
-    thresh_dark_std = dark_mean + 3.0 * dark_std  # conservative
+    # 水平プロフィール
+    x_profile = img2.sum(axis=0)
+    x_smooth = smooth1d(x_profile, window=7)
+    x_peaks = detect_peaks_1d(x_smooth)
+    if len(x_peaks) == 0:
+        return []
+    rois = []
+    for px in x_peaks:
+        px = int(px)
+        x_fwhm = estimate_fwhm_simple(x_smooth, px)
+        h_half = int(np.ceil(2.0 * x_fwhm))
+        h_width = max(2, h_half * 2)
+        h_start = max(0, px - h_half)
+        h_start = min(h_start, W - h_width)
+        rois.append([int(h_width), int(v_width), int(h_start), int(v_start)])
+    return rois
 
-    result = {
-        'bright_mean': bright_mean,
-        'bright_std': bright_std,
-        'dark_mean': dark_mean,
-        'dark_std': dark_std,
-        'thresh_pixel': thresh_pixel,
-        'thresh_global': float(thresh_global),
-        'thresh_dark_std': thresh_dark_std,
-        'n_bright': len(bright_imgs),
-        'n_dark': len(dark_imgs),
-        'roi': roi
-    }
 
-    # 閾値評価（グローバル閾値選定用に ROI 内画素をまとめて評価）
-    # target_total_error を指定すればその閾値も探す（例: 0.01 = 1%）
-    eval_res = evaluate_thresholds(
-        bright_imgs, dark_imgs, nbins=2000, target_total_error=target_total_error)
+def roi_settings(img):
+   
+    H, W = img.shape
 
-    # 結果を result に追加して保存
-    result['threshold_scan'] = {
-        'best_min_total': eval_res['best_min_total'],
-        'best_target_error': eval_res['best_target_error'],
-        'nbins': len(eval_res['thresholds'])
-    }
+    # 1D の多峰ローレンツ和（最後の引数はオフセット）
+    def FUNC(x, *params):
+        num_func = int((len(params) - 1) / 3)
+        y_sum = np.zeros_like(x, dtype=np.float64)
+        for i in range(num_func):
+            amp = params[3*i]
+            ctr = params[3*i+1]
+            wid = params[3*i+2]
+            y_sum += amp * (wid**2) / ((x - ctr)**2 + wid**2)
+        y_sum += params[-1]
+        return y_sum
 
-    # 詳細配列はファイルに保存（サイズ大きければ省略可）
-    np.savez_compressed(out_path.replace('.npz', '_scan.npz'),
-                        thresholds=eval_res['thresholds'],
-                        fp_rates=eval_res['fp_rates'],
-                        fn_rates=eval_res['fn_rates'],
-                        total_rates=eval_res['total_rates'])
+    # 垂直方向: 画像を x 方向に積分して y プロファイルを得る
+    y_profile = img.sum(axis=1)
+    # fit vertical profile and plot using generic plot_profile
+    y_x = np.arange(len(y_profile))
+    y_y = y_profile
+    y_offset0 = float(np.median(y_y))
+    y_A0 = float(y_y.max() - y_offset0)
+    y_peak_idx = int(np.argmax(y_y))
+    # initial guess and bounds for A, ctr, wid, offset
+    p0y = [max(0.0, y_A0), float(y_peak_idx), 5.0, y_offset0]
+    bounds_y = ([0.0, max(0, y_peak_idx-10), 0.5, 0.0], [np.inf, min(len(y_y)-1, y_peak_idx+10), 200.0, np.inf])
 
-    # コンソール出力（要点）
-    print("閾値スキャン完了:")
-    print(" 最小合計誤判定率閾値 :", result['threshold_scan']['best_min_total'])
-    if result['threshold_scan']['best_target_error'] is not None:
-        print(" 目標誤判定率を満たす閾値 :", result['threshold_scan']['best_target_error'])
+    def lorentz(x, A, x0, wid, offset):
+        return A * (wid**2) / ((x - x0)**2 + wid**2) + offset
+
+    try:
+        popt_y, pcov_y = curve_fit(lorentz, y_x, y_y, p0=p0y, bounds=bounds_y, maxfev=10000)
+        A_fit, y_ctr, y_wid, y_off = popt_y
+        y_fitted = lorentz(y_x, *popt_y)
+        y_fwhm = 2.0 * abs(float(y_wid))
+        plot_profile(y_y, xs=y_x, axis_name='y', fitted_curve=(y_x, y_fitted), centers_fwhm=[(y_ctr, y_fwhm)], peaks=y_peaks, title='Vertical profile (sum over x)')
+    except Exception:
+        print("roi_settings: vertical lorentz fit failed")
+        plot_profile(y_y, xs=y_x, axis_name='y', peaks=y_peaks, title='Vertical profile (fit failed)')
+        return False
+
+    # ピーク位置から線幅(FWHM)の半分ずつ上下に取る（合計でほぼ FWHM 相当）
+    v_half = int(np.ceil(y_fwhm / 2.0))
+    v_width = max(2, v_half * 2)
+    v_start = max(0, int(round(y_peak_idx - v_half)))
+    v_start = min(v_start, H - v_width)
+
+    # 水平方向: y を積分して x プロファイルを得る
+    x_profile = img.sum(axis=0)
+    # plot horizontal profile using generic plot_profile; attempt fit if peaks found
+    x = np.arange(len(x_profile))
+    hth = (x_profile.max() + x_profile.min()) / 2.0
+    peaks, _ = find_peaks(x_profile, height=hth, distance=20)
+
+    if len(peaks) > 0:
+        guess = []
+        lower = []
+        upper = []
+        median_x = float(np.median(x_profile))
+        for p in peaks:
+            amp0 = float(max(0.0, x_profile[p] - median_x))
+            guess.extend([amp0, float(p), 5.0])
+            lower.extend([0.0, max(0, p-10), 0.5])
+            upper.extend([np.inf, min(len(x_profile)-1, p+10), 200.0])
+        guess.append(median_x)
+        lower.append(0.0)
+        upper.append(np.inf)
+
+        try:
+            popt_h, pcov_h = curve_fit(FUNC, x, x_profile, p0=guess, bounds=(np.array(lower), np.array(upper)), maxfev=20000)
+            fitted = FUNC(x, *popt_h)
+            num_funcs_h = int((len(popt_h) - 1) / 3)
+            centers_fwhm = []
+            for i in range(num_funcs_h):
+                ctr = float(popt_h[3*i+1])
+                wid = float(popt_h[3*i+2])
+                fwhm = 2.0 * abs(wid)
+                centers_fwhm.append((ctr, fwhm))
+            plot_profile(x_profile, xs=x, axis_name='x', fitted_curve=(x, fitted), centers_fwhm=centers_fwhm, peaks=peaks, title='Horizontal profile (sum over y)')
+        except Exception:
+            print('horizontal fit failed')
+            plot_profile(x_profile, xs=x, axis_name='x', peaks=peaks, title='Horizontal profile (fit failed)')
     else:
-        if target_total_error is not None:
-            print(f" 目標誤判定率 {target_total_error} を満たす閾値は見つかりませんでした。")
+        plot_profile(x_profile, xs=x, axis_name='x', peaks=peaks, title='Horizontal profile (no peaks)')
+    x = np.arange(len(x_profile))
+    # ピーク検出（高さは中央値ベースの閾値）
+    hth = (x_profile.max() + x_profile.min()) / 2.0
+    peaks, props = find_peaks(x_profile, height=hth, distance=20)
+    if len(peaks) == 0:
+        return []
 
-    np.savez_compressed(out_path, **result)
-    print(f"閾値と評価結果を保存しました: {out_path}")
-    return result
+    # フィッティング用の初期値と bounds を構築
+    guess = []
+    lower = []
+    upper = []
+    median_x = float(np.median(x_profile))
+    for p in peaks:
+        amp0 = float(max(0.0, x_profile[p] - median_x))
+        guess.extend([amp0, float(p), 5.0])
+        lower.extend([0.0, max(0, p-10), 0.5])
+        upper.extend([np.inf, min(len(x_profile)-1, p+10), 200.0])
+    # オフセット初期値
+    guess.append(median_x)
+    lower.append(0.0)
+    upper.append(np.inf)
 
-# 使い方例:
-# usb_io = Control_CONTEC()
-# cam = Control_qCMOScamera()
-# cam.OpenCamera_GetHandle(); cam.SetParameters(...); cam.StartCapture()
-# def marker_from_contec():
-#     # 実装例: CONTEC のデジタル入力を読む関数を作り、True/False を返す
-#     return usb_io.read_marker_pin()
-# res = collect_threshold_calibration(cam, usb_io, n_per_state=30, roi=(100,200,150,250), marker_read=marker_from_contec)
-# cam.StopCapture(); cam.ReleaseBuf(); cam.CloseUninitCamera()
-# ...existing code...
+    try:
+        popt, pcov = curve_fit(FUNC, x, x_profile, p0=guess, bounds=(
+            np.array(lower), np.array(upper)), maxfev=20000)
+    except Exception:
+        print("roi_settings: horizontal multi-lorentz fit failed")
+        return False
 
-# 画像を
+    # popt を解析して各ピークの中心と幅を取得し、
+    # 複数イオンが並んでいる場合は左端の中心 - margin から右端の中心 + margin
+    # までを単一の水平範囲として返す（ユーザ指示）
+    num_funcs = int((len(popt) - 1) / 3)
+    ctrs = []
+    halves = []
+    for i in range(num_funcs):
+        ctr = float(popt[3*i+1])
+        wid = float(popt[3*i+2])
+        fwhm = 2.0 * abs(wid)
+        # 各ピークについて左右マージンは ceil(FWHM/2)
+        h_half = int(np.ceil(fwhm / 2.0))
+        ctrs.append(ctr)
+        halves.append(h_half)
 
-# TODO: check_camera_settings()
-# 画像がとれているか確認
-# 画像を表示させる。イオンの個数を確認
+    # 左右の範囲を決定
+    left = min([c - h for c, h in zip(ctrs, halves)])
+    right = max([c + h for c, h in zip(ctrs, halves)])
+    # 整数座標に変換して画像境界にクランプ
+    h_start = max(0, int(np.floor(left)))
+    h_end = min(W, int(np.ceil(right)))
+    h_width = max(2, h_end - h_start)
+    print(h_width)
 
-# TODO: roi_settings()
-# 全体のトリミング範囲を設定（画像処理に使う範囲）
-# イオンの個数とそれぞれに対応するトリミング範囲を決定（横長にとったものを分割？？）
+
+    roi = [int(h_width), int(v_width), int(h_start), int(v_start)]
+
+    return roi
+
+
+def show_npy_2d(img: np.ndarray, origin: str = 'lower', figsize=(6, 6), title: str = None):
+
+    vmin = None
+    vmax = None
+
+    if vmin is None or vmax is None:
+        p1 = np.percentile(img, 1)
+        p99 = np.percentile(img, 99)
+        if vmin is None:
+            vmin = p1
+        if vmax is None:
+            vmax = p99
+        fig, ax = plt.subplots(figsize=figsize)
+
+        im = ax.imshow(img, cmap='gray', origin=origin, vmin=vmin, vmax=vmax)
+        fig.colorbar(im, ax=ax)
+        if title:
+            ax.set_title(title)
+            ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+    return fig, ax
+
+
+def main():
+    npy_path = "C:/Users/karishio/Desktop/single_ion_control/src/camera/input_test/npy/202504231631_217000.npy"
+    img = np.load(npy_path)
+    # roi = roi_settings(img)
+    roi = [400, 50, 400, 160]
+    cropped_img = apply_roi_npy(npy_path, roi)
+    # print(roi)
+    show_npy_2d(cropped_img)
+
+if __name__ == "__main__":
+    main()
