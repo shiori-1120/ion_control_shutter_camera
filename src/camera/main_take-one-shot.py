@@ -56,23 +56,30 @@ try:
                         , JSON["qCMOS.subarray.h-start"]
                         , JSON["qCMOS.subarray.v-start"])                   
                             
-    qCMOS.StartCapture()
+    
     meas_id = JSON["measurement-id.take-one-shot"]
     
     now = time.time()
     dt = datetime.datetime.fromtimestamp(now)
     dir_name = "take-one-shot"    
     makeDir(today_path + "/" + dir_name)
+
     
+    qCMOS.StartCapture()
+    start_time = time.time()
     while True:
+        start = time.time()
         time.sleep(JSON["qCMOS.expose-time"])
-        time.sleep(0.1)
+        time.sleep(0.01)
         data = qCMOS.GetLastFrame()
-        print("data=", data)
         time.sleep(0.006)
         img = data[1].astype(np.float64)
         np.save(today_path + "/" + dir_name + "/img-%d.npy"   %meas_id, img)
-    
+        minddle_time = time.time()
+        print(minddle_time - start, "秒")
+        meas_id += 1
+
+
     
 finally:
     
