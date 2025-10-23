@@ -53,7 +53,7 @@ def get_n_frames_from_buffer(n_frames, expose_time=0.100, rois=None):
 # cameraの接続確認はoneshotの関数内で撮影で行う
 # 新しい閾値評価関数を追加
 
-
+# TODO: 引数をndarrayにしたほうがいいかも
 def apply_roi_npy(npy_path: str, roi: list):
     img = np.load(npy_path)
     h_width, v_width, h_start, v_start = map(int, roi)
@@ -278,7 +278,7 @@ def plot_horizontal_profile(fit_result):
                  peaks=x_peaks,
                  title='Horizontal profile (sum over y)')
 
-
+# TODO: 変数名が分かりにくい
 def analyze_ion_profiles(img, plot=False):
     # 2D画像から垂直・水平プロファイルを抽出し、ローレンツフィッティングを実行する。
     results = {'vertical': None, 'horizontal': None}
@@ -301,6 +301,77 @@ def analyze_ion_profiles(img, plot=False):
         plot_horizontal_profile(horizontal_fit)
 
     return results
+
+def generate_rois_from_analyze_results(results: dict, img_shape) -> list:
+    """
+    analyze_ion_profiles(img) の結果に基づき、複数ROIを生成して返す。
+
+    仕様:
+    - 縦（single）：center_y, fwhm_y を使用
+    - 横（multi）：centers_x[], fwhms_x[] を使用し、横FWHMの平均を算出
+    - ROI の線幅は (縦FWHM と 横FWHM平均) の平均値を採用（上下左右とも同じピクセル幅）
+    - 各ROIは [h-width, v-width, h-start, v-start] 形式（DCAM subarrayの順序に合わせる）
+    - 画像外にはみ出さないよう開始座標をクリップ
+
+    Args:
+        results (dict): analyze_ion_profiles(img) の戻り値 { 'vertical': {...}, 'horizontal': {...} }
+        img_shape (tuple): 画像配列の shape (V, H) または (height, width)
+
+    Returns:
+        list[list[int]]: ROI のリスト。各要素は [h-width, v-width, h-start, v-start]
+    """
+    vert = results.get('vertical') or {}
+    horiz = results.get('horizontal') or {}
+
+    if not vert or vert.get('center') is None or vert.get('fwhm') is None:
+        raise ValueError('Vertical fit result is missing center/fwhm')
+    if not horiz or not horiz.get('centers') or not horiz.get('fwhms'):
+        raise ValueError('Horizontal fit result is missing centers/fwhms')
+
+    y_center = float(vert['center'])
+    v_fwhm = float(vert['fwhm'])
+    centers_x = [float(c) for c in horiz['centers']]
+    fwhms_x = [float(w) for w in horiz['fwhms']]
+
+    if len(fwhms_x) == 0:
+        raise ValueError('No horizontal FWHMs found')
+
+    avg_linewidth = float((v_fwhm + np.mean(fwhms_x)) / 2.0)
+    # 線幅をそのまま総幅（ピクセル）として用いる
+    width_px = max(1, int(round(avg_linewidth)))
+    h_width = width_px
+    v_width = width_px
+
+    H = int(img_shape[1])  # width (x)
+    V = int(img_shape[0])  # height (y)
+
+    rois = []
+    for x_center in centers_x:
+        h_start = int(round(x_center - h_width / 2.0))
+        v_start = int(round(y_center - v_width / 2.0))
+
+        # 画像内に収める（最低限のクリップ）
+        h_start = max(0, min(h_start, H - h_width))
+        v_start = max(0, min(v_start, V - v_width))
+
+        rois.append([h_width, v_width, h_start, v_start])
+
+    return rois
+
+
+def generate_rois_from_image(img: np.ndarray, plot: bool = False) -> list:
+    """
+    便利関数: 画像から直接プロファイル解析を行い、ROI リストを返す。
+
+    Args:
+        img (np.ndarray): 2D 画像。
+        plot (bool): 解析時にプロファイルの可視化を行う場合 True。
+
+    Returns:
+        list[list[int]]: ROI のリスト [h-width, v-width, h-start, v-start]
+    """
+    results = analyze_ion_profiles(img, plot=plot)
+    return generate_rois_from_analyze_results(results, img.shape)
 
 
 def show_npy_2d(img: np.ndarray, origin: str = 'lower', figsize=(6, 6), title: str = None):
@@ -331,26 +402,31 @@ def show_npy_2d(img: np.ndarray, origin: str = 'lower', figsize=(6, 6), title: s
 def plot_photon_distribution(img):
     """
     y軸方向に積分した光子数分布をプロットする。
-    縦軸は全イベント数で正規化したヒストグラムとして表示。
+    横軸は整数幅(ビン幅=1)のヒストグラムに変更。
 
     Args:
         img (np.ndarray): 2D画像配列。
     """
-    # y軸方向に積分して光子数のヒストグラムを作成
+    # y軸方向に積分して1次元の光子数分布を取得（合計）
     photon_counts = img.sum(axis=0)
 
-    # 光子数の範囲から適切なビン数を決定
-    bins = int(np.sqrt(len(photon_counts)))
+    # 整数幅(1)のビンを用意（整数中心になるように±0.5シフトしたエッジ）
+    pc_min = float(np.nanmin(photon_counts))
+    pc_max = float(np.nanmax(photon_counts))
+    start = int(np.floor(pc_min))
+    end = int(np.ceil(pc_max))
+    # 例: start=3, end=7 -> エッジは [2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5]
+    bin_edges = np.arange(start - 0.5, end + 1.5, 1)
 
-    # ヒストグラムを作成し、全要素数で正規化
     plt.figure(figsize=(10, 5))
-    plt.hist(photon_counts, bins=bins, density=False,
+    plt.hist(photon_counts, bins=bin_edges, density=False,
              alpha=0.7, edgecolor='black')
-    plt.axvline(photon_counts.mean(), color='r', linestyle='--',
-                label=f'Mean: {photon_counts.mean():.2f}')
+    mean_val = float(np.mean(photon_counts))
+    plt.axvline(mean_val, color='r', linestyle='--',
+                label=f'Mean: {mean_val:.2f}')
 
-    plt.xlabel('Photon Count')
-    plt.ylabel('Frequency (normalized)')
+    plt.xlabel('Photon Count (integer bins)')
+    plt.ylabel('Frequency')
     plt.title('Photon Distribution (integrated over y-axis)')
     plt.legend()
     plt.grid(True, alpha=0.3)
@@ -376,10 +452,81 @@ def determine_ion_state(img: np.ndarray, threshold: float) -> bool:
     # 暗状態のデータが半分以上なら暗状態(False)、そうでなければ明状態(True)
     return dark_ratio <= 0.5
 
+# roiのリストと2dndarrayの配列を受け取る。
+# それぞれのROIに対して、対応する画像データを抽出する。
+# 返り値はndarrayのリスト
+def extract_rois_from_image(img: np.ndarray, rois: list) -> list:
+    """
+    2D画像と ROI リストから、それぞれの領域を切り出して返す。
+
+    Args:
+        img (np.ndarray): 2D 画像 (V,H)
+        rois (list): [[h-width, v-width, h-start, v-start], ...]
+
+    Returns:
+        list[np.ndarray]: 切り出した小画像のリスト。無効な ROI はスキップ。
+    """
+    if img is None:
+        raise ValueError("img is None")
+    if rois is None:
+        return []
+
+    img2 = np.asarray(img)
+    if img2.ndim < 2:
+        raise ValueError("img must be a 2D array")
+
+    V, H = int(img2.shape[0]), int(img2.shape[1])
+
+    crops = []
+    for roi in rois:
+        try:
+            h_width, v_width, h_start, v_start = map(int, roi)
+        except Exception:
+            # ROI 形式が不正ならスキップ
+            continue
+
+        # マイナスや過大をクリップ
+        h_width = max(1, min(h_width, H))
+        v_width = max(1, min(v_width, V))
+        h_start = max(0, min(h_start, H - h_width))
+        v_start = max(0, min(v_start, V - v_width))
+
+        v_end = v_start + v_width
+        h_end = h_start + h_width
+
+        # 最終防御: 形が崩れていたらスキップ
+        if v_start >= v_end or h_start >= h_end:
+            continue
+
+        crop = img2[v_start:v_end, h_start:h_end]
+        crops.append(crop)
+
+    return crops
 
 # イオンの個数が変化していないことを確認する関数
-def verify_ion_count_consistency(ndarray, ion_positions):
-    pass  # 実装はここに記述してください
+def verify_ion_count_consistency(img: np.ndarray, ion_positions) -> bool:
+    """
+    イオンの個数が変化していないか（= 期待個数と検出個数が同じか）だけを True/False で返す。
+
+    Args:
+        img (np.ndarray): 2D 画像。
+        ion_positions (list[float|int]): 期待するイオンの x 位置（長さが期待個数）。
+
+    Returns:
+        bool: 個数が一致していれば True、合わなければ False。
+              フィット失敗やピーク検出ゼロのときも False。
+    """
+    try:
+        if img is None:
+            return False
+        expected_count = len(ion_positions or [])
+        hfit = fit_horizontal_profile(img)
+        if hfit is None:
+            return False
+        detected_count = len(hfit.get('centers', []) or [])
+        return detected_count == expected_count
+    except Exception:
+        return False
 
 
 # integrate_photon_countsをイオンの個数だけ繰り返し、さらに周波数ごとに繰り返して、周波数と励起成功確率の2D配列を作成する関数
@@ -448,19 +595,23 @@ def plot_frequency_excitation_probability(frequencies_excite_probability):
 
 def main():
     roi = [400, 50, 400, 160]  # [h-width, v-width, h-start, v-start]
-    exposure = 0.100
-    frame = capture_roi_image(exposure, roi)
+    frame = apply_roi_npy(
+        "C:\\Users\\tanak\\デスクトップ\\kariyama\\single_ion_control\\src\\camera\\input_test\\npy\\202504231631_217000.npy", roi)
+    show_npy_2d(frame)
+    # 複数イオンの画像を適切にroiできているか確認するコード書いて
+    results = analyze_ion_profiles(frame.astype(np.float64), plot=True)
+    rois = generate_rois_from_analyze_results(results, frame.shape)
+    extracted_rois = extract_rois_from_image(frame, rois)
+    for i, roi in enumerate(extracted_rois):
+        print(f"ROI {i}:")
+        show_npy_2d(roi)
+        plot_photon_distribution(roi)
 
-    start_time = time.time()
-    results = analyze_ion_profiles(frame.astype(np.float64))
-    elapsed = time.time() - start_time
-    print("Profile analysis time:", elapsed)
-    print(results)
-
-    # Optional visualization utilities
-    # show_npy_2d(frame)
-    # plot_photon_distribution(frame)
-
+    dark_roi = [15, 15, 300, 100]
+    dark_img = apply_roi_npy(
+        "C:\\Users\\tanak\\デスクトップ\\kariyama\\single_ion_control\\src\\camera\\input_test\\npy\\202504231631_217000.npy", dark_roi)
+    show_npy_2d(dark_img)
+    plot_photon_distribution(dark_img)
 
 if __name__ == "__main__":
     main()
