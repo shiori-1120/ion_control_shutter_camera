@@ -32,7 +32,7 @@ try:
         # 0.5 secごとにカメラトリガーのON/OFFを切り替え
         # 1 secごとに撮影
         tasks[channel.camera].write(True)
-        time.sleep(1)
+        time.sleep(0.01)
 
         tasks[channel.camera].write(False)
         time.sleep(1)

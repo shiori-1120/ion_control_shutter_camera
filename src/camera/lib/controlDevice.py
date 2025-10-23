@@ -293,6 +293,22 @@ class Control_qCMOScamera():
 
         return (aFrame, npBuf)
 
+    def capture_roi_frame(self, exposure_time: float, roi, wait_margin: float = 0.01) -> np.ndarray:
+        """Set a subarray ROI, capture a single frame, and return it as ndarray."""
+        h_width, v_width, h_start, v_start = map(int, roi)
+
+        # Configure camera for requested ROI and exposure
+        self.SetParameters(exposure_time, h_width, v_width, h_start, v_start)
+
+        self.StartCapture()
+        try:
+            # Wait for exposure plus small margin before grabbing the frame
+            time.sleep(max(exposure_time, 0.0) + wait_margin)
+            _, frame = self.GetLastFrame()
+            return frame.copy()
+        finally:
+            self.StopCapture()
+
     # ---- Status helper methods ----
     def get_capture_status(self):
         """Return raw DCAM capture status integer (use DCAMCAP_STATUS to interpret)."""

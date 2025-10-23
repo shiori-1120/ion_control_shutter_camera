@@ -11,6 +11,9 @@ Usage examples:
 
 依存: numpy, matplotlib
 """
+
+# npyに複数の画像が入っている？？
+
 import argparse
 import os
 import sys
@@ -42,19 +45,13 @@ def plot_histogram(arr, ax=None, bins=256):
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description='Visualize .npy image files')
+    p = argparse.ArgumentParser(
+        description='Visualize .npy image files (simple)')
     p.add_argument('file', help='.npy file or directory containing .npy files')
-    p.add_argument('--cmap', default='gray', help='Matplotlib colormap (default: gray)')
-    p.add_argument('--vmin', type=float, default=None, help='vmin for imshow')
-    p.add_argument('--vmax', type=float, default=None, help='vmax for imshow')
-    p.add_argument('--percentiles', nargs=2, type=float, metavar=('PLOW', 'PHIGH'),
-                   help='use percentiles to set vmin/vmax (e.g. --percentiles 1 99)')
-    p.add_argument('--save', help='save displayed image to this path (png)')
-    p.add_argument('--hist', action='store_true', help='also show histogram')
-    p.add_argument('--check-nonzero', action='store_true', help='check and report non-zero pixel counts')
-    p.add_argument('--threshold', type=float, default=0.0, help='threshold for counting pixels (default 0)')
-    p.add_argument('--check-only', action='store_true', help='only run nonzero check and skip display/save')
-    p.add_argument('--origin', choices=['lower', 'upper'], default='lower', help='imshow origin')
+    p.add_argument('--cmap', default='gray',
+                   help='Matplotlib colormap (default: gray)')
+    p.add_argument(
+        '--origin', choices=['lower', 'upper'], default='lower', help='imshow origin')
     return p.parse_args()
 
 
@@ -79,54 +76,20 @@ def main():
             print('Not found:', path)
             continue
         arr = load_array(path)
-        # 非ゼロ/閾値チェック
-        if args.check_nonzero:
-            total = arr.size
-            if args.threshold == 0.0:
-                nonzero = np.count_nonzero(arr)
-            else:
-                nonzero = np.sum(arr > args.threshold)
-            pct = 100.0 * nonzero / total if total > 0 else 0.0
-            print(f"{os.path.basename(path)}: nonzero={nonzero}/{total} ({pct:.3f}%) threshold={args.threshold}")
-            if args.check_only:
-                continue
+        # Only display the image
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
         if arr.ndim == 3 and arr.shape[2] in (3, 4):
-            # color image
-            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
             ax.imshow(arr, origin=args.origin)
-            ax.set_title(os.path.basename(path))
-            if args.hist:
-                fig2, ax2 = plt.subplots(1, 1, figsize=(6, 3))
-                plot_histogram(arr, ax2)
         else:
-            # grayscale
-            # compute vmin/vmax from percentiles if requested
-            vmin = args.vmin
-            vmax = args.vmax
-            if args.percentiles is not None:
-                p0, p1 = args.percentiles
-                vmin = np.percentile(arr, p0)
-                vmax = np.percentile(arr, p1)
-            elif vmin is None or vmax is None:
-                # default: 1..99 percentiles
-                vmin = np.percentile(arr, 1) if vmin is None else vmin
-                vmax = np.percentile(arr, 99) if vmax is None else vmax
-
-            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-            show_image(arr, cmap=args.cmap, vmin=vmin, vmax=vmax, origin=args.origin)
-            ax.set_title(os.path.basename(path))
-            if args.hist:
-                fig2, ax2 = plt.subplots(1, 1, figsize=(6, 3))
-                plot_histogram(arr, ax2)
+            # compute default vmin/vmax from 1..99 percentiles for visibility
+            vmin = np.percentile(arr, 1)
+            vmax = np.percentile(arr, 99)
+            show_image(arr, cmap=args.cmap, vmin=vmin,
+                       vmax=vmax, origin=args.origin)
+        ax.set_title(os.path.basename(path))
 
         plt.tight_layout()
-        if args.save:
-            out = args.save
-            # if directory given, save with same basename but .png
-            if os.path.isdir(out):
-                out = os.path.join(out, os.path.basename(path).rsplit('.', 1)[0] + '.png')
-            plt.savefig(out, dpi=200)
-            print('Saved image to', out)
+        # Only show the figure interactively
         plt.show()
 
 
