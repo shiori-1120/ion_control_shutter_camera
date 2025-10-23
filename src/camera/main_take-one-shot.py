@@ -67,6 +67,8 @@ try:
     
     qCMOS.StartCapture()
     start_time = time.time()
+    # この実行ループ中は同じタイムスタンプを使い、成功保存ごとに meas_id を進める
+    loop_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     while True:
         start = time.time()
         time.sleep(JSON["qCMOS.expose-time"])
@@ -74,7 +76,11 @@ try:
         data = qCMOS.GetLastFrame()
         time.sleep(0.006)
         img = data[1].astype(np.float64)
-        np.save(today_path + "/" + dir_name + "/img-%d.npy"   %meas_id, img)
+        # 成功条件: 全要素がゼロでないフレームのみ保存
+        if img.size == 0 or not np.any(img):
+            continue
+        filename = f"{loop_ts}_{meas_id:06d}.npy"
+        np.save(today_path + "/" + dir_name + "/" + filename, img)
         minddle_time = time.time()
         print(minddle_time - start, "秒")
         meas_id += 1
@@ -85,7 +91,6 @@ finally:
     
     stop_time  = time.time()
     print("measurement-id", meas_id)
-    meas_id += 1
     JSON["measurement-id.take-one-shot"] = meas_id
     writeJSON(JSON)
     

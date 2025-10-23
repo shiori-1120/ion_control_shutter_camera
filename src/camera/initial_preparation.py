@@ -31,17 +31,25 @@ def get_n_frames_from_buffer(n_frames, expose_time=0.100, rois=None):
             qCMOS.SetParameters(expose_time, roi[0], roi[1], roi[2], roi[3])
             qCMOS.StartCapture()
             count = 1
-            if count <= n_frames:
+            # このループ内で固定のタイムスタンプ（秒精度）を使用し、連番だけインクリメントする
+            loop_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            while count <= n_frames:
                 time.sleep(expose_time)
                 time.sleep(0.1)
                 data = qCMOS.GetLastFrame()
                 time.sleep(0.006)
                 img = data[1].astype(np.float64)
-                filename = datetime.datetime.now().strftime(
-                    f"{output_path}_{count}.npy")
+
+                # 成功条件: 全要素ゼロではないフレームのみ採用
+                if img.size == 0 or not np.any(img):
+                    # 失敗フレームはカウントせずリトライ
+                    continue
+
+                # 保存に成功したらインクリメント
+                # ファイル名は重複しないよう日時+連番にする
+                filename = f"{loop_ts}_{count:04d}.npy"
                 out_file = os.path.join(output_path, filename)
                 np.save(out_file, img)
-                # TODO: 保存が成功したら count をインクリメントする
                 count += 1
 
     finally:
