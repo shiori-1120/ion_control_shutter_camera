@@ -28,7 +28,7 @@ def writeJSON(dict_json):
         js = open(path_jsonfile, "w")
         json.dump(dict_json, js, indent=4)
         print("writeJSON() true")
-    except:
+    except Exception:
         print("writeJSON() false")
 
 
@@ -48,7 +48,13 @@ dt = datetime.datetime.fromtimestamp(now)
 today_path = parent_path + "/" + dt.strftime("%Y-%m-%d") + "/raw-data"
 makeDir(today_path)
 # working_path = today_path + "/" + "qCMOS"
+# Prepare working directory and ensure dataset.json exists with sane defaults   
+JSON = getJSON()
 
+
+working_path = os.path.join(today_path, "qCMOS")
+makeDir(working_path)
+print("working_path:", working_path)
 start_time = time.time()
 try:
     print("open")
@@ -67,6 +73,7 @@ try:
     dt = datetime.datetime.fromtimestamp(now)
     dir_name = "take-one-shot"
     makeDir(today_path + "/" + dir_name)
+    save_dir = os.path.join(today_path, dir_name)
 
     qCMOS.StartCapture()
     start_time = time.time()
@@ -75,32 +82,28 @@ try:
 
     count = 0
     failure_attempts = 0
-    max_failures = 10
-    while count < 10:
+    max_failures = 100
+
+    while True:
+        start_time = time.time()
         wait_ok, wait_err = qCMOS.wait_for_frame_ready(wait_timeout_sec)
         if not wait_ok:
             err_label = wait_err.name if isinstance(
                 wait_err, DCAMERR) else str(wait_err)
-            print(f"Frame wait failed: {err_label}. Retrying...")
             failure_attempts += 1
             if failure_attempts >= max_failures:
-                print("Reached maximum wait retries. Stopping capture loop.")
                 break
             continue
         data = qCMOS.GetLastFrame()
-        img = data[1].astype(np.float64)
-        # 成功条件: 全要素がゼロでないフレームのみ保存
-        if img.size == 0 or not np.any(img):
-            failure_attempts += 1
-            if failure_attempts >= max_failures:
-                print("Image buffer stayed empty. Stopping capture loop.")
-                break
-            continue
+        # 型変換は重いので避ける（元のuint16/uint8のまま保存してI/Oを軽くする）
+        img = data[1]
         filename = f"{loop_ts}_{meas_id:06d}.npy"
-        np.save(today_path + "/" + dir_name + "/" + filename, img)
+        np.save(os.path.join(save_dir, filename), img)
         meas_id += 1
         count += 1
         failure_attempts = 0
+        end_time = time.time()
+        print("saved", "elapsed:", end_time - start_time, "sec")
 
 
 finally:

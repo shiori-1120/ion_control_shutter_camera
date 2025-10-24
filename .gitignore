@@ -1,2 +1,19 @@
 nidaqmx-python-master/
 .venv
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# VS Code
+.vscode/
+
+# Logs
+log/
+
+# Generated camera outputs
+src/camera/one-shot/output/
+src/camera/output/
+
+# Waveform outputs
+src/waveform/output/
