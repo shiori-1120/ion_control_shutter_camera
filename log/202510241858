@@ -1,0 +1,78 @@
+{
+    "qCMOS.expose-time": 0.001,
+    "qCMOS.subarray.h-width": 1412,
+    "qCMOS.subarray.v-width": 472,
+    "qCMOS.subarray.h-start": 1768,
+    "qCMOS.subarray.v-start": 1040,
+    "measurement-id.take-one-shot": 53
+}
+(myenv) C:\Users\tanak\デスクトップ\kariyama\single_ion_control\src\camera>python main_take-one-shot.py
+working_path: one-shot/output/2025-10-24/raw-data\qCMOS
+open
+number of connected cameras : 1
+4
+2.0
+subarray mode :  2.0
+Horizontal size 1412.0
+Horizon pos 1768.0
+Vertical size 472.0
+Vertical pos 1040.0
+exposure time [sec.] 0.0010184727272727272
+4
+--- Begin Capture ---
+2
+saved elapsed: 0.03836846351623535 sec
+saved elapsed: 0.019945144653320312 sec
+saved elapsed: 0.02161693572998047 sec
+saved elapsed: 0.021548748016357422 sec
+saved elapsed: 0.020633220672607422 sec
+saved elapsed: 0.022884607315063477 sec
+saved elapsed: 0.022577762603759766 sec
+saved elapsed: 0.02271747589111328 sec
+saved elapsed: 0.021216154098510742 sec
+saved elapsed: 0.022310733795166016 sec
+measurement-id 63
+writeJSON() true
+計測時間： 0.049997568130493164 秒
+--- End Capture ---
+取り込んだフレーム数 :  10
+finish take-one-shot
+
+
+---------------------------------------------------------------------------
+
+
+{
+    "qCMOS.expose-time": 0.001,
+    "qCMOS.subarray.h-width": 500,
+    "qCMOS.subarray.v-width": 472,
+    "qCMOS.subarray.h-start": 1768,
+    "qCMOS.subarray.v-start": 1040,
+    "measurement-id.take-one-shot": 73
+}
+(myenv) C:\Users\tanak\デスクトップ\kariyama\single_ion_control\src\camera>python main_take-one-shot.py
+working_path: one-shot/output/2025-10-24/raw-data\qCMOS
+open
+number of connected cameras : 1
+4
+2.0
+subarray mode :  2.0
+Horizontal size 500.0
+Horizon pos 1768.0
+Vertical size 50.0
+Vertical pos 1040.0
+exposure time [sec.] 0.0010184727272727272
+4
+--- Begin Capture ---
+2
+saved elapsed: 0.038394927978515625 sec
+saved elapsed: 0.0419774055480957 sec
+saved elapsed: 0.04343843460083008 sec
+saved elapsed: 0.04417896270751953 sec
+saved elapsed: 0.04330849647521973 sec
+measurement-id 68
+writeJSON() true
+計測時間： 0.050116777420043945 秒
+--- End Capture ---
+取り込んだフレーム数 :  5
+finish take-one-shot
