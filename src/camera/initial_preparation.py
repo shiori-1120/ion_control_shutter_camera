@@ -62,11 +62,15 @@ def get_n_frames_from_buffer(n_frames, expose_time=0.100, rois=None):
 # 新しい閾値評価関数を追加
 
 # TODO: 引数をndarrayにしたほうがいいかも
+
+
 def apply_roi_npy(npy_path: str, roi: list):
     img = np.load(npy_path)
     h_width, v_width, h_start, v_start = map(int, roi)
     img_cropped = img[v_start:v_start+v_width, h_start:h_start+h_width]
     return img_cropped
+
+# いらないかも
 
 
 def capture_roi_image(exposure_time: float, roi: list, wait_margin: float = 0.01) -> np.ndarray:
