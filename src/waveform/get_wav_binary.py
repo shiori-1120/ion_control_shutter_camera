@@ -4,7 +4,7 @@ import csv
 from datetime import datetime
 import numpy as np
 
-
+# TODO: ASCIIのファイルをバイナリに変更する
 def save_to_csv(time_data, voltage_data, output_dir="output"):
     os.makedirs(output_dir, exist_ok=True)
 

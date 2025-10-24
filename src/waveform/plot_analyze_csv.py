@@ -187,9 +187,6 @@ def plot_waveforms(waveforms_data, title="Oscilloscope Waveforms"):
     plt.show()
 
 
-# ==============================================================================
-# Report Generation Function (★ここを修正★)
-# ==============================================================================
 def save_report_to_txt(report_data, output_filepath):
     """分析レポートをテキストファイルに保存する"""
     with open(output_filepath, 'w', encoding='utf-8') as f:
