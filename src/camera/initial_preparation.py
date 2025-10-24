@@ -411,31 +411,63 @@ def show_npy_2d(img: np.ndarray, origin: str = 'lower', figsize=(6, 6), title: s
     return fig, ax
 
 
-def plot_photon_distribution(img):
+def plot_photon_distribution(light_images: list | None = None,
+                             dark_images: list | None = None):
     """
-    y軸方向に積分した光子数分布をプロットする。
-    横軸は整数幅(ビン幅=1)のヒストグラムに変更。
+    y軸方向に積分した光子数ヒストグラムを明状態・暗状態で比較表示する。
 
     Args:
-        img (np.ndarray): 2D画像配列。
+        light_images (list[np.ndarray] | None): 明状態画像のリスト。
+        dark_images (list[np.ndarray] | None): 暗状態画像のリスト。
     """
-    # y軸方向に積分して1次元の光子数分布を取得（合計）
-    photon_counts = img.sum(axis=0)
+    light_images = light_images or []
+    dark_images = dark_images or []
 
-    # 整数幅(1)のビンを用意（整数中心になるように±0.5シフトしたエッジ）
-    pc_min = float(np.nanmin(photon_counts))
-    pc_max = float(np.nanmax(photon_counts))
+    if not light_images and not dark_images:
+        raise ValueError(
+            "At least one of light_images or dark_images must contain data.")
+
+    def _aggregate_counts(images):
+        counts = []
+        for img in images:
+            arr = np.asarray(img, dtype=float)
+            if arr.ndim < 2:
+                raise ValueError(
+                    "Each image must be at least 2D for photon count integration.")
+            counts.append(arr.sum(axis=0))
+        if counts:
+            return np.concatenate(counts)
+        return np.array([], dtype=float)
+
+    light_counts = _aggregate_counts(light_images)
+    dark_counts = _aggregate_counts(dark_images)
+
+    combined = np.concatenate(
+        [c for c in (light_counts, dark_counts) if c.size > 0])
+    if combined.size == 0:
+        raise ValueError("Provided images did not yield valid photon counts.")
+
+    pc_min = float(np.nanmin(combined))
+    pc_max = float(np.nanmax(combined))
     start = int(np.floor(pc_min))
     end = int(np.ceil(pc_max))
-    # 例: start=3, end=7 -> エッジは [2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5]
     bin_edges = np.arange(start - 0.5, end + 1.5, 1)
 
     plt.figure(figsize=(10, 5))
-    plt.hist(photon_counts, bins=bin_edges, density=False,
-             alpha=0.7, edgecolor='black')
-    mean_val = float(np.mean(photon_counts))
-    plt.axvline(mean_val, color='r', linestyle='--',
-                label=f'Mean: {mean_val:.2f}')
+
+    if light_counts.size > 0:
+        mean_light = float(np.mean(light_counts))
+        plt.hist(light_counts, bins=bin_edges, density=False,
+                 alpha=0.6, color='tab:orange', edgecolor='black',
+                 label=f'Light (mean={mean_light:.2f})')
+        plt.axvline(mean_light, color='tab:orange', linestyle='--')
+
+    if dark_counts.size > 0:
+        mean_dark = float(np.mean(dark_counts))
+        plt.hist(dark_counts, bins=bin_edges, density=False,
+                 alpha=0.6, color='navy', edgecolor='black',
+                 label=f'Dark (mean={mean_dark:.2f})')
+        plt.axvline(mean_dark, color='navy', linestyle='--')
 
     plt.xlabel('Photon Count (integer bins)')
     plt.ylabel('Frequency')
@@ -550,7 +582,6 @@ def create_frequency_excitation_probability_matrix(spectrum_data, ion_counts):
 def plot_frequency_excitation_probability(frequencies_excite_probability):
     data = np.asarray(frequencies_excite_probability, dtype=float)
 
-
     freqs = data[:, 0]
     prob_matrix = data[:, 1:]
 
@@ -606,24 +637,28 @@ def plot_frequency_excitation_probability(frequencies_excite_probability):
 
 
 def main():
-    roi = [400, 50, 400, 160]  # [h-width, v-width, h-start, v-start]
-    frame = apply_roi_npy(
-        "C:\\Users\\tanak\\デスクトップ\\kariyama\\single_ion_control\\src\\camera\\input_test\\npy\\202504231631_217000.npy", roi)
-    show_npy_2d(frame)
+    # roi = [400, 50, 400, 160]  # [h-width, v-width, h-start, v-start]
+    # frame = apply_roi_npy(
+    #     "input_test\\npy\\202504231631_217000.npy", roi)
+    # show_npy_2d(frame)
     # 複数イオンの画像を適切にroiできているか確認するコード書いて
-    results = analyze_ion_profiles(frame.astype(np.float64), plot=True)
-    rois = generate_rois_from_analyze_results(results, frame.shape)
-    extracted_rois = extract_rois_from_image(frame, rois)
-    for i, roi in enumerate(extracted_rois):
-        print(f"ROI {i}:")
-        show_npy_2d(roi)
-        plot_photon_distribution(roi)
+    # results = analyze_ion_profiles(frame.astype(np.float64), plot=True)
+    # rois = generate_rois_from_analyze_results(results, frame.shape)
+    # extracted_rois = extract_rois_from_image(frame, rois)
+    # for i, roi in enumerate(extracted_rois):
+    #     print(f"ROI {i}:")
+    #     show_npy_2d(roi)
 
-    dark_roi = [15, 15, 300, 100]
-    dark_img = apply_roi_npy(
-        "C:\\Users\\tanak\\デスクトップ\\kariyama\\single_ion_control\\src\\camera\\input_test\\npy\\202504231631_217000.npy", dark_roi)
-    show_npy_2d(dark_img)
-    plot_photon_distribution(dark_img)
+    # dark_roi = [15, 15, 300, 100]
+    # dark_img = apply_roi_npy(
+    #     "input_test\\npy\\202504231631_217000.npy", dark_roi)
+    # show_npy_2d(dark_img)
+    # plot_photon_distribution(
+    #     dark_images=[dark_img], light_images=[extracted_rois[0]])
+    frame = np.load(
+        "output/2025-10-23/raw-data/take-one-shot/img-11.npy")
+    show_npy_2d(frame)
+
 
 if __name__ == "__main__":
     main()
