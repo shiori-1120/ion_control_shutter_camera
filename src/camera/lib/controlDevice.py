@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import ctypes as c
+from typing import Optional, Tuple
 
 import lib.caio as caio
 from lib.CommonFunction import *
@@ -83,9 +84,14 @@ class Control_qCMOScamera():
         self._device_count = int(paraminit.iDeviceCount)
 
     def OpenCamera_GetHandle(self):
-        paramdevopen = dcamapi4.DCAMDEV_OPEN()
-        dcamapi4.dcamdev_open(paramdevopen)
-        self.__hdcam = paramdevopen.hdcam
+        if not self.dcam.dev_open():
+            err = self.dcam.lasterr()
+            raise RuntimeError(f"Failed to open camera: {err}")
+
+        self.__hdcam = getattr(self.dcam, '_Dcam__hdcam', 0)
+        if not self.__hdcam:
+            raise RuntimeError(
+                "Failed to acquire camera handle after opening.")
 
         self.__bufframe = dcamapi4.DCAMBUF_FRAME()
 
@@ -93,7 +99,8 @@ class Control_qCMOScamera():
         self.dcam.buf_release()
 
     def CloseUninitCamera(self):
-        dcamapi4.dcamdev_close(self.__hdcam)
+        self.dcam.dev_close()
+        self.__hdcam = 0
         dcamapi4.dcamapi_uninit()
 
     def dcammisc_alloc_ndarray(self):
@@ -292,6 +299,24 @@ class Control_qCMOScamera():
         dcamapi4.dcambuf_copyframe(self.__hdcam, c.byref(aFrame))
 
         return (aFrame, npBuf)
+
+    def wait_for_frame_ready(self, timeout_sec: float) -> Tuple[bool, Optional[dcamapi4.DCAMERR]]:
+        """Wait for FRAMEREADY event and return (success, error)."""
+        if not self.__hdcam:
+            return False, dcamapi4.DCAMERR.INVALIDHANDLE
+
+        timeout_ms = max(int(max(timeout_sec, 0.0) * 1000), 1)
+        if self.dcam.wait_capevent_frameready(timeout_ms):
+            return True, None
+
+        err_code = self.dcam.lasterr()
+        if isinstance(err_code, dcamapi4.DCAMERR):
+            return False, err_code
+
+        try:
+            return False, dcamapi4.DCAMERR(int(err_code))
+        except Exception:
+            return False, None
 
     def capture_roi_frame(self, exposure_time: float, roi, wait_margin: float = 0.01) -> np.ndarray:
         """Set a subarray ROI, capture a single frame, and return it as ndarray."""
