@@ -146,7 +146,7 @@ class Control_qCMOScamera():
 
         return err
 
-    def SetParameters(self, exposure_time, h_width, v_width, h_start, v_start):
+    def SetParameters(self, exposure_time, h_width=None, v_width=None, h_start=None, v_start=None):
         # カメラの撮像状況を取得する
         cInt32 = c.c_int32()
         dcamcapstatus = dcamapi4.DCAMCAP_STATUS
@@ -167,6 +167,19 @@ class Control_qCMOScamera():
             self.__hdcam, idprop, c.byref(cDouble), 0)
 
         # subarrayの情報を設定する
+        # ROI 未指定のときはフルフレームを採用
+        if h_width is None or v_width is None or h_start is None or v_start is None:
+            fValue = c.c_double()
+            idprop = dcamapi4.DCAM_IDPROP.IMAGE_WIDTH
+            dcamapi4.dcamprop_getvalue(self.__hdcam, idprop, c.byref(fValue))
+            full_w = int(fValue.value)
+            idprop = dcamapi4.DCAM_IDPROP.IMAGE_HEIGHT
+            dcamapi4.dcamprop_getvalue(self.__hdcam, idprop, c.byref(fValue))
+            full_h = int(fValue.value)
+            h_width = full_w
+            v_width = full_h
+            h_start = 0
+            v_start = 0
         # subarray mode
         cDouble = c.c_double(2)
         idprop = dcamapi4.DCAM_IDPROP.SUBARRAYMODE  # 4202832

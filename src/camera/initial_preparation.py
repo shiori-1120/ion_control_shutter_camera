@@ -15,7 +15,7 @@ except Exception:
     Control_qCMOScamera = None
 
 
-expose_time = 0.100
+expose_time = 0.050
 WAIT_MARGIN_SEC = 0.02
 
 
@@ -34,24 +34,25 @@ def build_session_dirs(timestamp: str, base_parent: Optional[str] = None) -> Dic
     os.makedirs(plots, exist_ok=True)
     return {"root": root, "raw": raw, "plots": plots}
 
-
+# ROIは一つだけ受け取る
 def get_n_frames_from_buffer(n_frames,
                              expose_time: float = 0.100,
                              rois=None,
                              timestamp: Optional[str] = None,
-                             session_root: Optional[str] = None):
+                             session_root: Optional[str] = None,
+                             capture_duration_sec: float = 10.0):
     # rois = [h-width, v-width, h-start, v-start]
 
     # store raw frames under common raw-data folder
     output_path = os.path.join(session_root, "raw-data")
     os.makedirs(output_path, exist_ok=True)
 
-    if not rois or len(rois) == 0:
-        raise ValueError(
-            "rois must contain at least one ROI: [h-width, v-width, h-start, v-start]")
-
-    # Use first ROI for capture
-    h_width, v_width, h_start, v_start = map(int, rois[0])
+    # ROI が未指定のときはフルフレームで取得する
+    if rois and len(rois) > 0:
+        # Use first ROI for capture
+        h_width, v_width, h_start, v_start = map(int, rois[0])
+    else:
+        h_width = v_width = h_start = v_start = None
     wait_timeout_sec = max(float(expose_time) + WAIT_MARGIN_SEC, 0.05)
 
     qCMOS = Control_qCMOScamera()
@@ -63,32 +64,32 @@ def get_n_frames_from_buffer(n_frames,
         idx = 1
         loop_ts = timestamp
         saved = 0
+        # 仕様変更: 呼び出し時点から capture_duration_sec の間だけ取り込み続ける
+        window_start = time.time()
+        window_end = window_start + float(capture_duration_sec)
 
-        def try_capture_one():
-            nonlocal idx, saved
-            ok, _ = qCMOS.wait_for_frame_ready(wait_timeout_sec)
+        # 仕様: 関数開始時点から一定時間だけ取り込みループを回す
+        while True:
+            now = time.time()
+            if now >= window_end:
+                break
+            remaining = window_end - now
+            # 残り時間を超えないように待機タイムアウトを調整
+            dynamic_timeout = max(0.001, min(wait_timeout_sec, remaining))
+
+            ok, _ = qCMOS.wait_for_frame_ready(dynamic_timeout)
             if not ok:
-                print("NG")
-                return False
+                # タイムアウト: 残り時間があれば次ループへ
+                continue
             data = qCMOS.GetLastFrame()
-            img = data[1].astype(np.float64)
+            img = data[1]
             if img.size == 0 or not np.any(img):
-                print("NG")
-                return False
+                # 空フレームは捨てる
+                continue
             filename = f"{loop_ts}_{idx:04d}.npy"
             np.save(os.path.join(output_path, filename), img)
-            print("OK")
             idx += 1
             saved += 1
-            return True
-
-        if n_frames is None or int(n_frames) <= 0:
-            while True:
-                try_capture_one()
-        else:
-            target = int(n_frames)
-            while saved < target:
-                try_capture_one()
     except KeyboardInterrupt:
         pass
     finally:
@@ -174,7 +175,7 @@ def plot_profile(data, xs=None, fitted_curve=None, peaks=None,
     if save_dir is not None and save_name:
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, save_name), dpi=150)
-    plt.show()
+    # plt.show()
 
 # 1D の多峰ローレンツ和（最後の引数はオフセット）
 
@@ -334,9 +335,8 @@ def plot_horizontal_profile(fit_result):
                  peaks=x_peaks,
                  title='Horizontal profile (sum over y)')
 
+
 # TODO: 変数名が分かりにくい
-
-
 def analyze_ion_profiles(img, plot=False):
     # 2D画像から垂直・水平プロファイルを抽出し、ローレンツフィッティングを実行する。
     results = {'vertical': None, 'horizontal': None}
@@ -456,7 +456,22 @@ def show_npy_2d(img: np.ndarray,
         fig.colorbar(im, ax=ax)
         if title:
             ax.set_title(title)
-            ax.axis('off')
+        # 軸とインデックス（ピクセル）を表示
+        H = int(img.shape[1])  # width (x)
+        V = int(img.shape[0])  # height (y)
+        ax.set_xlabel('X (pixel index)')
+        ax.set_ylabel('Y (pixel index)')
+        # ほどよい間隔で目盛りを配置
+        step_x = max(1, H // 8)
+        step_y = max(1, V // 8)
+        xticks = list(range(0, H, step_x))
+        yticks = list(range(0, V, step_y))
+        if (H - 1) not in xticks:
+            xticks.append(H - 1)
+        if (V - 1) not in yticks:
+            yticks.append(V - 1)
+        ax.set_xticks(xticks)
+        ax.set_yticks(yticks)
 
     plt.tight_layout()
     # save if requested
@@ -464,7 +479,7 @@ def show_npy_2d(img: np.ndarray,
         os.makedirs(save_dir, exist_ok=True)
         save_path = os.path.join(save_dir, save_name)
         fig.savefig(save_path, dpi=150)
-    plt.show()
+    # plt.show()
     return fig, ax
 
 
@@ -703,35 +718,11 @@ def plot_frequency_excitation_probability(frequencies_excite_probability):
 
 
 def main():
-    # セッション作成（短縮版）
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     s = build_session_dirs(ts)
 
-    # roi = [400, 50, 400, 160]  # [h-width, v-width, h-start, v-start]
-    # frame = apply_roi_npy(
-    #     "input_test\\npy\\202504231631_217000.npy", roi)
-    # show_npy_2d(frame)
-    # 複数イオンの画像を適切にroiできているか確認するコード書いて
-    # results = analyze_ion_profiles(frame.astype(np.float64), plot=True)
-    # rois = generate_rois_from_analyze_results(results, frame.shape)
-    # extracted_rois = extract_rois_from_image(frame, rois)
-    # for i, roi in enumerate(extracted_rois):
-    #     print(f"ROI {i}:")
-    #     show_npy_2d(roi)
-
-    # dark_roi = [15, 15, 300, 100]
-    # dark_img = apply_roi_npy(
-    #     "input_test\\npy\\202504231631_217000.npy", dark_roi)
-    # show_npy_2d(dark_img)
-    # plot_photon_distribution(
-    #     dark_images=[dark_img], light_images=[extracted_rois[0]])
-    # 例: 既存ファイルを可視化し、plots に保存
-    # 必要に応じてパスを切り替えてください
-    # frame = np.load("output/2025-10-23/raw-data/take-one-shot/img-11.npy")
-    # show_npy_2d(frame, title=f"Preview {timestamp}", save_dir=session["plots"], save_name="preview.png")
-    # ① 撮影（必要に応じて ROI を調整）
     get_n_frames_from_buffer(
-        1, expose_time, [[400, 200, 200, 100]], ts, s["root"])
+        1, expose_time, [[600, 100, 2976, 984]], ts, s["root"])
 
     # ② raw-data ディレクトリから今回セッションの全フレームをリストで読み込む
     raw_dir = s["raw"]
@@ -751,16 +742,18 @@ def main():
 
     frames = [np.load(p) for p in all_paths]
     first_path = all_paths[0]
-    frame = frames[0]
 
-    # ② ダーク領域トリミング
-    dark_roi = [15, 15, 300, 100]
-    dark = apply_roi_npy(first_path, dark_roi)
+    show_npy_2d(frames[0], title="not ROI",
+                save_dir=s["plots"], save_name=f"{ts}_not_roi.png")
 
-    # ③ 保存
-    np.save(os.path.join(s["raw"], f"{ts}_dark.npy"), dark)
-    show_npy_2d(dark, title="Dark ROI",
-                save_dir=s["plots"], save_name=f"{ts}_dark_roi.png")
+    # # ② ダーク領域トリミング
+    # dark_roi = [15, 15, 300, 100]
+    # dark = apply_roi_npy(first_path, dark_roi)
+
+    # # ③ 保存
+    # np.save(os.path.join(s["raw"], f"{ts}_dark.npy"), dark)
+    # show_npy_2d(dark, title="Dark ROI",
+    #             save_dir=s["plots"], save_name=f"{ts}_dark_roi.png")
 
     # ④ 自動トリミング（全フレーム）→ 小さい画像を1つのリストに集約
     all_crops = []
@@ -791,7 +784,7 @@ def main():
 
     # ⑥ 光子数分布（明）
     plot_photon_distribution(light_images=[
-                             frame], save_dir=s["plots"], save_name=f"{ts}_photon_dist_light.png")
+                             frames[0]], save_dir=s["plots"], save_name=f"{ts}_photon_dist_light.png")
 
 
 if __name__ == "__main__":

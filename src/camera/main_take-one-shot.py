@@ -12,7 +12,7 @@ from lib.ControlDevice import Control_qCMOScamera
 from lib.dcamapi4 import DCAMERR
 
 
-WAIT_MARGIN_SEC = 0.02
+WAIT_MARGIN_SEC = 0.2
 
 
 def getJSON():
