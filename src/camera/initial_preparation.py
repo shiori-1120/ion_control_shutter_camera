@@ -2,6 +2,7 @@ import numpy as np
 import time
 import os
 import datetime
+from typing import Optional, Dict
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
@@ -15,43 +16,81 @@ except Exception:
 
 
 expose_time = 0.100
+WAIT_MARGIN_SEC = 0.02
 
 
-def get_n_frames_from_buffer(n_frames, expose_time=0.100, rois=None):
+def build_session_dirs(timestamp: str, base_parent: Optional[str] = None) -> Dict[str, str]:
+    """Create and return common session directories for a given timestamp.
+
+    Returns dict with keys: 'root', 'raw', 'plots'.
+    """
+    if base_parent is None:
+        base_parent = os.path.join(os.path.dirname(__file__), "output")
+
+    root = os.path.join(base_parent, timestamp)
+    raw = os.path.join(root, "raw-data")
+    plots = os.path.join(root, "plots")
+    os.makedirs(raw, exist_ok=True)
+    os.makedirs(plots, exist_ok=True)
+    return {"root": root, "raw": raw, "plots": plots}
+
+
+def get_n_frames_from_buffer(n_frames,
+                             expose_time: float = 0.100,
+                             rois=None,
+                             timestamp: Optional[str] = None,
+                             session_root: Optional[str] = None):
     # rois = [h-width, v-width, h-start, v-start]
-    now = datetime.datetime.now()
-    timestamp_dir = now.strftime("%Y%m%d_%H%M")
-    base_output = os.path.join(os.path.dirname(__file__), "output")
-    output_path = os.path.join(base_output, timestamp_dir)
+
+    # store raw frames under common raw-data folder
+    output_path = os.path.join(session_root, "raw-data")
     os.makedirs(output_path, exist_ok=True)
+
+    if not rois or len(rois) == 0:
+        raise ValueError(
+            "rois must contain at least one ROI: [h-width, v-width, h-start, v-start]")
+
+    # Use first ROI for capture
+    h_width, v_width, h_start, v_start = map(int, rois[0])
+    wait_timeout_sec = max(float(expose_time) + WAIT_MARGIN_SEC, 0.05)
+
+    qCMOS = Control_qCMOScamera()
+    qCMOS.OpenCamera_GetHandle()
     try:
-        qCMOS = Control_qCMOScamera()
-        qCMOS.OpenCamera_GetHandle()
-        for roi in rois:
-            qCMOS.SetParameters(expose_time, roi[0], roi[1], roi[2], roi[3])
-            qCMOS.StartCapture()
-            count = 1
-            # このループ内で固定のタイムスタンプ（秒精度）を使用し、連番だけインクリメントする
-            loop_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            while count <= n_frames:
-                time.sleep(expose_time)
-                time.sleep(0.1)
-                data = qCMOS.GetLastFrame()
-                time.sleep(0.006)
-                img = data[1].astype(np.float64)
+        qCMOS.SetParameters(expose_time, h_width, v_width, h_start, v_start)
+        qCMOS.StartCapture()
 
-                # 成功条件: 全要素ゼロではないフレームのみ採用
-                if img.size == 0 or not np.any(img):
-                    # 失敗フレームはカウントせずリトライ
-                    continue
+        idx = 1
+        loop_ts = timestamp
+        saved = 0
 
-                # 保存に成功したらインクリメント
-                # ファイル名は重複しないよう日時+連番にする
-                filename = f"{loop_ts}_{count:04d}.npy"
-                out_file = os.path.join(output_path, filename)
-                np.save(out_file, img)
-                count += 1
+        def try_capture_one():
+            nonlocal idx, saved
+            ok, _ = qCMOS.wait_for_frame_ready(wait_timeout_sec)
+            if not ok:
+                print("NG")
+                return False
+            data = qCMOS.GetLastFrame()
+            img = data[1].astype(np.float64)
+            if img.size == 0 or not np.any(img):
+                print("NG")
+                return False
+            filename = f"{loop_ts}_{idx:04d}.npy"
+            np.save(os.path.join(output_path, filename), img)
+            print("OK")
+            idx += 1
+            saved += 1
+            return True
 
+        if n_frames is None or int(n_frames) <= 0:
+            while True:
+                try_capture_one()
+        else:
+            target = int(n_frames)
+            while saved < target:
+                try_capture_one()
+    except KeyboardInterrupt:
+        pass
     finally:
         qCMOS.StopCapture()
         qCMOS.ReleaseBuf()
@@ -93,7 +132,8 @@ def capture_roi_image(exposure_time: float, roi: list, wait_margin: float = 0.01
 
 
 def plot_profile(data, xs=None, fitted_curve=None, peaks=None,
-                 centers_fwhm=None, title='', axis_name='Pixel'):
+                 centers_fwhm=None, title='', axis_name='Pixel',
+                 save_dir: Optional[str] = None, save_name: Optional[str] = None):
     plt.figure(figsize=(10, 4))
 
     # X軸が指定されていなければ作成
@@ -130,6 +170,10 @@ def plot_profile(data, xs=None, fitted_curve=None, peaks=None,
     plt.ylabel('Intensity (Sum)')
     plt.legend()
     plt.grid(True)
+    # save if requested
+    if save_dir is not None and save_name:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, save_name), dpi=150)
     plt.show()
 
 # 1D の多峰ローレンツ和（最後の引数はオフセット）
@@ -291,6 +335,8 @@ def plot_horizontal_profile(fit_result):
                  title='Horizontal profile (sum over y)')
 
 # TODO: 変数名が分かりにくい
+
+
 def analyze_ion_profiles(img, plot=False):
     # 2D画像から垂直・水平プロファイルを抽出し、ローレンツフィッティングを実行する。
     results = {'vertical': None, 'horizontal': None}
@@ -313,6 +359,7 @@ def analyze_ion_profiles(img, plot=False):
         plot_horizontal_profile(horizontal_fit)
 
     return results
+
 
 def generate_rois_from_analyze_results(results: dict, img_shape) -> list:
     """
@@ -386,7 +433,12 @@ def generate_rois_from_image(img: np.ndarray, plot: bool = False) -> list:
     return generate_rois_from_analyze_results(results, img.shape)
 
 
-def show_npy_2d(img: np.ndarray, origin: str = 'lower', figsize=(6, 6), title: str = None):
+def show_npy_2d(img: np.ndarray,
+                origin: str = 'lower',
+                figsize=(6, 6),
+                title: str = None,
+                save_dir: Optional[str] = None,
+                save_name: Optional[str] = None):
 
     vmin = None
     vmax = None
@@ -407,12 +459,19 @@ def show_npy_2d(img: np.ndarray, origin: str = 'lower', figsize=(6, 6), title: s
             ax.axis('off')
 
     plt.tight_layout()
+    # save if requested
+    if save_dir is not None and save_name:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, save_name)
+        fig.savefig(save_path, dpi=150)
     plt.show()
     return fig, ax
 
 
 def plot_photon_distribution(light_images: list | None = None,
-                             dark_images: list | None = None):
+                             dark_images: list | None = None,
+                             save_dir: Optional[str] = None,
+                             save_name: Optional[str] = None):
     """
     y軸方向に積分した光子数ヒストグラムを明状態・暗状態で比較表示する。
 
@@ -457,24 +516,27 @@ def plot_photon_distribution(light_images: list | None = None,
 
     if light_counts.size > 0:
         mean_light = float(np.mean(light_counts))
-        plt.hist(light_counts, bins=bin_edges, density=False,
+        plt.hist(light_counts, bins=bin_edges, density=True,
                  alpha=0.6, color='tab:orange', edgecolor='black',
                  label=f'Light (mean={mean_light:.2f})')
         plt.axvline(mean_light, color='tab:orange', linestyle='--')
 
     if dark_counts.size > 0:
         mean_dark = float(np.mean(dark_counts))
-        plt.hist(dark_counts, bins=bin_edges, density=False,
+        plt.hist(dark_counts, bins=bin_edges, density=True,
                  alpha=0.6, color='navy', edgecolor='black',
                  label=f'Dark (mean={mean_dark:.2f})')
         plt.axvline(mean_dark, color='navy', linestyle='--')
 
     plt.xlabel('Photon Count (integer bins)')
-    plt.ylabel('Frequency')
+    plt.ylabel('Probability density')
     plt.title('Photon Distribution (integrated over y-axis)')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
+    if save_dir is not None and save_name:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, save_name), dpi=150)
     plt.show()
 
 
@@ -499,6 +561,8 @@ def determine_ion_state(img: np.ndarray, threshold: float) -> bool:
 # roiのリストと2dndarrayの配列を受け取る。
 # それぞれのROIに対して、対応する画像データを抽出する。
 # 返り値はndarrayのリスト
+
+
 def extract_rois_from_image(img: np.ndarray, rois: list) -> list:
     """
     2D画像と ROI リストから、それぞれの領域を切り出して返す。
@@ -548,6 +612,8 @@ def extract_rois_from_image(img: np.ndarray, rois: list) -> list:
     return crops
 
 # イオンの個数が変化していないことを確認する関数
+
+
 def verify_ion_count_consistency(img: np.ndarray, ion_positions) -> bool:
     """
     イオンの個数が変化していないか（= 期待個数と検出個数が同じか）だけを True/False で返す。
@@ -637,6 +703,10 @@ def plot_frequency_excitation_probability(frequencies_excite_probability):
 
 
 def main():
+    # セッション作成（短縮版）
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    s = build_session_dirs(ts)
+
     # roi = [400, 50, 400, 160]  # [h-width, v-width, h-start, v-start]
     # frame = apply_roi_npy(
     #     "input_test\\npy\\202504231631_217000.npy", roi)
@@ -655,9 +725,73 @@ def main():
     # show_npy_2d(dark_img)
     # plot_photon_distribution(
     #     dark_images=[dark_img], light_images=[extracted_rois[0]])
-    frame = np.load(
-        "output/2025-10-23/raw-data/take-one-shot/img-11.npy")
-    show_npy_2d(frame)
+    # 例: 既存ファイルを可視化し、plots に保存
+    # 必要に応じてパスを切り替えてください
+    # frame = np.load("output/2025-10-23/raw-data/take-one-shot/img-11.npy")
+    # show_npy_2d(frame, title=f"Preview {timestamp}", save_dir=session["plots"], save_name="preview.png")
+    # ① 撮影（必要に応じて ROI を調整）
+    get_n_frames_from_buffer(
+        1, expose_time, [[400, 200, 200, 100]], ts, s["root"])
+
+    # ② raw-data ディレクトリから今回セッションの全フレームをリストで読み込む
+    raw_dir = s["raw"]
+    all_paths = []
+    for name in sorted(os.listdir(raw_dir)):
+        if not name.endswith('.npy'):
+            continue
+        if not name.startswith(f"{ts}_"):
+            continue
+        stem = os.path.splitext(name)[0]
+        seq = stem.split("_")[-1]
+        if len(seq) == 4 and seq.isdigit():
+            all_paths.append(os.path.join(raw_dir, name))
+
+    if not all_paths:
+        raise RuntimeError("No raw frames found for this session.")
+
+    frames = [np.load(p) for p in all_paths]
+    first_path = all_paths[0]
+    frame = frames[0]
+
+    # ② ダーク領域トリミング
+    dark_roi = [15, 15, 300, 100]
+    dark = apply_roi_npy(first_path, dark_roi)
+
+    # ③ 保存
+    np.save(os.path.join(s["raw"], f"{ts}_dark.npy"), dark)
+    show_npy_2d(dark, title="Dark ROI",
+                save_dir=s["plots"], save_name=f"{ts}_dark_roi.png")
+
+    # ④ 自動トリミング（全フレーム）→ 小さい画像を1つのリストに集約
+    all_crops = []
+    for f in frames:
+        rois = generate_rois_from_image(f, plot=False)
+        crops = extract_rois_from_image(f, rois)
+        all_crops.extend(crops)
+
+    # ⑤ ROI保存とフィット図（画像ごとに分けず、通し番号で保存）
+    for i, crop in enumerate(all_crops):
+        np.save(os.path.join(s["raw"], f"{ts}_roi{i:02d}.npy"), crop)
+        show_npy_2d(
+            crop, title=f"ROI {i}", save_dir=s["plots"], save_name=f"{ts}_roi{i:02d}.png")
+        v = fit_vertical_profile(crop)
+        if v:
+            plot_profile(v['profile'], xs=v['x'], fitted_curve=(v['x'], v['fitted']),
+                         peaks=v['peaks'], centers_fwhm=[
+                             (v['center'], v['fwhm'])],
+                         title=f"ROI {i} vertical", axis_name='Y Pixel',
+                         save_dir=s["plots"], save_name=f"{ts}_roi{i:02d}_vertical_fit.png")
+        h = fit_horizontal_profile(crop)
+        if h:
+            plot_profile(h['profile'], xs=h['x'], fitted_curve=(h['x'], h['fitted']),
+                         peaks=h['peaks'], centers_fwhm=list(
+                             zip(h['centers'], h['fwhms'])),
+                         title=f"ROI {i} horizontal", axis_name='X Pixel',
+                         save_dir=s["plots"], save_name=f"{ts}_roi{i:02d}_horizontal_fit.png")
+
+    # ⑥ 光子数分布（明）
+    plot_photon_distribution(light_images=[
+                             frame], save_dir=s["plots"], save_name=f"{ts}_photon_dist_light.png")
 
 
 if __name__ == "__main__":
