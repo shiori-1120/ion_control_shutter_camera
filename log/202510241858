@@ -76,3 +76,9 @@ writeJSON() true
 --- End Capture ---
 取り込んだフレーム数 :  5
 finish take-one-shot
+        tasks[channel.camera].write(True)
+        time.sleep(0.010)
+
+        tasks[channel.camera].write(False)
+        time.sleep(0.010)
+        count += 1
