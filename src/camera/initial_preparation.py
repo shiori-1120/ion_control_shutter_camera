@@ -4,6 +4,7 @@ import numpy as np
 import time
 import os
 import datetime
+import re
 from typing import Optional, Dict
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
@@ -17,23 +18,28 @@ except Exception:
     Control_qCMOScamera = None
 
 
-expose_time = 0.050
+EXPOSE_TIME = 0.050
 WAIT_MARGIN_SEC = 0.02
+IDLE_TIMEOUT_SEC = 10.0
+ROUGH_ROI = [600, 100, 2976, 984]
+
+# 平坦化（ベースライン補正）用のガウシアン平滑シグマ
+# 値が大きいほどゆっくり変化する背景とみなして除去します
+BASELINE_SMOOTH_SIGMA_Y = 70.0  # 垂直プロファイル用（行方向）
+BASELINE_SMOOTH_SIGMA_X = 70.0  # 水平プロファイル用（列方向）
 
 # 実験のログ出力用のtxt
 # 露光時間、ROI情報、撮影枚数などを記録する
 # npy以外のプロットに必要なデータを格納する（フィッティングなど）
 # プロットは時間がかかるから後からでもできるようにする
 # テキストよりも最適なフォーマットがある？
+
+
 def log_experiment_details(log_path: str, expose_time: float, rois: list, n_frames: int):
     pass
 
 
 def build_session_dirs(timestamp: str, base_parent: Optional[str] = None) -> Dict[str, str]:
-    """Create and return common session directories for a given timestamp.
-
-    Returns dict with keys: 'root', 'raw', 'plots'.
-    """
     if base_parent is None:
         base_parent = os.path.join(os.path.dirname(__file__), "output")
 
@@ -44,21 +50,61 @@ def build_session_dirs(timestamp: str, base_parent: Optional[str] = None) -> Dic
     os.makedirs(plots, exist_ok=True)
     return {"root": root, "raw": raw, "plots": plots}
 
-# h, v はx, yに変更
-# ROIは一つだけ受け取る
-# フォルダ名を受け取る
-# 引数をなるべく減らしたい
-# なくせそうな引数
-# n_frames(トリガで指定), 
-# timestamp（タイムスタンプはルートのみ、ファイル名には番号つけるだけ）
-# capture_duration_sec トリガが終わってからx秒後に停止、またはエンターで停止で対応
-def get_n_frames_from_buffer(expose_time: float = 0.100, roi: Optional[list] = None, session_root: Optional[str] = None):
 
-    idle_timeout_sec = 10.0
+def list_session_frame_paths(raw_dir: str, timestamp: str) -> list:
+    """raw-data フォルダ内の .npy をすべて読み込むためのパス一覧を返す。
+
+    仕様変更: ファイル名のパターンやタイムスタンプには依存せず、
+    ディレクトリ内の拡張子 .npy のファイルをすべて対象にします（名前順）。
+    引数 timestamp は互換性のため残しますが、フィルタには使いません。
+    """
+    names = [n for n in sorted(os.listdir(raw_dir))
+             if n.lower().endswith('.npy')]
+    if not names:
+        raise RuntimeError(f"No .npy files present in '{raw_dir}'.")
+    return [os.path.join(raw_dir, n) for n in names]
+
+
+def load_session_frames(raw_dir: str, timestamp: str) -> list:
+    """list_session_frame_paths で抽出した .npy を読み込み、壊れたファイルはスキップして ndarray のリストを返す。"""
+    paths = list_session_frame_paths(raw_dir, timestamp)
+    frames: list[np.ndarray] = []
+    bad: list[str] = []
+    for p in paths:
+        try:
+            # allow_pickle=False で安全側。壊れた/空ファイルは例外や size==0 で弾く
+            arr = np.load(p, allow_pickle=False)
+            if not isinstance(arr, np.ndarray) or arr.size == 0:
+                print(f"[skip] empty or invalid array: {os.path.basename(p)}")
+                bad.append(p)
+                continue
+            frames.append(arr)
+        except Exception as e:
+            print(f"[skip] failed to load {os.path.basename(p)}: {e}")
+            bad.append(p)
+
+    if not frames:
+        raise RuntimeError(
+            "No usable .npy frames after loading. "
+            f"Tried {len(paths)} files in '{raw_dir}', skipped {len(bad)} bad files."
+        )
+    if bad:
+        print(
+            f"[warn] skipped {len(bad)} corrupted/empty files under '{raw_dir}'.")
+    return frames
+
+
+def get_n_frames_from_buffer(
+    expose_time: float = 0.100,
+    roi: Optional[list] = None,
+    session_root: Optional[str] = None,
+    start_index: Optional[int] = None,
+) -> tuple[int, int]:
 
     # 出力先
     if session_root is None:
-        session_root = os.path.join(os.path.dirname(__file__), "output", datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+        session_root = os.path.join(os.path.dirname(
+            __file__), "output", datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
     output_path = os.path.join(session_root, "raw-data")
     os.makedirs(output_path, exist_ok=True)
     wait_timeout_sec = max(float(expose_time) + WAIT_MARGIN_SEC, 0.05)
@@ -66,6 +112,7 @@ def get_n_frames_from_buffer(expose_time: float = 0.100, roi: Optional[list] = N
     # Windows の非ブロッキングキー入力（Enter で終了）
     try:
         import msvcrt  # type: ignore
+
         def _enter_pressed():
             if msvcrt.kbhit():
                 ch = msvcrt.getch()
@@ -82,7 +129,9 @@ def get_n_frames_from_buffer(expose_time: float = 0.100, roi: Optional[list] = N
         qCMOS.SetParameters(expose_time, roi[0], roi[1], roi[2], roi[3])
         qCMOS.StartCapture()
 
-        idx = 1
+        # インデックス決定（スキャンは行わない）
+        idx = int(start_index) if (
+            start_index is not None and int(start_index) >= 1) else 1
         saved = 0
         last_saved = time.time()
 
@@ -92,17 +141,18 @@ def get_n_frames_from_buffer(expose_time: float = 0.100, roi: Optional[list] = N
                 print("[capture] Enter pressed. stopping...")
                 break
 
-            # idle_timeout を超えたら終了（少なくとも一枚保存済みに限定しない）
-            if (time.time() - last_saved) >= float(idle_timeout_sec):
-                print(f"[capture] idle {idle_timeout_sec}s. stopping...")
-                break
-
-            # 待機時間は idle_timeout を超えないよう小刻みに待つ
-            remaining_idle = max(0.05, float(idle_timeout_sec) - (time.time() - last_saved))
+            # idle timeout を超えないよう、待機時間を動的に調整
+            remaining_idle = max(0.001, float(
+                IDLE_TIMEOUT_SEC) - (time.time() - last_saved))
             dynamic_timeout = max(0.001, min(wait_timeout_sec, remaining_idle))
 
+            # フレーム準備完了を待つ
             ok, _ = qCMOS.wait_for_frame_ready(dynamic_timeout)
             if not ok:
+                # idle timeout 判定
+                if (time.time() - last_saved) >= float(IDLE_TIMEOUT_SEC):
+                    print(f"[capture] idle {IDLE_TIMEOUT_SEC}s. stopping...")
+                    break
                 continue
 
             data = qCMOS.GetLastFrame()
@@ -117,13 +167,15 @@ def get_n_frames_from_buffer(expose_time: float = 0.100, roi: Optional[list] = N
             last_saved = time.time()
 
         print(f"[capture] saved {saved} frames to {output_path}")
+        return saved, idx
     except KeyboardInterrupt:
-        pass
+        if 'saved' in locals() and 'idx' in locals():
+            return saved, idx
+        return 0, (start_index if start_index is not None else 1)
     finally:
         qCMOS.StopCapture()
         qCMOS.ReleaseBuf()
         qCMOS.CloseUninitCamera()
-
 
 
 # 新しい閾値評価関数を追加
@@ -132,8 +184,8 @@ def get_n_frames_from_buffer(expose_time: float = 0.100, roi: Optional[list] = N
 # TODO: 引数をndarrayに変更
 def apply_roi_npy(npy_path: str, roi: list):
     img = np.load(npy_path)
-    h_width, v_width, h_start, v_start = map(int, roi)
-    img_cropped = img[v_start:v_start+v_width, h_start:h_start+h_width]
+    x_width, y_width, x_start, y_start = map(int, roi)
+    img_cropped = img[y_start:y_start+y_width, x_start:x_start+x_width]
     return img_cropped
 
 
@@ -197,9 +249,25 @@ def lorentz(x, A, x0, wid, offset):
     return A * (wid**2) / ((x - x0)**2 + wid**2) + offset
 
 
+def _flatten_profile(profile: np.ndarray, sigma: float) -> tuple[np.ndarray, np.ndarray]:
+    """簡易のベースライン補正: ガウシアン平滑で背景を推定し、profile - baseline を返す。
+    戻り値は (flattened, baseline)。
+    """
+    prof = np.asarray(profile, dtype=float)
+    baseline = gaussian_filter1d(prof, sigma=sigma)
+    flat = prof - baseline
+    # 可視化の安定性のため、中央値を足して負方向への極端なバイアスを避ける
+    flat = flat + float(np.median(prof))
+    return flat, baseline
+
+
 # 2D画像から垂直プロファイルを抽出し、ローレンツフィッティングを実行する。
 def fit_vertical_profile(img):
-    y_profile = img.sum(axis=1)
+    # 元のプロファイル
+    y_profile_raw = img.sum(axis=1)
+    # 平坦化
+    y_profile, _baseline_y = _flatten_profile(
+        y_profile_raw, sigma=BASELINE_SMOOTH_SIGMA_Y)
     y_x = np.arange(len(y_profile))
 
     # ピーク検出 (平滑化してから)
@@ -237,7 +305,11 @@ def fit_vertical_profile(img):
 
 #  2D画像から水平プロファイルを抽出し、多峰ローレンツフィッティングを実行する。
 def fit_horizontal_profile(img):
-    x_profile = img.sum(axis=0)
+    # 元のプロファイル
+    x_profile_raw = img.sum(axis=0)
+    # 平坦化
+    x_profile, _baseline_x = _flatten_profile(
+        x_profile_raw, sigma=BASELINE_SMOOTH_SIGMA_X)
     x_x = np.arange(len(x_profile))
 
     # ピーク検出
@@ -293,38 +365,53 @@ def fit_horizontal_profile(img):
         return None
 
 
-
-
-# TODO: 変数名が分かりにくい。ローレンツフィッティングしていることを明示的に。
-def analyze_ion_profiles(img):
+def lorentz_fit_profiles(img, plot=False) -> dict:
     results = {'vertical': None, 'horizontal': None}
 
-    # 垂直プロファイルのフィッティング
-    vertical_fit = fit_vertical_profile(img)
-    results['vertical'] = vertical_fit
+    # 垂直プロファイルのローレンツフィット
+    vertical_lorentz_fit = fit_vertical_profile(img)
+    results['vertical'] = vertical_lorentz_fit
+    if plot and vertical_lorentz_fit is not None:
+        plot_profile(
+            data=vertical_lorentz_fit['profile'],
+            xs=vertical_lorentz_fit['x'],
+            fitted_curve=(
+                vertical_lorentz_fit['x'], vertical_lorentz_fit['fitted']),
+            peaks=vertical_lorentz_fit['peaks'],
+            centers_fwhm=[(vertical_lorentz_fit['center'],
+                           vertical_lorentz_fit['fwhm'])],
+            title='Vertical Profile with Lorentz Fit',
+            axis_name='Y Pixel'
+        )
 
-    # 水平プロファイルのフィッティング
+    # 水平プロファイルのローレンツフィット
     start = time.time()
-    horizontal_fit = fit_horizontal_profile(img)
-    results['horizontal'] = horizontal_fit
+    horizontal_lorentz_fit = fit_horizontal_profile(img)
+    results['horizontal'] = horizontal_lorentz_fit
+    if plot and horizontal_lorentz_fit is not None:
+        plot_profile(
+            data=horizontal_lorentz_fit['profile'],
+            xs=horizontal_lorentz_fit['x'],
+            fitted_curve=(
+                horizontal_lorentz_fit['x'], horizontal_lorentz_fit['fitted']),
+            peaks=horizontal_lorentz_fit['peaks'],
+            centers_fwhm=list(
+                zip(horizontal_lorentz_fit['centers'], horizontal_lorentz_fit['fwhms'])),
+            title='Horizontal Profile with Multi-Lorentz Fit',
+            axis_name='X Pixel'
+        )
+
     end = time.time()
     print("Horizontal fit time:", end - start)
 
     return results
 
-# analyze results -> ローレンツフィッティング
+
 def generate_rois_from_analyze_results(results: dict, img_shape) -> list:
     """
     - ROI の線幅は (縦FWHM と 横FWHM平均) の平均値を採用（上下左右とも同じピクセル幅）
-    - 各ROIは [h-width, v-width, h-start, v-start] 形式（DCAM subarrayの順序に合わせる）
+    - 各ROIは [x-width, y-width, x-start, y-start] 形式（DCAM subarrayの順序に合わせる）
     - 画像外にはみ出さないよう開始座標をクリップ
-
-    Args:
-        results (dict): analyze_ion_profiles(img) の戻り値 { 'vertical': {...}, 'horizontal': {...} }
-        img_shape (tuple): 画像配列の shape (V, H) または (height, width)
-
-    Returns:
-        list[list[int]]: ROI のリスト。各要素は [h-width, v-width, h-start, v-start]
     """
     vert = results.get('vertical') or {}
     horiz = results.get('horizontal') or {}
@@ -341,43 +428,28 @@ def generate_rois_from_analyze_results(results: dict, img_shape) -> list:
 
     avg_linewidth = float((v_fwhm + np.mean(fwhms_x)) / 2.0)
     width_px = max(1, int(round(avg_linewidth)))
-    h_width = width_px
-    v_width = width_px
+    x_width = width_px
+    y_width = width_px
 
-    H = int(img_shape[1])  # width (x)
-    V = int(img_shape[0])  # height (y)
+    X = int(img_shape[1])  # width (x)
+    Y = int(img_shape[0])  # height (y)
 
     rois = []
     for x_center in centers_x:
-        h_start = int(round(x_center - h_width / 2.0))
-        v_start = int(round(y_center - v_width / 2.0))
+        x_start = int(round(x_center - x_width / 2.0))
+        y_start = int(round(y_center - y_width / 2.0))
 
         # 画像内に収める（最低限のクリップ）
-        h_start = max(0, min(h_start, H - h_width))
-        v_start = max(0, min(v_start, V - v_width))
+        x_start = max(0, min(x_start, X - x_width))
+        y_start = max(0, min(y_start, Y - y_width))
 
-        rois.append([h_width, v_width, h_start, v_start])
+        rois.append([x_width, y_width, x_start, y_start])
 
     return rois
 
-# plotオプション付き
-# but プロットはnnanalyze_ion_profilesではやらずに追加する
+
 def generate_rois_from_image(img: np.ndarray, plot: bool = False) -> list:
-    results = analyze_ion_profiles(img, plot=plot)
-    if v_full:
-        plot_profile(v_full['profile'], xs=v_full['x'],
-                     fitted_curve=(v_full['x'], v_full['fitted']),
-                     peaks=v_full['peaks'],
-                     centers_fwhm=[(v_full['center'], v_full['fwhm'])],
-                     title="Full image vertical", axis_name='Y Pixel',
-                     save_dir=s["plots"], save_name=f"{ts}_full_vertical_fit.png")
-    if h_full:
-        plot_profile(h_full['profile'], xs=h_full['x'],
-                     fitted_curve=(h_full['x'], h_full['fitted']),
-                     peaks=h_full['peaks'],
-                     centers_fwhm=list(zip(h_full['centers'], h_full['fwhms'])),
-                     title="Full image horizontal (multi-peak)", axis_name='X Pixel',
-                     save_dir=s["plots"], save_name=f"{ts}_full_horizontal_fit.png")
+    results = lorentz_fit_profiles(img, plot)
     rois = generate_rois_from_analyze_results(results, img.shape)
     return rois
 
@@ -400,18 +472,18 @@ def show_npy_2d(img: np.ndarray,
     if title:
         ax.set_title(title)
     # 軸とインデックス（ピクセル）を表示
-    H = int(img.shape[1])  # width (x)
-    V = int(img.shape[0])  # height (y)
+    X = int(img.shape[1])  # width (x)
+    Y = int(img.shape[0])  # height (y)
     ax.set_xlabel('X (pixel index)')
     ax.set_ylabel('Y (pixel index)')
-    step_x = max(1, H // 8)
-    step_y = max(1, V // 8)
-    xticks = list(range(0, H, step_x))
-    yticks = list(range(0, V, step_y))
-    if (H - 1) not in xticks:
-        xticks.append(H - 1)
-    if (V - 1) not in yticks:
-        yticks.append(V - 1)
+    step_x = max(1, X // 8)
+    step_y = max(1, Y // 8)
+    xticks = list(range(0, X, step_x))
+    yticks = list(range(0, Y, step_y))
+    if (X - 1) not in xticks:
+        xticks.append(X - 1)
+    if (Y - 1) not in yticks:
+        yticks.append(Y - 1)
     ax.set_xticks(xticks)
     ax.set_yticks(yticks)
 
@@ -430,7 +502,6 @@ def plot_photon_distribution(light_images: list | None = None,
                              save_name: Optional[str] = None):
     light_images = light_images or []
     dark_images = dark_images or []
-
 
     def _aggregate_counts(images):
         counts = []
@@ -487,11 +558,6 @@ def plot_photon_distribution(light_images: list | None = None,
 
 
 def determine_ion_state(img: np.ndarray, threshold: float) -> bool:
-    """
-    イオンの明状態・暗状態を判別する関数。
-    閾値以下の光子数の割合が全体の半分を超える場合は暗状態(False)、
-    そうでない場合は明状態(True)と判定。
-    """
     # y軸方向に積分して1次元の光子数分布をl取得
     photon_counts = img.sum(axis=0)
 
@@ -505,46 +571,79 @@ def determine_ion_state(img: np.ndarray, threshold: float) -> bool:
     return dark_ratio <= 0.5
 
 
+def estimate_threshold_otsu_from_frames(frames: list[np.ndarray], nbins: int = 256) -> float:
+    """各フレームの総光子数（画素和）の2クラス分離を仮定し、Otsu法で閾値を推定。
+    戻り値はスカラー閾値（画素和）。
+    """
+    if not frames:
+        raise ValueError("No frames provided for threshold estimation.")
+    sums = np.array([np.asarray(f, dtype=float).sum()
+                    for f in frames], dtype=float)
+    if np.allclose(sums.min(), sums.max()):
+        return float(sums.mean())
+    hist, edges = np.histogram(sums, bins=nbins)
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    total = hist.sum()
+    if total <= 1:
+        return float(np.median(sums))
+    weight1 = np.cumsum(hist)
+    weight2 = total - weight1
+    sum_total = np.sum(hist * centers)
+    sum1 = np.cumsum(hist * centers)
+    # avoid divide-by-zero
+    with np.errstate(divide='ignore', invalid='ignore'):
+        mean1 = sum1 / np.maximum(weight1, 1e-12)
+        mean2 = (sum_total - sum1) / np.maximum(weight2, 1e-12)
+        var_between = weight1 * weight2 * (mean1 - mean2) ** 2
+    var_between[weight1 == 0] = -1
+    var_between[weight2 == 0] = -1
+    idx = int(np.argmax(var_between))
+    if var_between[idx] <= 0:
+        return float(np.median(sums))
+    return float(centers[idx])
 
-# roiのリストと2dndarrayの配列を受け取る。
-# それぞれのROIに対して、対応する画像データを抽出する。
-# 返り値はndarrayのリスト
+
+def split_images_by_threshold(frames: list[np.ndarray], threshold: float) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """フレームの画素和で二分。threshold より大きい→Light、小さい→Dark を返す。"""
+    light, dark = [], []
+    for f in frames:
+        val = float(np.asarray(f, dtype=float).sum())
+        (light if val > threshold else dark).append(f)
+    return light, dark
+
+
 def extract_rois_from_image(img: np.ndarray, rois: list) -> list:
 
     img2 = np.asarray(img)
 
-    V, H = int(img2.shape[0]), int(img2.shape[1])
+    Y, X = int(img2.shape[0]), int(img2.shape[1])
 
     crops = []
     for roi in rois:
         try:
-            h_width, v_width, h_start, v_start = map(int, roi)
+            x_width, y_width, x_start, y_start = map(int, roi)
         except Exception:
             continue
 
         # マイナスや過大をクリップ
-        h_width = max(1, min(h_width, H))
-        v_width = max(1, min(v_width, V))
-        h_start = max(0, min(h_start, H - h_width))
-        v_start = max(0, min(v_start, V - v_width))
+        x_width = max(1, min(x_width, X))
+        y_width = max(1, min(y_width, Y))
+        x_start = max(0, min(x_start, X - x_width))
+        y_start = max(0, min(y_start, Y - y_width))
 
-        v_end = v_start + v_width
-        h_end = h_start + h_width
+        y_end = y_start + y_width
+        x_end = x_start + x_width
 
-        if v_start >= v_end or h_start >= h_end:
+        if y_start >= y_end or x_start >= x_end:
             continue
 
-        crop = img2[v_start:v_end, h_start:h_end]
+        crop = img2[y_start:y_end, x_start:x_end]
         crops.append(crop)
 
     return crops
 
 
-# イオンの個数が変化していないことを確認する関数
 def verify_ion_count_consistency(img: np.ndarray, ion_positions) -> bool:
-    """
-    イオンの個数が変化していないか（= 期待個数と検出個数が同じか）だけを True/False で返す。
-    """
     try:
         if img is None:
             return False
@@ -621,96 +720,65 @@ def plot_frequency_excitation_probability(frequencies_excite_probability):
     return fit_results
 
 
-
-
-
 def main():
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # 固定のセッションIDを使う場合は文字列で指定してください
+    ts = "20251102_104353"
     s = build_session_dirs(ts)
 
+    # 同一セッション内での保存ファイル連番をメモリで管理
+    next_idx = 1
+
     # ガウシアンフィッティングして大きなROI決定してもいいかも
-    
-    
-    # 明状態を取得する
-    # 一枚分のデータだけ返すようにしてもいいかも
-    # 明状態の取得（ROIは1つ想定。未指定ならフルフレーム）
-    get_n_frames_from_buffer(
-        expose_time=expose_time,
-        roi=[600, 100, 2976, 984],
-        session_root=s["root"],
-        idle_timeout_sec=3.0,
-    )
-    
+
+    # 明状態の取得
+    # saved, next_idx = get_n_frames_from_buffer(
+    #     expose_time=EXPOSE_TIME,
+    #     roi=ROUGH_ROI,
+    #     session_root=s["root"],
+    #     start_index=next_idx,
+    # )
+    saved = np.load(
+        "C:\\Users\\karishio\\Desktop\\single_ion_control\\src\\camera\\output\\20251102_104353\\raw-data\\2025_1102_105441data_000040.npy")
+    # トリミング範囲決定
+    rois = generate_rois_from_image(saved, plot=True)
+    print(f"[ROI] determined {len(rois)} ROIs: {rois}")
     # 暗状態の取得
-    # 明状態と暗状態を分けなくてもいいかも。画像をたくさん撮って、それを分布して、閾値を決めて、それから暗状態と明状態を分けてもいいかも
+    # saved_2, next_idx = get_n_frames_from_buffer(
+    #     expose_time=EXPOSE_TIME,
+    #     roi=ROUGH_ROI,
+    #     session_root=s["root"],
+    #     start_index=next_idx,
+    # )
 
-    # 関数化する
-    # "raw", "light", "dark"をenumで管理してそのディレクトリのndarrayをリストで受け取れるようにする
-    # ② raw-data ディレクトリから今回セッションの全フレームをリストで読み込む
-    # get_n_frames_from_bufferで１枚だけreturnを受けて、フォルダ全体を取り出すのは後にする（カメラを使う時間をなるべく短くしたい）
-    raw_dir = s["raw"]
-    all_paths = []
-    for name in sorted(os.listdir(raw_dir)):
-        if not name.endswith('.npy'):
-            continue
-        if not name.startswith(f"{ts}_"):
-            continue
-        stem = os.path.splitext(name)[0]
-        seq = stem.split("_")[-1]
-        if len(seq) == 4 and seq.isdigit():
-            all_paths.append(os.path.join(raw_dir, name))
-
-    if not all_paths:
-        raise RuntimeError("No raw frames found for this session.")
-
-    frames = [np.load(p) for p in all_paths]
-
+    # 今回セッションの全フレームを関数で読み込む
+    frames = load_session_frames(s["raw"], ts)
+    print(f"[load] loaded {len(frames)} frames from session '{ts}'")
     # 全体画像の可視化（軸つき）
     show_npy_2d(frames[0], title="Full frame",
                 save_dir=s["plots"], save_name=f"{ts}_full_frame.png")
-
-    # lightの1枚の画像に対してのみフィットプロットを行う
-    v_full = fit_vertical_profile(frames[0])
-    if v_full:
-        plot_profile(v_full['profile'], xs=v_full['x'],
-                     fitted_curve=(v_full['x'], v_full['fitted']),
-                     peaks=v_full['peaks'],
-                     centers_fwhm=[(v_full['center'], v_full['fwhm'])],
-                     title="Full image vertical", axis_name='Y Pixel',
-                     save_dir=s["plots"], save_name=f"{ts}_full_vertical_fit.png")
-
-    h_full = fit_horizontal_profile(frames[0])
-    if h_full:
-        plot_profile(h_full['profile'], xs=h_full['x'],
-                     fitted_curve=(h_full['x'], h_full['fitted']),
-                     peaks=h_full['peaks'],
-                     centers_fwhm=list(zip(h_full['centers'], h_full['fwhms'])),
-                     title="Full image horizontal (multi-peak)", axis_name='X Pixel',
-                     save_dir=s["plots"], save_name=f"{ts}_full_horizontal_fit.png")
-
-
-    # roiの自動生成
-
-    # ④ 自動トリミング（全フレーム）→ 小さい画像を1つのリストに集約
-    # 暗状態と明状態で独立したループにする
-    # 同時に保存もする
+    print
     all_crops = []
     for f in frames:
-        rois = generate_rois_from_image(f, plot=False)
         crops = extract_rois_from_image(f, rois)
         all_crops.extend(crops)
+    print(f"[extract] extracted {len(all_crops)} ROIs from all frames")
 
-    # 上のループで保存するからここは削除
-    # ⑤ ROIは保存のみ（個別フィットのプロット・保存はしない）
-    for i, crop in enumerate(all_crops):
-        np.save(os.path.join(s["raw"], f"{ts}_roi{i:02d}.npy"), crop)
+    # 閾値を推定し、Light/Dark に分けてプロット
+    print(f"[threshold] estimating threshold...")
+    images_for_hist = all_crops if len(all_crops) > 0 else frames
+    th = estimate_threshold_otsu_from_frames(images_for_hist)
+    print(f"[threshold] estimated by Otsu: {th:.3f} (sum over ROI/frame)")
+    light_imgs, dark_imgs = split_images_by_threshold(images_for_hist, th)
+    print(
+        f"[threshold] split -> light={len(light_imgs)}, dark={len(dark_imgs)}")
 
-    # ⑥ 光子数分布（明）: トリミング（ROI）した範囲を対象に集計
-    # 暗状態も入れる
-    images_for_hist = all_crops if len(all_crops) > 0 else [frames[0]]
-    plot_photon_distribution(light_images=images_for_hist,
+    plot_photon_distribution(light_images=light_imgs,
+                             dark_images=dark_imgs,
                              save_dir=s["plots"],
-                             save_name=f"{ts}_photon_dist_light.png")
+                             save_name=f"{ts}_photon_dist_split.png")
+
+# 光子数分布をプロットする関数（色々をまとめた関数）
 
 
 if __name__ == "__main__":

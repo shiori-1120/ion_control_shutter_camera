@@ -45,7 +45,7 @@ def get_waveform(inst, channel, points=10000):
 
 def main():
     rm = pyvisa.ResourceManager()
-    address = 'USB0::0x0699::0x03A2::C040073::INSTR'
+    address = 'USB0::0x0699::0x03A1::C016433::INSTR'
     inst = rm.open_resource(address, timeout=20000)
     time_list, voltage_list = get_waveform(inst, channel=1, points=10000)
     save_to_csv(time_list, voltage_list)

@@ -1,7 +1,3 @@
-# シーケンスを組んでいる
-# lineごとにタスクを作成しないとうまく制御できない
-# TrueとFalseが逆かもしれない。アクティブローかも。
-
 import nidaqmx
 import time
 
@@ -21,21 +17,19 @@ try:
         tasks[shutter_key] = task
         print(f"Task created for {channel_name}")
 
-    print("\nシーケンスの直接実行を開始します。")
-    print("Ctrl+Cで停止してください。")
-
     print("Initializing... All shutters OFF.")
     for task in tasks.values():
         task.write(False)
     
-    while True:
-        # 0.5 secごとにカメラトリガーのON/OFFを切り替え
-        # 1 secごとに撮影
+    count = 0
+    while count < 1:
+    # while True:
         tasks[channel.camera].write(True)
-        time.sleep(0.01)
+        time.sleep(0.010)
 
         tasks[channel.camera].write(False)
-        time.sleep(1)
+        time.sleep(0.5)
+        count += 1
 
 
 except KeyboardInterrupt:

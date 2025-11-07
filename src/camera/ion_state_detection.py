@@ -655,7 +655,8 @@ def plot_frequency_excitation_probability(frequencies_excite_probability):
 def _crop_roi_np(img: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
     """Crop with ROI=(x_width,y_width,x_start,y_start)."""
     xw, yw, xs, ys = map(int, roi)
-    ys = max(0, ys); xs = max(0, xs)
+    ys = max(0, ys)
+    xs = max(0, xs)
     y_end = max(ys, min(img.shape[0], ys + yw))
     x_end = max(xs, min(img.shape[1], xs + xw))
     if ys >= y_end or xs >= x_end:
@@ -855,7 +856,8 @@ def bootstrap_threshold_from_stream(
     else:
         if len(exposure_s_list) < n:
             last = float(exposure_s_list[-1]) if exposure_s_list else 1.0
-            exposure_s_list = list(exposure_s_list) + [last] * (n - len(exposure_s_list))
+            exposure_s_list = list(exposure_s_list) + \
+                [last] * (n - len(exposure_s_list))
 
     samples: list[float] = []
     for i in range(n):
@@ -885,7 +887,8 @@ def _self_test():
 
     # 露光を交互に変える（0.05s と 0.1s）
     N = 40
-    exposures = np.array([0.05 if (i % 2 == 0) else 0.10 for i in range(N)], dtype=float)
+    exposures = np.array(
+        [0.05 if (i % 2 == 0) else 0.10 for i in range(N)], dtype=float)
 
     # 明/暗フラグ（前半は暗多め、後半は明多め）
     is_bright = np.array([(i % 4 in (2, 3)) for i in range(N)], dtype=bool)
@@ -902,7 +905,8 @@ def _self_test():
 
     imgs = []
     for i in range(N):
-        img = rng.normal(loc=bg_mean_true, scale=read_noise_sigma, size=(H, W)).astype(np.float64)
+        img = rng.normal(loc=bg_mean_true, scale=read_noise_sigma,
+                         size=(H, W)).astype(np.float64)
         if is_bright[i]:
             # ROI内に信号を加算：合計が exposure * signal_per_sec * Npx 付近になるように
             signal = signal_per_sec * exposures[i]
@@ -910,7 +914,8 @@ def _self_test():
         imgs.append(img)
 
     # 先頭10枚で初期閾値推定
-    info_list = [normalize_count(imgs[i], roi, bg_roi=bg_roi, exposure_s=float(exposures[i])) for i in range(N)]
+    info_list = [normalize_count(
+        imgs[i], roi, bg_roi=bg_roi, exposure_s=float(exposures[i])) for i in range(N)]
     samples = [d["S_norm"] for d in info_list[:10]]
     q = quick_threshold_from_samples(samples, provisional_tau=None)
 
@@ -919,17 +924,22 @@ def _self_test():
     results = []
     for i in range(N):
         S = float(info_list[i]["S_norm"])
-        state = classify_hysteresis(S, prev_state_bright=state, tau_on=q["tau_on"], tau_off=q["tau_off"])
+        state = classify_hysteresis(
+            S, prev_state_bright=state, tau_on=q["tau_on"], tau_off=q["tau_off"])
         results.append(bool(state))
 
     # 検証サマリ
     s_dark = [info_list[i]["S_norm"] for i in range(N) if not is_bright[i]]
     s_bright = [info_list[i]["S_norm"] for i in range(N) if is_bright[i]]
     print("[SELFTEST] samples(first 10) ->", samples)
-    print("[SELFTEST] tau/tau_on/tau_off:", {k: q[k] for k in ("tau", "tau_on", "tau_off", "mode")})
-    print("[SELFTEST] mean S_norm dark/bright:", np.mean(s_dark), np.mean(s_bright))
+    print("[SELFTEST] tau/tau_on/tau_off:",
+          {k: q[k] for k in ("tau", "tau_on", "tau_off", "mode")})
+    print("[SELFTEST] mean S_norm dark/bright:",
+          np.mean(s_dark), np.mean(s_bright))
     acc = float(np.mean(results == is_bright))
-    print(f"[SELFTEST] hysteresis accuracy vs ground-truth: {acc*100:.1f}% (rough check)")
+    print(
+        f"[SELFTEST] hysteresis accuracy vs ground-truth: {acc*100:.1f}% (rough check)")
+
 
 def main():
     # 環境変数 SELFTEST=1 のときはダミーデータで自己検証を実行
@@ -939,7 +949,7 @@ def main():
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     s = build_session_dirs(ts)
-    
+
     # 同一セッション内での保存ファイル連番をメモリで管理
     next_idx = 1
 
@@ -963,7 +973,7 @@ def main():
         session_root=s["root"],
         start_index=next_idx,
     )
-    
+
     # 今回セッションの全フレームを関数で読み込む
     frames = load_session_frames(s["raw"], ts)
 

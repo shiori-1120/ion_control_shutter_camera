@@ -36,26 +36,17 @@ try:
     
     while True:
         tasks[Shutter.NM_397].write(True)
-        # delay about 0.6 ms
         tasks[Shutter.NM_397_SIGMA].write(True)
-        # delay about 0.6 ms
         tasks[Shutter.NM_729].write(True)
-        # delay about 0.6 ms
         tasks[Shutter.NM_854].write(True)
-        # delay about 0.6 ms
         time.sleep(0.001)
-        # delay about 0.6 ms
         
         tasks[Shutter.NM_397].write(False)
-        # delay about 0.6 ms
         tasks[Shutter.NM_397_SIGMA].write(False)
-        # delay about 0.6 ms
         tasks[Shutter.NM_729].write(False)
-        # delay about 0.6 ms
+        tasks[Shutter.NM_729].write(False)
         tasks[Shutter.NM_854].write(False)
-        # delay about 0.6 ms
         time.sleep(0.001)
-        # delay about 0.6 ms
 
 
 

@@ -6,13 +6,14 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-VISA_RESOURCE_STRING = 'USB0::0x0699::0x03A2::C040073::INSTR'
+# VISA_RESOURCE_STRING = 'USB0::0x0699::0x03A2::C040073::INSTR'
 # VISA_RESOURCE_STRING = 'USB0::0x0699::0x0363::C060618::INSTR'
+VISA_RESOURCE_STRING = 'USB0::0x0699::0x03A1::C016433::INSTR'
 CHANNELS_TO_MEASURE = [1, 2, 3, 4]
 OUTPUT_DIRECTORY = "output"
 
 
-def acquire_waveform_from_scope(inst, channel, points=100000):
+def acquire_waveform_from_scope(inst, channel, points=50000):
     inst.write(f"DATA:SOURCE CH{channel}")
     inst.write("DATA:ENCdg ASCii")
     inst.write("DATA:WIDTH 1")
