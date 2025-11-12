@@ -23,10 +23,15 @@ WAIT_MARGIN_SEC = 0.02
 IDLE_TIMEOUT_SEC = 10.0
 ROUGH_ROI = [600, 100, 2976, 984]
 
-# 平坦化（ベースライン補正）用のガウシアン平滑シグマ
-# 値が大きいほどゆっくり変化する背景とみなして除去します
-BASELINE_SMOOTH_SIGMA_Y = 70.0  # 垂直プロファイル用（行方向）
-BASELINE_SMOOTH_SIGMA_X = 70.0  # 水平プロファイル用（列方向）
+# ROI フィッティング前の平滑化（ベースライン除去は行わず、移動平均のみ）
+# 窓幅は奇数推奨。データによって 5〜51 程度で調整してください。
+MOVING_AVG_WINDOW_Y = 21  # 垂直プロファイル用（行方向）
+MOVING_AVG_WINDOW_X = 21  # 水平プロファイル用（列方向）
+
+# 画面端のピークをノイズとして無視するためのマージン設定
+# 配列長の一定割合か、ピクセル固定値の大きい方を採用
+EDGE_IGNORE_RATIO = 0.02   # 全長の2%
+EDGE_IGNORE_MIN_PIX = 10   # 最低でも10px
 
 # 実験のログ出力用のtxt
 # 露光時間、ROI情報、撮影枚数などを記録する
@@ -232,6 +237,27 @@ def plot_profile(data, xs=None, fitted_curve=None, peaks=None,
     # plt.show()
 
 
+def plot_filter_comparison(data_raw, data_filtered, xs=None,
+                           title: str = '', axis_name: str = 'Pixel',
+                           save_dir: Optional[str] = None, save_name: Optional[str] = None):
+    """フィルタ前後の1Dプロファイルを重ねて可視化する簡易プロット。"""
+    plt.figure(figsize=(10, 4))
+    if xs is None:
+        xs = np.arange(len(data_filtered))
+    plt.plot(xs, data_raw, ':', color='gray', lw=1.5, label='Raw')
+    plt.plot(xs, data_filtered, '-', color='tab:blue',
+             lw=2, label='Filtered (moving average)')
+    plt.title(title)
+    plt.xlabel(axis_name)
+    plt.ylabel('Intensity (Sum)')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    if save_dir is not None and save_name:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, save_name), dpi=150)
+    # plt.show()
+
+
 # 1D の多峰ローレンツ和（最後の引数はオフセット）
 def FUNC(x, *params):
     num_func = int((len(params) - 1) / 3)
@@ -249,35 +275,54 @@ def lorentz(x, A, x0, wid, offset):
     return A * (wid**2) / ((x - x0)**2 + wid**2) + offset
 
 
-def _flatten_profile(profile: np.ndarray, sigma: float) -> tuple[np.ndarray, np.ndarray]:
-    """簡易のベースライン補正: ガウシアン平滑で背景を推定し、profile - baseline を返す。
-    戻り値は (flattened, baseline)。
+def _moving_average_1d(profile: np.ndarray, window: int) -> np.ndarray:
+    """1D 移動平均フィルタ。エッジは端値でパディングして長さを保ちます。
+    window<=1 の場合は元データを float にして返します。
     """
     prof = np.asarray(profile, dtype=float)
-    baseline = gaussian_filter1d(prof, sigma=sigma)
-    flat = prof - baseline
-    # 可視化の安定性のため、中央値を足して負方向への極端なバイアスを避ける
-    flat = flat + float(np.median(prof))
-    return flat, baseline
+    w = int(window)
+    if w <= 1:
+        return prof.astype(float, copy=False)
+    # 奇数にそろえる（偶数の場合は+1）
+    if w % 2 == 0:
+        w += 1
+    pad_left = w // 2
+    pad_right = w - 1 - pad_left
+    prof_pad = np.pad(prof, (pad_left, pad_right), mode='edge')
+    kernel = np.ones(w, dtype=float) / float(w)
+    smoothed = np.convolve(prof_pad, kernel, mode='valid')
+    return smoothed
+
+
+def _edge_margin(n: int) -> int:
+    """配列長 n に対する端マージン（ピーク無視）を返す。"""
+    return max(int(round(n * float(EDGE_IGNORE_RATIO))), int(EDGE_IGNORE_MIN_PIX))
 
 
 # 2D画像から垂直プロファイルを抽出し、ローレンツフィッティングを実行する。
 def fit_vertical_profile(img):
     # 元のプロファイル
     y_profile_raw = img.sum(axis=1)
-    # 平坦化
-    y_profile, _baseline_y = _flatten_profile(
-        y_profile_raw, sigma=BASELINE_SMOOTH_SIGMA_Y)
+    # 移動平均フィルタ（平坦化はしない）
+    y_profile = _moving_average_1d(y_profile_raw, MOVING_AVG_WINDOW_Y)
     y_x = np.arange(len(y_profile))
 
-    # ピーク検出 (平滑化してから)
-    y_smooth = gaussian_filter1d(y_profile, sigma=1.5)
-    y_peaks, _ = find_peaks(y_smooth, distance=5)
+    # ピーク検出: フィルタ済みプロファイルをそのまま使用（端のピークは除外）
+    y_peaks, _ = find_peaks(y_profile, distance=5)
+    if y_peaks.size > 0:
+        m = _edge_margin(len(y_profile))
+        y_peaks = y_peaks[(y_peaks >= m) & (y_peaks <= len(y_profile) - 1 - m)]
 
     # 初期値
     y_offset0 = float(np.median(y_profile))
     y_A0 = float(y_profile.max() - y_offset0)
-    y_peak_idx = int(np.argmax(y_profile))
+    # 端の極大を除外して初期中心を選ぶ
+    m = _edge_margin(len(y_profile))
+    if len(y_profile) > 2*m:
+        inner = y_profile[m:len(y_profile)-m]
+        y_peak_idx = int(m + np.argmax(inner))
+    else:
+        y_peak_idx = int(np.argmax(y_profile))
     p0y = [max(0.0, y_A0), float(y_peak_idx), 5.0, y_offset0]
     bounds_y = ([0.0, max(0, y_peak_idx-10), 0.5, 0.0],
                 [np.inf, min(len(y_profile)-1, y_peak_idx+10), 200.0, np.inf])
@@ -291,6 +336,7 @@ def fit_vertical_profile(img):
 
         return {
             'profile': y_profile,
+            'profile_raw': y_profile_raw,
             'x': y_x,
             'peaks': y_peaks,
             'fitted': y_fitted,
@@ -307,14 +353,18 @@ def fit_vertical_profile(img):
 def fit_horizontal_profile(img):
     # 元のプロファイル
     x_profile_raw = img.sum(axis=0)
-    # 平坦化
-    x_profile, _baseline_x = _flatten_profile(
-        x_profile_raw, sigma=BASELINE_SMOOTH_SIGMA_X)
+    # 移動平均フィルタ（平坦化はしない）
+    x_profile = _moving_average_1d(x_profile_raw, MOVING_AVG_WINDOW_X)
     x_x = np.arange(len(x_profile))
 
     # ピーク検出
     hth = (x_profile.max() + x_profile.min()) / 2.0
-    x_peaks, _ = find_peaks(x_profile, height=hth, distance=20)
+    x_peaks, props = find_peaks(x_profile, height=hth, distance=20)
+    # 端のピークを除外
+    if x_peaks.size > 0:
+        m = _edge_margin(len(x_profile))
+        mask = (x_peaks >= m) & (x_peaks <= len(x_profile) - 1 - m)
+        x_peaks = x_peaks[mask]
 
     if len(x_peaks) == 0:
         print("Horizontal profile: No peaks found.")
@@ -353,6 +403,7 @@ def fit_horizontal_profile(img):
 
         return {
             'profile': x_profile,
+            'profile_raw': x_profile_raw,
             'x': x_x,
             'peaks': x_peaks,
             'fitted': x_fitted,
@@ -372,6 +423,18 @@ def lorentz_fit_profiles(img, plot=False) -> dict:
     vertical_lorentz_fit = fit_vertical_profile(img)
     results['vertical'] = vertical_lorentz_fit
     if plot and vertical_lorentz_fit is not None:
+        # フィルタ効果の可視化（縦）
+        try:
+            plot_filter_comparison(
+                data_raw=vertical_lorentz_fit.get(
+                    'profile_raw', vertical_lorentz_fit['profile']),
+                data_filtered=vertical_lorentz_fit['profile'],
+                xs=vertical_lorentz_fit['x'],
+                title='Vertical Profile: Raw vs Filtered',
+                axis_name='Y Pixel'
+            )
+        except Exception as _:
+            pass
         plot_profile(
             data=vertical_lorentz_fit['profile'],
             xs=vertical_lorentz_fit['x'],
@@ -389,6 +452,18 @@ def lorentz_fit_profiles(img, plot=False) -> dict:
     horizontal_lorentz_fit = fit_horizontal_profile(img)
     results['horizontal'] = horizontal_lorentz_fit
     if plot and horizontal_lorentz_fit is not None:
+        # フィルタ効果の可視化（横）
+        try:
+            plot_filter_comparison(
+                data_raw=horizontal_lorentz_fit.get(
+                    'profile_raw', horizontal_lorentz_fit['profile']),
+                data_filtered=horizontal_lorentz_fit['profile'],
+                xs=horizontal_lorentz_fit['x'],
+                title='Horizontal Profile: Raw vs Filtered',
+                axis_name='X Pixel'
+            )
+        except Exception as _:
+            pass
         plot_profile(
             data=horizontal_lorentz_fit['profile'],
             xs=horizontal_lorentz_fit['x'],
@@ -405,6 +480,41 @@ def lorentz_fit_profiles(img, plot=False) -> dict:
     print("Horizontal fit time:", end - start)
 
     return results
+
+
+def plot_filter_effects(img: np.ndarray,
+                        save_dir: Optional[str] = None,
+                        prefix: str = "filter_effect"):
+    """画像から垂直/水平プロファイルの生データと移動平均フィルタ後を可視化して保存する。
+    save_dir が与えられた場合、`${prefix}_vertical.png` と `${prefix}_horizontal.png` を保存する。
+    """
+    # 垂直
+    y_raw = np.asarray(img).sum(axis=1)
+    y_f = _moving_average_1d(y_raw, MOVING_AVG_WINDOW_Y)
+    y_x = np.arange(len(y_raw))
+    plot_filter_comparison(
+        data_raw=y_raw,
+        data_filtered=y_f,
+        xs=y_x,
+        title='Vertical Profile: Raw vs Filtered',
+        axis_name='Y Pixel',
+        save_dir=save_dir,
+        save_name=(f"{prefix}_vertical.png" if save_dir else None)
+    )
+
+    # 水平
+    x_raw = np.asarray(img).sum(axis=0)
+    x_f = _moving_average_1d(x_raw, MOVING_AVG_WINDOW_X)
+    x_x = np.arange(len(x_raw))
+    plot_filter_comparison(
+        data_raw=x_raw,
+        data_filtered=x_f,
+        xs=x_x,
+        title='Horizontal Profile: Raw vs Filtered',
+        axis_name='X Pixel',
+        save_dir=save_dir,
+        save_name=(f"{prefix}_horizontal.png" if save_dir else None)
+    )
 
 
 def generate_rois_from_analyze_results(results: dict, img_shape) -> list:
@@ -740,8 +850,13 @@ def main():
     # )
     saved = np.load(
         "C:\\Users\\karishio\\Desktop\\single_ion_control\\src\\camera\\output\\20251102_104353\\raw-data\\2025_1102_105441data_000040.npy")
-    # トリミング範囲決定
+    # トリミング範囲決定（フィット可視化 + フィルタ効果の可視化も実施）
     rois = generate_rois_from_image(saved, plot=True)
+    # フィルタ前後の比較図を保存
+    try:
+        plot_filter_effects(saved, save_dir=s["plots"], prefix=f"{ts}_filter")
+    except Exception as _:
+        pass
     print(f"[ROI] determined {len(rois)} ROIs: {rois}")
     # 暗状態の取得
     # saved_2, next_idx = get_n_frames_from_buffer(
