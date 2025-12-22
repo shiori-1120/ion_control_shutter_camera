@@ -1,0 +1,21 @@
+# Unified device settings (oscilloscopes, function generators, etc.)
+sampling_rate_hz: 100000
+channels: [1,2,3,4]
+
+visa_profiles:
+  tek_dpo_03A1:
+    resource: USB0::0x0699::0x03A1::C016433::INSTR
+  tek_msx_0363:
+    resource: USB0::0x0699::0x0363::C060618::INSTR
+  tek_mdo_03A2:
+    resource: USB0::0x0699::0x03A2::C040073::INSTR
+  tek_mso4034b_tcpip:
+    resource: TCPIP::192.168.1.16::INSTR
+  rigol_hdo1104_tcpip:
+    resource: TCPIP::192.168.1.20::INSTR
+  agilent_33522b_tcpip:
+    resource: TCPIP::192.168.1.21::INSTR
+  agilent_33611a_tcpip:
+    resource: TCPIP::192.168.1.25::INSTR
+
+current_profile: tek_mso4034b_tcpip

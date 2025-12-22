@@ -2,15 +2,26 @@ import pyvisa
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from src.lib.utils.config import load_yaml, ConfigError, resolve_visa_from_profiles
 
-# VISA_RESOURCE_STRING = 'USB0::0x0699::0x03A2::C040073::INSTR'
-# VISA_RESOURCE_STRING = 'USB0::0x0699::0x0363::C060618::INSTR'
-VISA_RESOURCE_STRING = 'USB0::0x0699::0x03A1::C016433::INSTR'
-CHANNELS_TO_MEASURE = [1, 2, 3, 4]
-OUTPUT_DIRECTORY = "output"
+DEFAULT_VISA = 'USB0::0x0699::0x03A1::C016433::INSTR'
+
+# 設定ファイルの読み込み（存在しない場合はデフォルト）
+def load_waveform_config():
+    # device settings are unified in src/config/device.yaml
+    cfg_path = Path('src/config/device.yaml')
+    try:
+        cfg = load_yaml(cfg_path)
+    except ConfigError:
+        cfg = {
+            'sampling_rate_hz': 100000,
+            'channels': [1, 2, 3, 4],
+        }
+    return cfg
 
 
 def acquire_waveform_from_scope(inst, channel, points=50000):
@@ -35,7 +46,7 @@ def acquire_waveform_from_scope(inst, channel, points=50000):
     return time_list.tolist(), voltage_list.tolist()
 
 
-def save_waveforms_to_csv(waveforms_data, output_dir="..\..\output"):
+def save_waveforms_to_csv(waveforms_data, output_dir: str):
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}_waveform.csv"
@@ -53,7 +64,8 @@ def save_waveforms_to_csv(waveforms_data, output_dir="..\..\output"):
 def plot_waveforms(waveforms_data, title="Oscilloscope Waveforms"):
     num_channels = len(waveforms_data)
     fig, axes = plt.subplots(num_channels, 1, figsize=(15, 10), sharex=True)
-    if num_channels == 1: axes = [axes]
+    if num_channels == 1:
+        axes = [axes]
     fig.suptitle(title, fontsize=16)
     
     time_data = list(waveforms_data.values())[0]['time']
@@ -68,20 +80,31 @@ def plot_waveforms(waveforms_data, title="Oscilloscope Waveforms"):
     plt.show()
 
 def main():
+    cfg = load_waveform_config()
+    channels = cfg.get('channels', [1, 2, 3, 4])
+    # 固定出力先（YAML指定は廃止）
+    output_dir = 'data/output/waveform'
+    # Priority: profiles > single value > default (YAML中心運用)
+    visa = (
+        resolve_visa_from_profiles(cfg)
+        or cfg.get('visa_resource')
+        or DEFAULT_VISA
+    )
     rm = pyvisa.ResourceManager()
     inst = None
     all_waveforms = {}
-    print(f"接続を試みています: {VISA_RESOURCE_STRING}")
-    inst = rm.open_resource(VISA_RESOURCE_STRING, timeout=20000)
+    print(f"接続を試みています: {visa}")
+    inst = rm.open_resource(visa, timeout=20000)
     print(f"接続成功: {inst.query('*IDN?').strip()}")
     
-    inst.write("ACQuire:STATE STOP"); time.sleep(0.1)
+    inst.write("ACQuire:STATE STOP")
+    time.sleep(0.1)
 
-    for ch in CHANNELS_TO_MEASURE:
+    for ch in channels:
         time_data, voltage_data = acquire_waveform_from_scope(inst, ch)
         all_waveforms[f'CH{ch}'] = {'time': time_data, 'voltage': voltage_data}
 
-    saved_filepath = save_waveforms_to_csv(all_waveforms, OUTPUT_DIRECTORY)
+    saved_filepath = save_waveforms_to_csv(all_waveforms, output_dir)
     plot_waveforms(all_waveforms, title=f"Acquired Waveforms ({os.path.basename(saved_filepath)})")
     
     inst.write("ACQuire:STATE RUN")

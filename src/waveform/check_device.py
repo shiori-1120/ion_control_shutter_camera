@@ -1,8 +1,20 @@
 import pyvisa
+from pathlib import Path
+from src.lib.utils.config import load_yaml, ConfigError
 
 
 def main():
-    rm = pyvisa.ResourceManager()
+    # Try to use device.yaml if present to hint preferred backend (optional)
+    backend = None
+    try:
+        cfg = load_yaml(Path('src/config/device.yaml'))
+        prof = cfg.get('current_profile')
+        if prof == 'simulate':
+            backend = '@sim'
+    except ConfigError:
+        pass
+
+    rm = pyvisa.ResourceManager(backend) if backend else pyvisa.ResourceManager()
     resources = rm.list_resources()
     if not resources:
         print("No VISA resources found.")

@@ -15,14 +15,11 @@ def make_run_folder(base: Path) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
-OUTPUT_DIR = 'data/output/shutter'
-
 def main():
-    base = ensure_output_dir(OUTPUT_DIR)
+    out_dir = 'data/output/shutter'
+    base = ensure_output_dir(out_dir)
     run_dir = make_run_folder(base)
     print(f"シャッターシーケンスの出力先: {run_dir}")
-    # TODO: ここでユーザー定義の2進シーケンスを読み込み、実行する
-    # 例: sequence = [0b0001, 0b0010, 0b0100, 0b1000]
     # 実機制御コードにシーケンスを渡して処理する
     time.sleep(0.1)
     # 実行結果のログやメタ情報を run_dir に保存する
@@ -40,14 +37,13 @@ if __name__ == '__main__':
 class Shutter:
     NM_397 = 0
     NM_397_SIGMA = 1
-    CAMERA_TRIGGER = 2
-    NM_729 = CAMERA_TRIGGER  # backward-compatible alias (was 729 shutter)
+    NM_729 = 2
     NM_854 = 3
 
 SHUTTER_MAP = {
     Shutter.NM_397:       "Dev1/port0/line4",
     Shutter.NM_397_SIGMA: "Dev1/port0/line5",
-    Shutter.CAMERA_TRIGGER:       "Dev1/port0/line6",
+    Shutter.NM_729:       "Dev1/port0/line6",
     Shutter.NM_854:       "Dev1/port0/line7",
 }
 
@@ -68,28 +64,28 @@ try:
         task.write(False)
     
     while True:
-        # 397:ON, 397_SIGMA:ON, Camera trigger:OFF, 854:ON
+        # 397:ON, 397_SIGMA:ON, 729:OFF, 854:ON
         tasks[Shutter.NM_397].write(True)
         tasks[Shutter.NM_397_SIGMA].write(True)
         tasks[Shutter.NM_854].write(True)
         time.sleep(0.002)
 
-        # 397:OFF, 397_SIGMA:ON, Camera trigger:OFF, 854:OFF
+        # 397:OFF, 397_SIGMA:ON, 729:OFF, 854:OFF
         tasks[Shutter.NM_397].write(False)
         tasks[Shutter.NM_854].write(False)
         time.sleep(0.002)
 
-        # 397:OFF, 397_SIGMA:OFF, Camera trigger:ON, 854:OFF
+        # 397:OFF, 397_SIGMA:OFF, 729:ON, 854:OFF
         tasks[Shutter.NM_397_SIGMA].write(False)
-        tasks[Shutter.CAMERA_TRIGGER].write(True)
+        tasks[Shutter.NM_729].write(True)
         time.sleep(0.010)
 
-        # 397:ON, 397_SIGMA:OFF, Camera trigger:OFF, 854:OFF
-        tasks[Shutter.CAMERA_TRIGGER].write(False)
+        # 397:ON, 397_SIGMA:OFF, 729:OFF, 854:OFF
+        tasks[Shutter.NM_729].write(False)
         tasks[Shutter.NM_397].write(True)
         time.sleep(0.004)
 
-        # 397:ON, 397_SIGMA:ON, Camera trigger:OFF, 854:ON
+        # 397:ON, 397_SIGMA:ON, 729:OFF, 854:ON
         tasks[Shutter.NM_397_SIGMA].write(True)
         tasks[Shutter.NM_854].write(True)
         time.sleep(0.010)

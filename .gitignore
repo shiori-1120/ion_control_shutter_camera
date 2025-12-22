@@ -1,5 +1,20 @@
 nidaqmx-python-master/
 .venv
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local outputs
+data/output/
+logs/
+
+# Common tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
 src/camera/output/20251102_104353/
 src/camera/output/20251102_112059/
 src/camera/output/20251102_111006/

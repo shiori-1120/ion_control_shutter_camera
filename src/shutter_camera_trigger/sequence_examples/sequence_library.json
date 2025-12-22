@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "sequences": {
+    "default": {
+      "ao_width_ms": 1.0,
+      "ao_insert_index": 1,
+      "sequence_text": "# examples:\n#   0000 0.001\n#   0001 0.001   # 397 only\n#   0010 0.001   # 397_SIG only\n#   0100 0.001   # Camera trigger only\n#   1000 0.001   # 854 only\n#   1100 0.001   # Camera trigger & 854\n0000 0.001\n0001 0.001\n0010 0.001\n1100 0.001\n0000 0.001\n"
+    },
+    "minimal": {
+      "ao_width_ms": 1.0,
+      "ao_insert_index": -1,
+      "sequence_text": "# Minimal DO-only sequence for bring-up\n# Format: <BITSTRING> <hold_s>\n0000 0.001\n0001 0.001\n0000 0.001\n"
+    }
+  }
+}

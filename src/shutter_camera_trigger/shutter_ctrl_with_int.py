@@ -1,6 +1,7 @@
 import nidaqmx
 from nidaqmx.constants import LineGrouping
 import time
+from log_utils import make_run_folder, setup_logger, log_event
 
 # --- 設定 ---
 # 2チャンネルを同時に制御 (port0のline0とline1)
@@ -12,6 +13,8 @@ DELAY_S = 0.1  # 10ミリ秒
 # --- メイン処理 ---
 try:
     with nidaqmx.Task() as task:
+        run_dir = make_run_folder()
+        logger = setup_logger(run_dir, name="shutter")
         # 1. 複数チャンネルを1つのグループとしてタスクに追加
         task.do_channels.add_do_chan(
             PHYSICAL_CHANNELS,
@@ -23,6 +26,7 @@ try:
         print("Ctrl+Cで停止します。")
         
         task.start()
+        log_event(logger, "task_start", channels=PHYSICAL_CHANNELS, delay_s=DELAY_S)
         
         try:
             # 2. 無限ループで 0 -> 1 -> 2 -> 3 を繰り返す
@@ -49,6 +53,7 @@ try:
                 
         except KeyboardInterrupt:
             print("\n停止要求を受け取りました。")
+            log_event(logger, "interrupt")
 
         finally:
             # 3. 終了処理：安全のため、必ず出力を0にする
@@ -56,6 +61,7 @@ try:
             if not task.is_task_done():
                 task.write(0)
                 task.stop()
+            log_event(logger, "task_stop")
 
 except nidaqmx.errors.DacaqError as e:
     print(f"NI-DAQmxエラーが発生しました: {e}")

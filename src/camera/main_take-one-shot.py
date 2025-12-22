@@ -39,7 +39,7 @@ def makeDir(path):
         os.makedirs(path)
 
 
-parent_path = "one-shot/output"
+parent_path = "data/output/camera"
 makeDir(parent_path)
 timestamp = time.time()
 

@@ -1,0 +1,5 @@
+# Camera settings template
+exposure_ms: 10
+gain: 2
+save_format: tif
+output_dir: data/output/camera

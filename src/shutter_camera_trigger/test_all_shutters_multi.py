@@ -14,9 +14,11 @@ ALL_OFF = 0b0000
 ALL_ON = 0b1111
 NM_397 = 0b0001  # line4
 NM_397_SIG = 0b0010  # line5
-NM_729 = 0b0100  # line6
+CAMERA_TRIGGER = 0b0100  # line6
+NM_729 = CAMERA_TRIGGER  # backward-compatible alias (was 729 shutter)
 NM_854 = 0b1000  # line7
-NM_729_854 = 0b1100  # line6 & line7
+CAMERA_TRIGGER_854 = 0b1100  # line6 & line7
+NM_729_854 = CAMERA_TRIGGER_854  # backward-compatible alias
 NM_397_ONLY = 0b0001
 NM_397SIG_ONLY = 0b0010
 
@@ -44,7 +46,7 @@ def main():
             write_port(ALL_OFF)
             time.sleep(0.001)
 
-            # 例: 729と854だけON
+            # 例: Camera trigger と854だけON
             write_port(NM_729_854)
             time.sleep(0.001)
             write_port(ALL_OFF)
