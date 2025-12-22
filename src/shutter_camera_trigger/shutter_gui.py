@@ -99,7 +99,7 @@ ROI_IDLE_S = 0.002
 ROI_MAX_ATTEMPT = 5
 
 # UI
-DEFAULT_UI_FONT_SIZE = 16
+DEFAULT_UI_FONT_SIZE = 12
 
 
 # -------------------------
@@ -565,13 +565,13 @@ class App(tk.Tk):
         if self._plot_fig is None or self._plot_canvas is None:
             return
 
-        # Build intervals for each laser.
-        # bit0=line4=397, bit1=line5=397_SIG, bit2=line6=729, bit3=line7=854
+        # Build intervals for each laser / trigger line.
+        # bit0=line4=Camera trigger, bit1=line5=397_SIG, bit2=line6=397, bit3=line7=854
         lasers = [
-            ("854 (b3, line7)", 3),
-            ("729 (b2, line6)", 2),
-            ("397_SIG (b1, line5)", 1),
-            ("397 (b0, line4)", 0),
+            ("854 (b3, line7)", 3, "tab:blue"),
+            ("397 (b2, line6)", 2, "tab:blue"),
+            ("397_SIG (b1, line5)", 1, "tab:blue"),
+            ("Camera trigger (b0, line4)", 0, "tab:green"),
         ]
 
         # AO pulse timing (hardware-timed by sample clock)
@@ -620,7 +620,7 @@ class App(tk.Tk):
             return merged
 
         laser_intervals: dict[str, list[tuple[float, float]]] = {}
-        for label, bit in lasers:
+        for label, bit, _color in lasers:
             intervals: list[tuple[float, float]] = []
             mask = 1 << bit
             for start_t, dur_s, do_value in segments:
@@ -632,17 +632,17 @@ class App(tk.Tk):
         ax = self._plot_fig.add_subplot(111)
         bar_h = 0.8
 
-        # Plot rows: AO + lasers
+        # Plot rows: AO (729nm) + lasers/triggers (camera trigger in green at the bottom)
         rows: list[tuple[str, list[tuple[float, float]], str]] = []
         rows.append(
             (
-                f"AO high (~{ao_high_s*1000.0:.3f} ms, total~{ao_total_s*1000.0:.3f} ms)",
+                f"729 nm (AO high ~{ao_high_s*1000.0:.3f} ms, total~{ao_total_s*1000.0:.3f} ms)",
                 ao_intervals,
                 "tab:red",
             )
         )
-        for label, _ in lasers:
-            rows.append((label, laser_intervals[label], "tab:blue"))
+        for label, _bit, color in lasers:
+            rows.append((label, laser_intervals[label], color))
 
         for y, (label, intervals, color) in enumerate(reversed(rows)):
             ax.broken_barh(intervals, (y - bar_h / 2, bar_h), facecolors=color)
