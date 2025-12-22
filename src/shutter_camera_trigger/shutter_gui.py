@@ -99,7 +99,7 @@ ROI_IDLE_S = 0.002
 ROI_MAX_ATTEMPT = 5
 
 # UI
-DEFAULT_UI_FONT_SIZE = 16
+DEFAULT_UI_FONT_SIZE = 12
 
 
 # -------------------------

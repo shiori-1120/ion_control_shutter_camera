@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shutter/Camera Trigger GUI 使い方メモ</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Sans",
+          "Hiragino Kaku Gothic ProN", Meiryo, Arial, sans-serif;
+        line-height: 1.6;
+        max-width: 980px;
+        margin: 32px auto;
+        padding: 0 16px;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+          monospace;
+      }
+      pre {
+        padding: 12px;
+        overflow: auto;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+      }
+      hr {
+        border: 0;
+        border-top: 1px solid #ddd;
+        margin: 24px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Shutter/Camera Trigger GUI 使い方メモ</h1>
+
+    <p>
+      元ファイル: <a href="shutter_gui_usage.md">shutter_gui_usage.md</a>
+    </p>
+
+    <h2>前提</h2>
+    <ul>
+      <li>Windows + NI-DAQmx ドライバ</li>
+      <li>Python 環境: <code>C:/Users/shiori/Desktop/ion_control_shutter_camera/myenv/</code></li>
+      <li>実機無しでも dry モードで UI 挙動を確認できます。</li>
+    </ul>
+
+    <h2>起動</h2>
+    <ul>
+      <li>
+        リポジトリルートで実行:
+        <ul>
+          <li>
+            <code>C:/Users/shiori/Desktop/ion_control_shutter_camera/myenv/Scripts/python.exe -m src.shutter_camera_trigger.shutter_gui</code>
+          </li>
+        </ul>
+      </li>
+    </ul>
+
+    <h2>画面ざっくり</h2>
+    <ul>
+      <li>Sequence タブ: DO→AO→DO の連続ループ（手動で開始/停止）。</li>
+      <li>Manual タブ: DO を手動でオン/オフして即時反映。</li>
+      <li>
+        Sweep タブ: 周波数を変えながらシーケンスを 1 ショットずつ実行し、カメラ判定の p_bright をリアルタイム表示・保存。
+      </li>
+    </ul>
+
+    <h2>上部バー</h2>
+    <ul>
+      <li>Device: NI-DAQ デバイス名 (例: Dev3)。</li>
+      <li>DAQ mode: dry=模擬、real=実機 NI-DAQ。</li>
+      <li>AO width (ms): Sequence タブ用の AO パルス幅。</li>
+      <li>Connect / Disconnect: DAQ ワーカーの開始/終了。Disconnect 時に DO を全 OFF。</li>
+      <li>
+        FG VISA / FG Connect: VISA 文字列を入れて接続確認。接続中は FG Disconnect で閉じる。スイープでも同じ文字列を共有します。
+      </li>
+      <li>
+        Camera mode / Camera check: カメラワーカーの dry/real を選び、接続確認だけ行う。dry のときは下の Dry images でフォルダ指定可能。
+      </li>
+      <li>
+        Dry images (dry cam): dry カメラ用の画像フォルダ。bright* / dark* のファイル（png/jpg/bmp/tif/npy）を置くと、取得要求ごとにランダムで使います（無ければ従来の乱数合成）。
+      </li>
+      <li>
+        ROI bootstrap: スイープ開始時に 729 を OFF のままカメラ TTL だけを数パルス送信（既定: 2 ms ON/2 ms OFF を最大 5 回）。カメラ応答が得られなければスイープを中断。
+      </li>
+    </ul>
+
+    <h2>Sweep タブのパラメータ</h2>
+    <ul>
+      <li>Freq start/stop/step (Hz): スイープ周波数レンジと刻み (例: 80e6 → 82e6 を 0.5e6 刻み)。</li>
+      <li>n_target: 周波数ごとの目標ショット数（カメラ判定成功件数）。</li>
+      <li>max_attempt: 試行の上限（タイムアウト含む）。</li>
+      <li>settle_s: 周波数変更後に待つ秒数。</li>
+      <li>Sequence JSON: DO シーケンス定義ファイルへのパス。<code>...</code> で選択。</li>
+      <li>DAQ mode / Camera mode / DAQ device: スイープ時に使うモードとデバイス名。</li>
+      <li>
+        FG VISA: 関数発生器の VISA リソース文字列 (例: <code>USB0::0x0699::0x03A2::C040073::INSTR</code>)。上部バーと共有。
+      </li>
+      <li>No FG: チェック時は FG 制御をスキップ。外すと FG を pyVISA で制御。</li>
+      <li>Update interval (s): グラフ・ステータスの更新間隔。負荷を下げたいときは大きめに。</li>
+      <li>Start sweep / Stop: スイープ開始・停止。開始中は入力がロックされます。</li>
+      <li>グラフ: 周波数ごとの p_bright を表示。完了時に spectrum.png を出力。</li>
+      <li>
+        ROI ブートストラップ: スイープ開始前にカメラ TTL パルスだけを流し、応答が得られない場合はエラーで停止。
+      </li>
+    </ul>
+
+    <h2>出力</h2>
+    <ul>
+      <li><code>data/output/spectrum/&lt;timestamp&gt;/shots.csv, spectrum.csv, spectrum.png</code> を保存。</li>
+      <li>config.json に実行時設定（ROI パラメータ含む）を記録。</li>
+    </ul>
+
+    <h2>モードと接続</h2>
+    <ul>
+      <li>DAQ dry: NI-DAQ なしで動作確認。</li>
+      <li>Camera dry: 画像を使わず疑似判定。</li>
+      <li>
+        FG: No FG を外し、FG VISA に文字列を入れると接続を試みます。機種は <code>src/lib/instruments/rigol_dg.py</code> に準拠。
+      </li>
+    </ul>
+
+    <h2>典型的な手順 (実機なしの dry)</h2>
+    <ol>
+      <li>起動後、DAQ mode を dry にして Connect。</li>
+      <li>（任意）Dry images に bright*/dark* 画像を置いたフォルダを指定して Camera check。</li>
+      <li>Sweep タブで周波数レンジを設定し、No FG にチェックのまま Start sweep。</li>
+      <li>グラフが更新されることを確認。</li>
+    </ol>
+
+    <h2>典型的な手順 (実機あり)</h2>
+    <ol>
+      <li>DAQ mode real、Device を実機名 (Dev3 など) に設定し Connect。</li>
+      <li>Camera mode real にして Camera check（実機が開けるか確認）。</li>
+      <li>FG を使う場合は FG VISA を入れて FG Connect で確認後、Sweep の No FG を外す。</li>
+      <li>Sequence JSON を実験用に差し替え、周波数レンジと settle_s を調整し Start sweep。</li>
+    </ol>
+
+    <h2>トラブルシュート簡易メモ</h2>
+    <ul>
+      <li>FG 未接続エラー: No FG を一度チェックするか、VISA 文字列が正しいか確認。</li>
+      <li>DAQ real で失敗: NI-DAQmx ドライバとデバイス名 (Dev3 等) を確認。dry なら動くかで切り分け。</li>
+      <li>カメラ real で失敗: Camera mode を dry にして UI 動作を確認し、実機時はカメラ電源とドライバを確認。</li>
+    </ul>
+
+    <h2>よく使うリソース文字列例</h2>
+    <ul>
+      <li><code>USB0::0x0699::0x03A2::C040073::INSTR</code> (device.yaml の tek_mdo_03A2)</li>
+      <li><code>TCPIP::192.168.1.16::INSTR</code> (device.yaml の tek_mso4034b_tcpip)</li>
+    </ul>
+
+    <h2>既知の動作メモ</h2>
+    <ul>
+      <li>スイープ中は設定がロックされます。変更は停止後に行ってください。</li>
+      <li>更新間隔を短くしすぎると UI が重くなるので 1.0s 以上を推奨。</li>
+    </ul>
+
+    <hr />
+    <p>Generated document (static HTML).</p>
+  </body>
+</html>
