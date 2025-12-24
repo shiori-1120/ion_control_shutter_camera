@@ -38,17 +38,17 @@ from .daq_worker_dry import daq_worker_dry_main
 from .daq_worker_mpq import daq_worker_mpq_main
 
 # -------------------------
-# DO bit mapping (port0/line4:7)
-# bit0=line4, bit1=line5, bit2=line6, bit3=line7
+# DO bit mapping (port1/line0:3)
+# bit0=line0, bit1=line1, bit2=line2, bit3=line3
 # -------------------------
 ALL_OFF = 0b0000
 
-NM_397 = 0b0001  # line4
-NM_397_SIG = 0b0010  # line5
-# bit2 (line6) is used as Camera Trigger (DO)
-CAMERA_TRIGGER = 0b0100  # line6
+NM_397 = 0b0001  # line0
+NM_397_SIG = 0b0010  # line1
+# bit2 (line2) is used as Camera Trigger (DO)
+CAMERA_TRIGGER = 0b0100  # line2
 NM_729 = CAMERA_TRIGGER  # backward-compatible alias (was 729 shutter)
-NM_854 = 0b1000  # line7
+NM_854 = 0b1000  # line3
 
 # Sequence bitstring format (recommended in GUI):
 #   4 digits: b3 b2 b1 b0
@@ -566,12 +566,12 @@ class App(tk.Tk):
             return
 
         # Build intervals for each laser / trigger line.
-        # bit0=line4=Camera trigger, bit1=line5=397_SIG, bit2=line6=397, bit3=line7=854
+        # bit0=line0=397, bit1=line1=397_SIG, bit2=line2=Camera trigger, bit3=line3=854
         lasers = [
-            ("854 (b3, line7)", 3, "tab:blue"),
-            ("397 (b2, line6)", 2, "tab:blue"),
-            ("397_SIG (b1, line5)", 1, "tab:blue"),
-            ("Camera trigger (b0, line4)", 0, "tab:green"),
+            ("854 (b3, line3)", 3, "tab:blue"),
+            ("397_SIG (b1, line1)", 1, "tab:blue"),
+            ("397 (b0, line0)", 0, "tab:blue"),
+            ("Camera trigger (b2, line2)", 2, "tab:green"),
         ]
 
         # AO pulse timing (hardware-timed by sample clock)
@@ -668,10 +668,10 @@ class App(tk.Tk):
         self.v_729 = tk.BooleanVar(value=False)
         self.v_854 = tk.BooleanVar(value=False)
 
-        ttk.Checkbutton(self.manual_tab, text="397 (line4)", variable=self.v_397).grid(row=1, column=0, sticky=tk.W)
-        ttk.Checkbutton(self.manual_tab, text="397 SIG (line5)", variable=self.v_397s).grid(row=2, column=0, sticky=tk.W)
-        ttk.Checkbutton(self.manual_tab, text="729 (line6)", variable=self.v_729).grid(row=3, column=0, sticky=tk.W)
-        ttk.Checkbutton(self.manual_tab, text="854 (line7)", variable=self.v_854).grid(row=4, column=0, sticky=tk.W)
+        ttk.Checkbutton(self.manual_tab, text="397 (line0)", variable=self.v_397).grid(row=1, column=0, sticky=tk.W)
+        ttk.Checkbutton(self.manual_tab, text="397 SIG (line1)", variable=self.v_397s).grid(row=2, column=0, sticky=tk.W)
+        ttk.Checkbutton(self.manual_tab, text="Camera trigger (line2)", variable=self.v_729).grid(row=3, column=0, sticky=tk.W)
+        ttk.Checkbutton(self.manual_tab, text="854 (line3)", variable=self.v_854).grid(row=4, column=0, sticky=tk.W)
 
         ttk.Button(self.manual_tab, text="Apply", command=self._apply_manual).grid(row=1, column=1, padx=10)
         ttk.Button(self.manual_tab, text="All Off", command=self._all_off).grid(row=2, column=1, padx=10)
@@ -1079,9 +1079,7 @@ class App(tk.Tk):
                 value = int(key, 0)
 
             if not (0 <= value <= 0b1111):
-                raise ValueError(
-                    f"DO value must be 0..15 (4-bit, port0/line4:7): {line!r}"
-                )
+                raise ValueError(f"DO value must be 0..15 (4-bit, port1/line0:3): {line!r}")
 
             steps.append((int(value), float(hold_s)))
 

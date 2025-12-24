@@ -23,9 +23,9 @@ from nidaqmx.stream_writers import DigitalSingleChannelWriter
 # Adjust to your device name (must be the SAME device for DO and AO)
 DEVICE = "Dev3"
 
-# DO: port0 line4..7 as a single 4-bit port
-# bit0=line4, bit1=line5, bit2=line6, bit3=line7
-PORT_RANGE = f"{DEVICE}/port0/line4:7"
+# DO: port1 line0..3 as a single 4-bit port
+# bit0=line0, bit1=line1, bit2=line2, bit3=line3
+PORT_RANGE = f"{DEVICE}/port1/line0:3"
 
 # AO: analog output channel
 AO_CH = f"{DEVICE}/ao0"
@@ -37,13 +37,13 @@ AO_CH = f"{DEVICE}/ao0"
 ALL_OFF = 0b0000
 ALL_ON = 0b1111
 
-NM_397 = 0b0001  # line4
-NM_397_SIG = 0b0010  # line5
-# bit2 (line6) is used as Camera Trigger (DO)
-CAMERA_TRIGGER = 0b0100  # line6
+NM_397 = 0b0001  # line0
+NM_397_SIG = 0b0010  # line1
+# bit2 (line2) is used as Camera Trigger (DO)
+CAMERA_TRIGGER = 0b0100  # line2
 NM_729 = CAMERA_TRIGGER  # backward-compatible alias (was 729 shutter)
-NM_854 = 0b1000  # line7
-CAMERA_TRIGGER_854 = 0b1100  # line6 & line7
+NM_854 = 0b1000  # line3
+CAMERA_TRIGGER_854 = 0b1100  # line2 & line3
 NM_729_854 = CAMERA_TRIGGER_854  # backward-compatible alias
 
 

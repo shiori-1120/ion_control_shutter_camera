@@ -1,23 +1,23 @@
-# port0 line4..7 を1タスクで制御（Active High／ビット列を直書き）
-# bit割り当て: bit0=line4, bit1=line5, bit2=line6, bit3=line7
-# 例) 0b0001 = line4のみON, 0b1100 = line6・line7がON
+# port1 line0..3 を1タスクで制御（Active High／ビット列を直書き）
+# bit割り当て: bit0=line0, bit1=line1, bit2=line2, bit3=line3
+# 例) 0b0001 = line0のみON, 0b1100 = line2・line3がON
 
 import time
 import nidaqmx
 from nidaqmx.constants import LineGrouping
 from nidaqmx.stream_writers import DigitalSingleChannelWriter
 
-PORT_RANGE = "Dev3/port0/line4:7"
+PORT_RANGE = "Dev3/port1/line0:3"
 
 # --- Active High: 1=ON, 0=OFF（演算なしで直書きする定数セット）---
 ALL_OFF = 0b0000
 ALL_ON = 0b1111
-NM_397 = 0b0001  # line4
-NM_397_SIG = 0b0010  # line5
-CAMERA_TRIGGER = 0b0100  # line6
+NM_397 = 0b0001  # line0
+NM_397_SIG = 0b0010  # line1
+CAMERA_TRIGGER = 0b0100  # line2
 NM_729 = CAMERA_TRIGGER  # backward-compatible alias (was 729 shutter)
-NM_854 = 0b1000  # line7
-CAMERA_TRIGGER_854 = 0b1100  # line6 & line7
+NM_854 = 0b1000  # line3
+CAMERA_TRIGGER_854 = 0b1100  # line2 & line3
 NM_729_854 = CAMERA_TRIGGER_854  # backward-compatible alias
 NM_397_ONLY = 0b0001
 NM_397SIG_ONLY = 0b0010
@@ -30,7 +30,7 @@ def main():
             PORT_RANGE, line_grouping=LineGrouping.CHAN_FOR_ALL_LINES)
         writer = DigitalSingleChannelWriter(task.out_stream)
         # nidaqmxのDigitalSingleChannelWriterにはuint8版がないため、uint16版を使用します。
-        # 値は0〜65535の範囲で、ここでは下位4ビットのみを使用します（line4〜line7）。
+        # 値は0〜65535の範囲で、ここでは下位4ビットのみを使用します（line0〜line3）。
         write_port = writer.write_one_sample_port_uint16  # 呼び出し短縮
 
         print("Initializing... ALL OFF")

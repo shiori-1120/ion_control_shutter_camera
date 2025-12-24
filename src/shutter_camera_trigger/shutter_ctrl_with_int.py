@@ -1,11 +1,11 @@
 import nidaqmx
 from nidaqmx.constants import LineGrouping
 import time
-from log_utils import make_run_folder, setup_logger, log_event
+from .log_utils import make_run_folder, setup_logger, log_event
 
 # --- 設定 ---
-# 2チャンネルを同時に制御 (port0のline0とline1)
-PHYSICAL_CHANNELS = "Dev1/port0/line4:5"
+# 2チャンネルを同時に制御 (port1のline0とline1)
+PHYSICAL_CHANNELS = "Dev1/port1/line0:1"
 
 # 状態を切り替える時間間隔（秒）
 DELAY_S = 0.1  # 10ミリ秒
@@ -63,5 +63,5 @@ try:
                 task.stop()
             log_event(logger, "task_stop")
 
-except nidaqmx.errors.DacaqError as e:
+except nidaqmx.errors.DaqError as e:
     print(f"NI-DAQmxエラーが発生しました: {e}")

@@ -45,10 +45,10 @@ class Shutter:
     NM_854 = 3
 
 SHUTTER_MAP = {
-    Shutter.NM_397:       "Dev1/port0/line4",
-    Shutter.NM_397_SIGMA: "Dev1/port0/line5",
-    Shutter.CAMERA_TRIGGER:       "Dev1/port0/line6",
-    Shutter.NM_854:       "Dev1/port0/line7",
+    Shutter.NM_397: "Dev1/port1/line0",
+    Shutter.NM_397_SIGMA: "Dev1/port1/line1",
+    Shutter.CAMERA_TRIGGER: "Dev1/port1/line2",
+    Shutter.NM_854: "Dev1/port1/line3",
 }
 
 tasks = {}

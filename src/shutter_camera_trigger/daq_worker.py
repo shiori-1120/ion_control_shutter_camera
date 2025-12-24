@@ -38,7 +38,7 @@ AUTHKEY = b"ion_control_shutter_camera"
 
 
 # -------------------------
-# DO bit mapping (port0/line4:7)
+# DO bit mapping (port1/line0:3)
 # -------------------------
 ALL_OFF = 0b0000
 
@@ -53,7 +53,7 @@ AO_EDGE_LOW_SAMPLES = 1
 class DaqSession:
     def __init__(self, *, device: str) -> None:
         self.device = device
-        self.port_range = f"{device}/port0/line4:7"
+        self.port_range = f"{device}/port1/line0:3"
         self.ao_ch = f"{device}/ao0"
 
         self._do_task = nidaqmx.Task()

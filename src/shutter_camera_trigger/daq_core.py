@@ -46,7 +46,8 @@ class DaqSession:
         self._nidaqmx = nidaqmx
 
         self.device = device
-        self.port_range = f"{device}/port0/line4:7"
+        # Shutter DO uses port1/line0:3 (4 lines => 4-bit value 0..15)
+        self.port_range = f"{device}/port1/line0:3"
         self.ao_ch = f"{device}/ao0"
 
         self._do_task: Any = nidaqmx.Task()
