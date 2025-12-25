@@ -143,6 +143,36 @@ class App(tk.Tk):
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _get_fg_amp_vpp(self) -> float:
+        """Return FG amplitude in Vpp parsed from UI (mVpp input)."""
+        s = ""
+        try:
+            s = (self.fg_amp_mvpp_var.get() or "").strip()
+            if not s:
+                return float(DEFAULT_FG_AMP_VPP)
+            mvpp = float(s)
+        except Exception as e:
+            raise ValueError(f"Invalid FG amplitude (mVpp): {s!r}") from e
+
+        if mvpp <= 0:
+            raise ValueError("FG amplitude (mVpp) must be > 0")
+        return mvpp / 1000.0
+
+    def _get_camera_exposure_s(self) -> float:
+        """Return camera exposure in seconds parsed from UI (ms input)."""
+        s = ""
+        try:
+            s = (self.camera_exposure_ms_var.get() or "").strip()
+            if not s:
+                return 0.001
+            ms = float(s)
+        except Exception as e:
+            raise ValueError(f"Invalid exposure (ms): {s!r}") from e
+
+        if ms <= 0:
+            raise ValueError("Exposure (ms) must be > 0")
+        return ms / 1000.0
+
     def _open_usage_doc(self) -> None:
         try:
             # Docs live at repo root, two levels up from this file (src/shutter_camera_trigger).
@@ -186,7 +216,9 @@ class App(tk.Tk):
 
         # Shared vars
         self.fg_resource_var = tk.StringVar(value="")
+        self.fg_amp_mvpp_var = tk.StringVar(value=str(int(DEFAULT_FG_AMP_VPP * 1000)))
         self.camera_mode_top_var = tk.StringVar(value="dry")
+        self.camera_exposure_ms_var = tk.StringVar(value="1.0")
         self.dry_image_dir_var = tk.StringVar(value="")
 
         top = ttk.Frame(self, padding=10)
@@ -218,21 +250,28 @@ class App(tk.Tk):
         self.fg_disconnect_btn = ttk.Button(top, text="FG Disconnect", command=self._disconnect_fg, state=tk.DISABLED)
         self.fg_disconnect_btn.grid(row=1, column=5, padx=5, pady=(6, 0))
 
+        ttk.Label(top, text="FG amp (mVpp)").grid(row=1, column=6, sticky=tk.W, pady=(6, 0))
+        ttk.Entry(top, textvariable=self.fg_amp_mvpp_var, width=10).grid(row=1, column=7, sticky=tk.W, padx=5, pady=(6, 0))
+
         ttk.Label(top, text="Camera mode").grid(row=2, column=0, sticky=tk.W, pady=(6, 0))
         ttk.Combobox(top, textvariable=self.camera_mode_top_var, values=["dry", "real"], width=6, state="readonly").grid(
             row=2, column=1, sticky=tk.W, padx=5, pady=(6, 0)
         )
-        self.cam_check_btn = ttk.Button(top, text="Camera check", command=self._check_camera_connection)
-        self.cam_check_btn.grid(row=2, column=2, padx=5, pady=(6, 0))
 
-        ttk.Label(top, text="Dry images (dry cam)").grid(row=2, column=3, sticky=tk.W, pady=(6, 0))
-        ttk.Entry(top, textvariable=self.dry_image_dir_var, width=30).grid(row=2, column=4, columnspan=2, sticky=tk.W, padx=5, pady=(6, 0))
-        ttk.Button(top, text="...", width=3, command=self._browse_dry_images).grid(row=2, column=6, pady=(6, 0))
+        ttk.Label(top, text="Exposure (ms)").grid(row=2, column=2, sticky=tk.W, pady=(6, 0))
+        ttk.Entry(top, textvariable=self.camera_exposure_ms_var, width=10).grid(row=2, column=3, sticky=tk.W, padx=5, pady=(6, 0))
+
+        self.cam_check_btn = ttk.Button(top, text="Camera check", command=self._check_camera_connection)
+        self.cam_check_btn.grid(row=2, column=4, padx=5, pady=(6, 0))
+
+        ttk.Label(top, text="Dry images (dry cam)").grid(row=2, column=5, sticky=tk.W, pady=(6, 0))
+        ttk.Entry(top, textvariable=self.dry_image_dir_var, width=30).grid(row=2, column=6, columnspan=2, sticky=tk.W, padx=5, pady=(6, 0))
+        ttk.Button(top, text="...", width=3, command=self._browse_dry_images).grid(row=2, column=8, pady=(6, 0))
 
         self.status_var = tk.StringVar(value="Disconnected")
-        ttk.Label(top, textvariable=self.status_var).grid(row=3, column=0, columnspan=8, sticky=tk.W, pady=(8, 0))
+        ttk.Label(top, textvariable=self.status_var).grid(row=3, column=0, columnspan=9, sticky=tk.W, pady=(8, 0))
 
-        top.grid_columnconfigure(8, weight=1)
+        top.grid_columnconfigure(9, weight=1)
 
         nb = ttk.Notebook(self)
         nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -736,9 +775,13 @@ class App(tk.Tk):
         self.sw_no_fg = tk.BooleanVar(value=True)
         ttk.Checkbutton(row, text="No FG", variable=self.sw_no_fg).grid(row=4, column=4, columnspan=2, sticky=tk.W, pady=(6, 0))
 
-        ttk.Label(row, text="Update interval (s)").grid(row=5, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Label(row, text="FG amp (mVpp)").grid(row=5, column=0, sticky=tk.W, pady=(6, 0))
+        self.sw_fg_amp_mvpp = self.fg_amp_mvpp_var
+        ttk.Entry(row, textvariable=self.sw_fg_amp_mvpp, width=10).grid(row=5, column=1, padx=4, pady=(6, 0))
+
+        ttk.Label(row, text="Update interval (s)").grid(row=6, column=0, sticky=tk.W, pady=(6, 0))
         self.sw_update_interval = tk.StringVar(value="1.0")
-        ttk.Entry(row, textvariable=self.sw_update_interval, width=8).grid(row=5, column=1, padx=4, pady=(6, 0))
+        ttk.Entry(row, textvariable=self.sw_update_interval, width=8).grid(row=6, column=1, padx=4, pady=(6, 0))
 
         btn_row = ttk.Frame(self.sweep_tab)
         btn_row.pack(fill=tk.X, pady=(8, 8))
@@ -803,6 +846,11 @@ class App(tk.Tk):
             rig = RigolDG(RigolDgConfig(visa_resource=resource, channel=1, timeout_ms=5000))
             rig.open()
             try:
+                rig.set_amplitude_vpp(self._get_fg_amp_vpp())
+            except Exception:
+                # 振幅設定に失敗しても接続自体は継続
+                pass
+            try:
                 _ = rig.idn()
             except Exception:
                 # IDN失敗は致命的でないので無視
@@ -846,9 +894,10 @@ class App(tk.Tk):
         """Spawn camera worker once to verify connectivity/dry samples."""
         mode = self.camera_mode_top_var.get().strip() or "dry"
         dry_dir = self.dry_image_dir_var.get().strip()
+        exposure_s = self._get_camera_exposure_s()
         cfg: dict[str, Any] = {
             "mode": mode,
-            "exposure_s": 0.001,
+            "exposure_s": float(exposure_s),
             "frame_timeout_s": 1.0,
             "bootstrap_n": 5,
         }
@@ -1192,9 +1241,11 @@ class App(tk.Tk):
 
             daq_mode = self.sw_daq_mode.get()
             cam_mode = self.sw_cam_mode.get()
+            cam_exposure_s = self._get_camera_exposure_s()
             device = self.sw_device.get().strip() or "Dev3"
             visa_res = self.sw_visa.get().strip()
             no_fg = bool(self.sw_no_fg.get())
+            fg_amp_vpp = self._get_fg_amp_vpp()
             dry_image_dir = self.dry_image_dir_var.get().strip()
 
         except Exception as e:
@@ -1224,6 +1275,8 @@ class App(tk.Tk):
             "insert_index": insert_index,
             "ao_width_ms": ao_width_ms,
             "camera_mode": cam_mode,
+            "camera_exposure_s": float(cam_exposure_s),
+            "fg_amp_mvpp": float(fg_amp_vpp) * 1000.0,
             "dry_image_dir": dry_image_dir,
             "roi_bootstrap": {
                 "pulse_s": ROI_PULSE_S,
@@ -1250,7 +1303,7 @@ class App(tk.Tk):
         daq_p = Process(target=daq_worker_main, args=(daq_cmd_q, daq_resp_q, {"device": device, "mode": daq_mode}), daemon=True)
         cam_cfg: dict[str, Any] = {
             "mode": cam_mode,
-            "exposure_s": 0.001,
+            "exposure_s": float(cam_exposure_s),
             "frame_timeout_s": 1.0,
             "bootstrap_n": 10,
         }
@@ -1290,6 +1343,10 @@ class App(tk.Tk):
             if self._fg_connected and self._fg_handle is not None:
                 rig = self._fg_handle
                 try:
+                    try:
+                        rig.set_amplitude_vpp(fg_amp_vpp)
+                    except Exception:
+                        pass
                     rig.output(True)
                 except Exception:
                     pass
@@ -1299,6 +1356,10 @@ class App(tk.Tk):
 
                     rig = RigolDG(RigolDgConfig(visa_resource=visa_res, channel=1, timeout_ms=5000))
                     rig.open()
+                    try:
+                        rig.set_amplitude_vpp(fg_amp_vpp)
+                    except Exception:
+                        pass
                     rig.output(True)
                     rig_owned = True
                 except Exception as e:

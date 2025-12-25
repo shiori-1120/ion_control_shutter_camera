@@ -3,6 +3,7 @@
 This module intentionally implements only the small surface we need:
 - identify (IDN)
 - set frequency
+- set amplitude (Vpp)
 - output on/off
 
 NOTE:
@@ -75,6 +76,17 @@ class RigolDG:
         if f <= 0:
             raise ValueError("freq_hz must be > 0")
         self.write(f":SOUR{ch}:FREQ {f}")
+
+    def set_amplitude_vpp(self, vpp: float) -> None:
+        """Set output amplitude in Vpp.
+
+        Note: Rigol DG series typically accepts Vpp via :SOUR<ch>:VOLT.
+        """
+        ch = int(self.cfg.channel)
+        a = float(vpp)
+        if a <= 0:
+            raise ValueError("vpp must be > 0")
+        self.write(f":SOUR{ch}:VOLT {a}")
 
     def output(self, on: bool) -> None:
         ch = int(self.cfg.channel)

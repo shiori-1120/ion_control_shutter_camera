@@ -20,7 +20,9 @@
 - AO width (ms): Sequence タブ用の AO パルス幅。
 - Connect / Disconnect: DAQ ワーカーの開始/終了。Disconnect 時に DO を全 OFF。
 - FG VISA / FG Connect: VISA 文字列を入れて接続確認。接続中は FG Disconnect で閉じる。スイープでも同じ文字列を共有します。
+- FG amp (mVpp): FG の出力振幅を mVpp 指定（内部では Vpp に換算して設定）。
 - Camera mode / Camera check: カメラワーカーの dry/real を選び、接続確認だけ行う。dry のときは下の Dry images でフォルダ指定可能。
+- Exposure (ms): カメラ露光時間（ミリ秒）。Camera check と Sweep のカメラ取得に反映。
 - Dry images (dry cam): dry カメラ用の画像フォルダ。bright* / dark* のファイル（png/jpg/bmp/tif/npy）を置くと、取得要求ごとにランダムで使います（無ければ従来の乱数合成）。
 - ROI bootstrap: スイープ開始時に 729 を OFF のままカメラ TTL だけを数パルス送信（既定: 2 ms ON/2 ms OFF を最大 5 回）。カメラ応答が得られなければスイープを中断。
 
@@ -33,6 +35,7 @@
 - DAQ mode / Camera mode / DAQ device: スイープ時に使うモードとデバイス名。
 - FG VISA: 関数発生器の VISA リソース文字列 (例: USB0::0x0699::0x03A2::C040073::INSTR)。上部バーと共有。
 - No FG: チェック時は FG 制御をスキップ。外すと FG を pyVISA で制御。
+- FG amp (mVpp): FG 振幅。Start sweep 時に適用。
 - Update interval (s): グラフ・ステータスの更新間隔。負荷を下げたいときは大きめに。
 - Start sweep / Stop: スイープ開始・停止。開始中は入力がロックされます。
 - グラフ: 周波数ごとの p_bright を表示。完了時に spectrum.png を出力。

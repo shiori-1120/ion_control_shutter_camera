@@ -123,7 +123,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             import numpy as np
 
             from .lib.analysis_profiles import generate_rois_from_image
-            from .lib.controlDevice import Control_qCMOScamera
+            from .lib.ControlDevice import Control_qCMOScamera
             from .lib.thresholding import bootstrap_threshold_from_stream, classify_hysteresis, normalize_count
 
             cam = Control_qCMOScamera()

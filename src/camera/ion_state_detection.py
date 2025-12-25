@@ -42,7 +42,7 @@ def get_n_frames_from_buffer(
 ) -> tuple[int, int]:
 
     # Camera environment is required for capture.
-    from .lib.controlDevice import Control_qCMOScamera
+    from .lib.ControlDevice import Control_qCMOScamera
 
     # 出力先
     if session_root is None:
