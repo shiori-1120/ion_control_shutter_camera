@@ -20,8 +20,11 @@ from __future__ import annotations
 
 import csv
 import json
+import queue
+import subprocess
 import threading
 import time
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -86,12 +89,13 @@ AO_RATE_HZ = 5000.0
 AO_EDGE_LOW_SAMPLES = 1
 
 DEFAULT_FG_WAVE = "SIN"
-DEFAULT_FG_AMP_VPP = 1.0
+DEFAULT_FG_AMP_VPP = 0.790
 DEFAULT_FG_OFFSET_V = 0.0
 DEFAULT_FG_START_HZ = 1_000.0
 DEFAULT_FG_STOP_HZ = 10_000.0
 DEFAULT_FG_TIME_S = 1.0
-DEFAULT_FG_RESOURCE = "USB0::0x1AB1::0x0641::DG9A00000000::INSTR"  # Rigol DG9xx USB placeholder
+DEFAULT_FG_RESOURCE = "USB0::0x1AB1::0x0646::DG9R273500535::INSTR"
+FG_AMP_MAX_MVPP = 810.0
 
 # ROI bootstrap (pre-sequence camera TTL check)
 ROI_PULSE_S = 0.002
@@ -100,6 +104,13 @@ ROI_MAX_ATTEMPT = 5
 
 # UI
 DEFAULT_UI_FONT_SIZE = 12
+DEFAULT_DAQ_DEVICE = "Dev1"
+
+# Persist GUI camera-trigger preferences (no manual re-entry on next launch)
+GUI_PREFS_PATH = Path("config") / "shutter_gui_prefs.json"
+
+# Persist last worker PIDs so we can clean up after crashes (best-effort).
+WORKER_PIDS_PATH = Path("config") / "last_worker_pids.json"
 
 
 # -------------------------
@@ -123,11 +134,16 @@ class App(tk.Tk):
         self._daq_proc: Process | None = None
         self._daq_cmd_q: Queue | None = None
         self._daq_resp_q: Queue | None = None
+        # NOTE: DAQ worker uses a single response queue. Without serializing
+        # request/response pairs, concurrent callers can consume each other's
+        # responses and appear to hang.
+        self._daq_req_lock = threading.Lock()
         self._daq_connected = False
         self._daq_device: str | None = None
         self._daq_mode: str = "real"
         self._seq_thread: threading.Thread | None = None
         self._seq_running = False
+        self._seq_stop_polling = False
 
         self._fg_handle = None
         self._fg_resource: str | None = None
@@ -141,6 +157,12 @@ class App(tk.Tk):
         self._plot_canvas = None
 
         self._build_ui()
+
+        # Restore persisted camera trigger preferences (if any).
+        try:
+            self._load_camera_trigger_prefs()
+        except Exception:
+            pass
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _get_fg_amp_vpp(self) -> float:
@@ -156,6 +178,20 @@ class App(tk.Tk):
 
         if mvpp <= 0:
             raise ValueError("FG amplitude (mVpp) must be > 0")
+
+        if mvpp > FG_AMP_MAX_MVPP:
+            try:
+                messagebox.showwarning(
+                    "FG",
+                    f"FG amp is limited to {FG_AMP_MAX_MVPP:.0f} mVpp. Setting to max.",
+                )
+            except Exception:
+                pass
+            try:
+                self.fg_amp_mvpp_var.set(str(int(FG_AMP_MAX_MVPP)))
+            except Exception:
+                pass
+            mvpp = float(FG_AMP_MAX_MVPP)
         return mvpp / 1000.0
 
     def _get_camera_exposure_s(self) -> float:
@@ -172,6 +208,26 @@ class App(tk.Tk):
         if ms <= 0:
             raise ValueError("Exposure (ms) must be > 0")
         return ms / 1000.0
+
+    def _camera_trigger_cfg_from_ui(self) -> dict[str, Any]:
+        delay_s_raw = (self.camera_trigger_delay_s_var.get() or "").strip()
+        delay_s: float | None = None
+        if delay_s_raw:
+            try:
+                delay_s = float(delay_s_raw)
+            except Exception:
+                raise ValueError(f"Invalid trigger delay (s): {delay_s_raw!r}")
+
+        cfg: dict[str, Any] = {
+            "source": (self.camera_trigger_source_var.get() or "EXTERNAL").strip().upper() or "EXTERNAL",
+            "connector": (self.camera_trigger_connector_var.get() or "BNC").strip().upper() or "BNC",
+            "polarity": (self.camera_trigger_polarity_var.get() or "POSITIVE").strip().upper() or "POSITIVE",
+            "active": (self.camera_trigger_active_var.get() or "EDGE").strip().upper() or "EDGE",
+            "mode": (self.camera_trigger_mode_var.get() or "NORMAL").strip().upper() or "NORMAL",
+        }
+        if delay_s is not None:
+            cfg["delay_s"] = float(delay_s)
+        return cfg
 
     def _open_usage_doc(self) -> None:
         try:
@@ -206,6 +262,61 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    def _prefs_path(self) -> Path:
+        # Store under repo's config/ by default.
+        try:
+            root = Path(__file__).resolve().parents[2]
+            return root / GUI_PREFS_PATH
+        except Exception:
+            return GUI_PREFS_PATH
+
+    def _load_camera_trigger_prefs(self) -> None:
+        p = self._prefs_path()
+        if not p.exists():
+            return
+        data = json.loads(p.read_text(encoding="utf-8"))
+        trig = data.get("camera_trigger")
+        if not isinstance(trig, dict):
+            return
+
+        def _set_str(var: tk.StringVar, key: str) -> None:
+            v = trig.get(key)
+            if v is None:
+                return
+            s = str(v).strip()
+            if s:
+                var.set(s)
+
+        _set_str(self.camera_trigger_source_var, "source")
+        _set_str(self.camera_trigger_connector_var, "connector")
+        _set_str(self.camera_trigger_polarity_var, "polarity")
+        _set_str(self.camera_trigger_active_var, "active")
+        _set_str(self.camera_trigger_mode_var, "mode")
+        _set_str(self.camera_trigger_delay_s_var, "delay_s")
+
+        try:
+            self.camera_verbose_var.set(bool(trig.get("verbose") or False))
+        except Exception:
+            pass
+
+    def _save_camera_trigger_prefs(self) -> None:
+        p = self._prefs_path()
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+        trig = {
+            "source": (self.camera_trigger_source_var.get() or "").strip(),
+            "connector": (self.camera_trigger_connector_var.get() or "").strip(),
+            "polarity": (self.camera_trigger_polarity_var.get() or "").strip(),
+            "active": (self.camera_trigger_active_var.get() or "").strip(),
+            "mode": (self.camera_trigger_mode_var.get() or "").strip(),
+            "delay_s": (self.camera_trigger_delay_s_var.get() or "").strip(),
+            "verbose": bool(self.camera_verbose_var.get()),
+        }
+        p.write_text(json.dumps({"camera_trigger": trig}, ensure_ascii=False, indent=2), encoding="utf-8")
+
     def _build_ui(self) -> None:
         # Menu bar (Help -> open usage doc)
         menubar = tk.Menu(self)
@@ -215,17 +326,36 @@ class App(tk.Tk):
         self.config(menu=menubar)
 
         # Shared vars
-        self.fg_resource_var = tk.StringVar(value="")
+        self.fg_resource_var = tk.StringVar(value=DEFAULT_FG_RESOURCE)
         self.fg_amp_mvpp_var = tk.StringVar(value=str(int(DEFAULT_FG_AMP_VPP * 1000)))
         self.camera_mode_top_var = tk.StringVar(value="dry")
-        self.camera_exposure_ms_var = tk.StringVar(value="1.0")
+        self.camera_exposure_ms_var = tk.StringVar(value="100.0")
         self.dry_image_dir_var = tk.StringVar(value="")
+
+        # Camera trigger settings (applied automatically; users don't need to set env vars in shell)
+        self.camera_trigger_source_var = tk.StringVar(
+            value="EXTERNAL"
+        )
+        self.camera_trigger_connector_var = tk.StringVar(
+            value="BNC"
+        )
+        self.camera_trigger_polarity_var = tk.StringVar(
+            value="POSITIVE"
+        )
+        self.camera_trigger_active_var = tk.StringVar(
+            value="EDGE"
+        )
+        self.camera_trigger_mode_var = tk.StringVar(
+            value="NORMAL"
+        )
+        self.camera_trigger_delay_s_var = tk.StringVar(value="")
+        self.camera_verbose_var = tk.BooleanVar(value=False)
 
         top = ttk.Frame(self, padding=10)
         top.pack(side=tk.TOP, fill=tk.X)
 
         ttk.Label(top, text="Device").grid(row=0, column=0, sticky=tk.W)
-        self.device_var = tk.StringVar(value="Dev3")
+        self.device_var = tk.StringVar(value=DEFAULT_DAQ_DEVICE)
         ttk.Entry(top, textvariable=self.device_var, width=10).grid(row=0, column=1, sticky=tk.W, padx=5)
 
         ttk.Label(top, text="DAQ mode").grid(row=0, column=2, sticky=tk.W)
@@ -235,7 +365,7 @@ class App(tk.Tk):
         )
 
         ttk.Label(top, text="AO width (ms)").grid(row=0, column=4, sticky=tk.W)
-        self.width_var = tk.StringVar(value="1.0")
+        self.width_var = tk.StringVar(value="15.0")
         ttk.Entry(top, textvariable=self.width_var, width=10).grid(row=0, column=5, sticky=tk.W, padx=5)
 
         self.connect_btn = ttk.Button(top, text="Connect", command=self._connect)
@@ -268,8 +398,33 @@ class App(tk.Tk):
         ttk.Entry(top, textvariable=self.dry_image_dir_var, width=30).grid(row=2, column=6, columnspan=2, sticky=tk.W, padx=5, pady=(6, 0))
         ttk.Button(top, text="...", width=3, command=self._browse_dry_images).grid(row=2, column=8, pady=(6, 0))
 
+        ttk.Label(top, text="Cam trig").grid(row=3, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Combobox(top, textvariable=self.camera_trigger_source_var, values=["EXTERNAL", "INTERNAL"], width=9, state="readonly").grid(
+            row=3, column=1, sticky=tk.W, padx=5, pady=(6, 0)
+        )
+        ttk.Label(top, text="Conn").grid(row=3, column=2, sticky=tk.W, pady=(6, 0))
+        ttk.Combobox(top, textvariable=self.camera_trigger_connector_var, values=["BNC", "MULTI", "INTERFACE"], width=9, state="readonly").grid(
+            row=3, column=3, sticky=tk.W, padx=5, pady=(6, 0)
+        )
+        ttk.Label(top, text="Pol").grid(row=3, column=4, sticky=tk.W, pady=(6, 0))
+        ttk.Combobox(top, textvariable=self.camera_trigger_polarity_var, values=["POSITIVE", "NEGATIVE"], width=9, state="readonly").grid(
+            row=3, column=5, sticky=tk.W, padx=5, pady=(6, 0)
+        )
+        ttk.Label(top, text="Act").grid(row=3, column=6, sticky=tk.W, pady=(6, 0))
+        ttk.Combobox(top, textvariable=self.camera_trigger_active_var, values=["EDGE", "LEVEL"], width=7, state="readonly").grid(
+            row=3, column=7, sticky=tk.W, padx=5, pady=(6, 0)
+        )
+
+        ttk.Label(top, text="Mode").grid(row=4, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Combobox(top, textvariable=self.camera_trigger_mode_var, values=["NORMAL", "START"], width=9, state="readonly").grid(
+            row=4, column=1, sticky=tk.W, padx=5, pady=(6, 0)
+        )
+        ttk.Label(top, text="Delay (s)").grid(row=4, column=2, sticky=tk.W, pady=(6, 0))
+        ttk.Entry(top, textvariable=self.camera_trigger_delay_s_var, width=10).grid(row=4, column=3, sticky=tk.W, padx=5, pady=(6, 0))
+        ttk.Checkbutton(top, text="Cam verbose", variable=self.camera_verbose_var).grid(row=4, column=4, sticky=tk.W, padx=5, pady=(6, 0))
+
         self.status_var = tk.StringVar(value="Disconnected")
-        ttk.Label(top, textvariable=self.status_var).grid(row=3, column=0, columnspan=9, sticky=tk.W, pady=(8, 0))
+        ttk.Label(top, textvariable=self.status_var).grid(row=5, column=0, columnspan=9, sticky=tk.W, pady=(8, 0))
 
         top.grid_columnconfigure(9, weight=1)
 
@@ -511,12 +666,12 @@ class App(tk.Tk):
             "version": 1,
             "sequences": {
                 "default": {
-                    "ao_width_ms": 1.0,
+                    "ao_width_ms": 15.0,
                     "ao_insert_index": 1,
                     "sequence_text": DEFAULT_SEQUENCE_TEXT,
                 },
                 "minimal": {
-                    "ao_width_ms": 1.0,
+                    "ao_width_ms": 15.0,
                     "ao_insert_index": -1,
                     "sequence_text": MINIMAL_SEQUENCE_TEXT,
                 },
@@ -554,13 +709,13 @@ class App(tk.Tk):
         seqs: dict[str, Any] = data["sequences"]
         if "default" not in seqs:
             seqs["default"] = {
-                "ao_width_ms": 1.0,
+                "ao_width_ms": 15.0,
                 "ao_insert_index": 1,
                 "sequence_text": DEFAULT_SEQUENCE_TEXT,
             }
         if "minimal" not in seqs:
             seqs["minimal"] = {
-                "ao_width_ms": 1.0,
+                "ao_width_ms": 15.0,
                 "ao_insert_index": -1,
                 "sequence_text": MINIMAL_SEQUENCE_TEXT,
             }
@@ -725,11 +880,11 @@ class App(tk.Tk):
         row.pack(fill=tk.X, pady=(0, 8))
 
         ttk.Label(row, text="Freq start (Hz)").grid(row=0, column=0, sticky=tk.W)
-        self.sw_freq_start = tk.StringVar(value="80e6")
+        self.sw_freq_start = tk.StringVar(value="199e6")
         ttk.Entry(row, textvariable=self.sw_freq_start, width=12).grid(row=0, column=1, padx=4)
 
         ttk.Label(row, text="Freq stop (Hz)").grid(row=0, column=2, sticky=tk.W)
-        self.sw_freq_stop = tk.StringVar(value="82e6")
+        self.sw_freq_stop = tk.StringVar(value="201e6")
         ttk.Entry(row, textvariable=self.sw_freq_stop, width=12).grid(row=0, column=3, padx=4)
 
         ttk.Label(row, text="Freq step (Hz)").grid(row=0, column=4, sticky=tk.W)
@@ -741,7 +896,7 @@ class App(tk.Tk):
         ttk.Entry(row, textvariable=self.sw_n_target, width=8).grid(row=1, column=1, padx=4, pady=(6, 0))
 
         ttk.Label(row, text="max_attempt").grid(row=1, column=2, sticky=tk.W, pady=(6, 0))
-        self.sw_max_attempt = tk.StringVar(value="200")
+        self.sw_max_attempt = tk.StringVar(value="100")
         ttk.Entry(row, textvariable=self.sw_max_attempt, width=8).grid(row=1, column=3, padx=4, pady=(6, 0))
 
         ttk.Label(row, text="settle_s").grid(row=1, column=4, sticky=tk.W, pady=(6, 0))
@@ -766,7 +921,7 @@ class App(tk.Tk):
         )
 
         ttk.Label(row, text="DAQ device").grid(row=3, column=4, sticky=tk.W, pady=(6, 0))
-        self.sw_device = tk.StringVar(value="Dev3")
+        self.sw_device = tk.StringVar(value=DEFAULT_DAQ_DEVICE)
         ttk.Entry(row, textvariable=self.sw_device, width=10).grid(row=3, column=5, padx=4, pady=(6, 0))
 
         ttk.Label(row, text="FG VISA").grid(row=4, column=0, sticky=tk.W, pady=(6, 0))
@@ -892,48 +1047,232 @@ class App(tk.Tk):
 
     def _check_camera_connection(self) -> None:
         """Spawn camera worker once to verify connectivity/dry samples."""
+        # Try to clean up stale workers from previous crashed runs.
+        self._cleanup_stale_workers()
+
         mode = self.camera_mode_top_var.get().strip() or "dry"
         dry_dir = self.dry_image_dir_var.get().strip()
         exposure_s = self._get_camera_exposure_s()
+
+        trig_cfg = self._camera_trigger_cfg_from_ui()
+        trig_src = str(trig_cfg.get("source") or "EXTERNAL").strip().upper() or "EXTERNAL"
+
+        # For EXTERNAL trigger cameras, we can make this check succeed by
+        # temporarily priming the camera trigger TTL via DAQ while the camera
+        # worker performs bootstrap.
         cfg: dict[str, Any] = {
             "mode": mode,
             "exposure_s": float(exposure_s),
-            "frame_timeout_s": 1.0,
+            "frame_timeout_s": max(1.0, float(exposure_s) * 4.0 + 0.5),
             "bootstrap_n": 5,
+            "trigger": dict(trig_cfg),
+            "verbose": bool(self.camera_verbose_var.get()),
         }
+        try:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            cfg["log_path"] = str(Path("data/output") / "camera_check" / ts / "camera_worker.log")
+        except Exception:
+            pass
         if mode == "dry" and dry_dir:
             cfg["dry_image_dir"] = dry_dir
 
-        from src.camera.ion_state_worker import ion_state_worker_main
+        def _worker() -> None:
+            import queue as _queue
+            import threading as _threading
+            import time as _time
 
-        cmd_q: Queue = Queue()
-        resp_q: Queue = Queue()
-        p = Process(target=ion_state_worker_main, args=(cmd_q, resp_q, cfg), daemon=True)
-        p.start()
-        ok = False
-        try:
-            ready = resp_q.get(timeout=15)
-            if ready.get("ok"):
-                ok = True
-                dry_samples = ready.get("dry_samples")
-                extra = ""
-                if dry_samples is not None:
-                    extra = f" | dry samples: {dry_samples}"
-                messagebox.showinfo("Camera", f"Camera worker ready ({mode}){extra}")
-            else:
-                messagebox.showerror("Camera", f"Failed: {ready}")
-        except Exception as e:
-            messagebox.showerror("Camera", f"Failed: {e}")
-        finally:
+            from src.camera.ion_state_worker import ion_state_worker_main
+
+            cmd_q: Queue = Queue()
+            resp_q: Queue = Queue()
+            p = Process(target=ion_state_worker_main, args=(cmd_q, resp_q, cfg), daemon=True)
+
+            # Optional: DAQ priming (external trigger)
+            prime_stop = _threading.Event()
+            prime_thread: _threading.Thread | None = None
+
+            tmp_daq_proc: Process | None = None
+            tmp_daq_cmd_q: Queue | None = None
+            tmp_daq_resp_q: Queue | None = None
+
+            def _start_tmp_daq() -> tuple[Queue, Queue, Process]:
+                device = self.device_var.get().strip() or DEFAULT_DAQ_DEVICE
+                daq_mode = self.device_mode_var.get().strip().lower() or "real"
+                if daq_mode != "real":
+                    raise RuntimeError(
+                        "Camera check in EXTERNAL trigger mode requires DAQ mode 'real' (to output TTL)."
+                    )
+
+                dq: Queue = Queue()
+                rq: Queue = Queue()
+                proc = Process(
+                    target=daq_worker_mpq_main,
+                    args=(dq, rq, {"device": device, "mode": daq_mode}),
+                    daemon=True,
+                )
+                proc.start()
+                ready = rq.get(timeout=8)
+                if not ready.get("ok"):
+                    raise RuntimeError(f"DAQ worker failed: {ready}")
+                return dq, rq, proc
+
+            def _prime_loop_using_existing() -> None:
+                roi_sequence = [
+                    (ALL_OFF, ROI_IDLE_S),
+                    (CAMERA_TRIGGER, ROI_PULSE_S),
+                    (ALL_OFF, ROI_IDLE_S),
+                ]
+                while not prime_stop.is_set():
+                    try:
+                        self._daq_request(
+                            {
+                                "cmd": "run_sequence_once",
+                                "do_sequence": roi_sequence,
+                                "insert_index": -1,
+                                "ao_width_ms": 0.0,
+                                "ao_rate_hz": AO_RATE_HZ,
+                                "ao_v_high": 5.0,
+                                "ao_v_low": 0.0,
+                            },
+                            timeout=2.0,
+                        )
+                    except Exception:
+                        pass
+                    _time.sleep(0.01)
+
+            def _prime_loop_using_tmp(dq: Queue, rq: Queue) -> None:
+                roi_sequence = [
+                    (ALL_OFF, ROI_IDLE_S),
+                    (CAMERA_TRIGGER, ROI_PULSE_S),
+                    (ALL_OFF, ROI_IDLE_S),
+                ]
+                while not prime_stop.is_set():
+                    try:
+                        dq.put(
+                            {
+                                "cmd": "run_sequence_once",
+                                "do_sequence": roi_sequence,
+                                "insert_index": -1,
+                                "ao_width_ms": 0.0,
+                                "ao_rate_hz": AO_RATE_HZ,
+                                "ao_v_high": 5.0,
+                                "ao_v_low": 0.0,
+                            }
+                        )
+                    except Exception:
+                        pass
+
+                    # Drain a single response if available (avoid queue growth)
+                    try:
+                        rq.get(timeout=0.1)
+                    except _queue.Empty:
+                        pass
+                    except Exception:
+                        pass
+                    _time.sleep(0.01)
+
+            want_prime = (mode == "real") and (trig_src in ("EXTERNAL", "EXT", "2", ""))
+            if want_prime:
+                try:
+                    if self._daq_connected:
+                        prime_thread = _threading.Thread(target=_prime_loop_using_existing, daemon=True)
+                        prime_thread.start()
+                    else:
+                        dq, rq, proc = _start_tmp_daq()
+                        tmp_daq_cmd_q, tmp_daq_resp_q, tmp_daq_proc = dq, rq, proc
+                        prime_thread = _threading.Thread(
+                            target=_prime_loop_using_tmp,
+                            args=(tmp_daq_cmd_q, tmp_daq_resp_q),
+                            daemon=True,
+                        )
+                        prime_thread.start()
+                except Exception as e:
+                    # If priming cannot be started, fail fast with a helpful message.
+                    def _ui_fail(msg=str(e)) -> None:
+                        messagebox.showerror("Camera", f"Failed to start DAQ priming for EXTERNAL trigger.\n{msg}")
+
+                    self.after(0, _ui_fail)
+                    return
+
+            p.start()
+
             try:
-                cmd_q.put({"cmd": "close"})
+                self._write_last_worker_pids(
+                    {
+                        "t_iso": datetime.now().isoformat(timespec="seconds"),
+                        "cam_pid": int(getattr(p, "pid", 0) or 0),
+                    }
+                )
             except Exception:
                 pass
+
+            ok = False
+            ui_title = "Camera"
+            ui_msg = ""
             try:
-                p.terminate()
-            except Exception:
-                pass
-        self._camera_connected = ok
+                # External-trigger bootstrap may take longer (depends on exposure).
+                ready = resp_q.get(timeout=max(15.0, float(cfg.get("bootstrap_n", 5)) * (float(exposure_s) + 0.05) + 5.0))
+                if ready.get("ok"):
+                    ok = True
+                    dry_samples = ready.get("dry_samples")
+                    extra = ""
+                    if dry_samples is not None:
+                        extra = f" | dry samples: {dry_samples}"
+                    ui_msg = f"Camera worker ready ({mode}){extra}"
+                    ui_kind = "info"
+                else:
+                    ui_msg = f"Failed: {ready}"
+                    ui_kind = "error"
+            except Exception as e:
+                ui_msg = f"Failed: {e}"
+                ui_kind = "error"
+            finally:
+                prime_stop.set()
+                try:
+                    cmd_q.put({"cmd": "close"})
+                except Exception:
+                    pass
+                try:
+                    # Give the worker a chance to run its cleanup (camera close/uninit)
+                    # before falling back to terminate.
+                    p.join(timeout=3.0)
+                    if p.is_alive():
+                        p.terminate()
+                        p.join(timeout=1.0)
+                except Exception:
+                    pass
+
+                # Clear pid record after this check.
+                try:
+                    self._write_last_worker_pids({})
+                except Exception:
+                    pass
+
+                # Close temporary DAQ (if we started one)
+                try:
+                    if tmp_daq_cmd_q is not None:
+                        tmp_daq_cmd_q.put({"cmd": "close"})
+                except Exception:
+                    pass
+                try:
+                    if tmp_daq_proc is not None and tmp_daq_proc.is_alive():
+                        tmp_daq_proc.join(timeout=2.0)
+                        if tmp_daq_proc.is_alive():
+                            tmp_daq_proc.terminate()
+                            tmp_daq_proc.join(timeout=1.0)
+                except Exception:
+                    pass
+
+            def _ui() -> None:
+                self._camera_connected = ok
+                if ui_kind == "info":
+                    messagebox.showinfo(ui_title, ui_msg)
+                else:
+                    messagebox.showerror(ui_title, ui_msg)
+
+            self.after(0, _ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _run_roi_bootstrap(self, daq_cmd_q: Queue, daq_resp_q: Queue, cam_cmd_q: Queue, cam_resp_q: Queue) -> bool:
         """Send simple TTL pulses (camera trigger only) until camera replies or attempts are exhausted."""
@@ -986,7 +1325,7 @@ class App(tk.Tk):
 
     def _connect(self) -> None:
         try:
-            device = self.device_var.get().strip() or "Dev3"
+            device = self.device_var.get().strip() or DEFAULT_DAQ_DEVICE
             mode = self.device_mode_var.get().strip().lower() or "real"
             self._start_daq_worker(device=device, mode=mode)
             self._daq_connected = True
@@ -1048,7 +1387,10 @@ class App(tk.Tk):
 
         try:
             if self._daq_proc is not None and self._daq_proc.is_alive():
-                self._daq_proc.terminate()
+                self._join_with_ui(self._daq_proc, timeout=2.0)
+                if self._daq_proc.is_alive():
+                    self._daq_proc.terminate()
+                    self._join_with_ui(self._daq_proc, timeout=1.0)
         except Exception:
             pass
 
@@ -1058,15 +1400,17 @@ class App(tk.Tk):
         self._daq_connected = False
 
     def _daq_request(self, cmd: dict, timeout: float = 5.0) -> dict:
-        if not self._daq_connected or self._daq_cmd_q is None or self._daq_resp_q is None:
-            raise RuntimeError("Not connected")
-        self._daq_cmd_q.put(cmd)
-        resp = self._daq_resp_q.get(timeout=timeout)
-        if not isinstance(resp, dict):
-            raise RuntimeError(f"Invalid DAQ response: {resp!r}")
-        if not resp.get("ok"):
-            raise RuntimeError(resp.get("error", "DAQ error"))
-        return resp
+        # Serialize to keep request/response pairing correct.
+        with self._daq_req_lock:
+            if not self._daq_connected or self._daq_cmd_q is None or self._daq_resp_q is None:
+                raise RuntimeError("Not connected")
+            self._daq_cmd_q.put(cmd)
+            resp = self._daq_resp_q.get(timeout=timeout)
+            if not isinstance(resp, dict):
+                raise RuntimeError(f"Invalid DAQ response: {resp!r}")
+            if not resp.get("ok"):
+                raise RuntimeError(resp.get("error", "DAQ error"))
+            return resp
 
     def _all_off(self) -> None:
         try:
@@ -1164,15 +1508,57 @@ class App(tk.Tk):
 
     def _stop_sequence(self) -> None:
         self._seq_running = False
+
+        # Don't block the Tk main thread while the worker thread is still
+        # waiting for a DAQ response. Poll asynchronously instead.
+        if self._seq_thread is None:
+            self._sequence_stopped_ui()
+            return
+
         try:
-            if self._seq_thread is not None:
-                self._seq_thread.join(timeout=0.5)
+            alive = self._seq_thread.is_alive()
+        except Exception:
+            alive = False
+
+        if not alive:
+            self._sequence_stopped_ui()
+            return
+
+        # Prevent starting a second sequence thread while stopping.
+        try:
+            self.start_btn.configure(state=tk.DISABLED)
+            self.stop_btn.configure(state=tk.DISABLED)
         except Exception:
             pass
+
+        if not self._seq_stop_polling:
+            self._seq_stop_polling = True
+            self.after(100, self._poll_sequence_stop)
+
+    def _poll_sequence_stop(self) -> None:
+        try:
+            t = self._seq_thread
+            alive = bool(t and t.is_alive())
+        except Exception:
+            alive = False
+
+        if alive:
+            self.after(100, self._poll_sequence_stop)
+            return
+
+        self._seq_stop_polling = False
         self._sequence_stopped_ui()
 
     def _sequence_loop(self, do_sequence: list[tuple[int, float]], insert_index: int, width_ms: float) -> None:
         try:
+            # Expected runtime per iteration (best-effort) to avoid premature timeouts.
+            est_s = 0.0
+            try:
+                est_s = float(sum(float(hold_s) for _, hold_s in do_sequence))
+            except Exception:
+                est_s = 0.0
+            req_timeout = max(5.0, est_s + 2.0)
+
             while self._seq_running:
                 self._daq_request(
                     {
@@ -1183,7 +1569,8 @@ class App(tk.Tk):
                         "ao_rate_hz": AO_RATE_HZ,
                         "ao_v_high": 5.0,
                         "ao_v_low": 0.0,
-                    }
+                    },
+                    timeout=req_timeout,
                 )
         except Exception as e:
             err = str(e)
@@ -1193,6 +1580,10 @@ class App(tk.Tk):
             self.after(0, self._sequence_stopped_ui)
 
     def _on_close(self) -> None:
+        try:
+            self._save_camera_trigger_prefs()
+        except Exception:
+            pass
         try:
             self._stop_sweep(clean_only=True)
         except Exception:
@@ -1204,10 +1595,133 @@ class App(tk.Tk):
             pass
         self.destroy()
 
+    def _ui_pump(self) -> None:
+        """Process Tk events to avoid UI freeze during long operations."""
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def _mpq_get_with_ui(self, q: Queue, timeout: float, *, label: str = "response", poll_s: float = 0.02):
+        """Queue.get(timeout=...) that keeps the Tk UI responsive.
+
+        IMPORTANT: When it times out, raise a RuntimeError with a readable message
+        (queue.Empty stringifies to an empty string and is confusing in dialogs).
+        """
+        deadline = time.time() + float(timeout)
+        while True:
+            if not self._sw_running:
+                raise RuntimeError("Stopped")
+            try:
+                return q.get_nowait()
+            except queue.Empty:
+                if time.time() >= deadline:
+                    raise RuntimeError(f"Timeout waiting for {label} ({timeout:.1f}s)")
+                self._ui_pump()
+                time.sleep(poll_s)
+
+    def _join_with_ui(self, p: Process, timeout: float, *, poll_s: float = 0.02) -> None:
+        """Process.join(timeout=...) that keeps the Tk UI responsive."""
+        deadline = time.time() + float(timeout)
+        while True:
+            try:
+                if not p.is_alive():
+                    return
+            except Exception:
+                return
+            if time.time() >= deadline:
+                return
+            self._ui_pump()
+            time.sleep(poll_s)
+
+    def _read_last_worker_pids(self) -> dict:
+        try:
+            if WORKER_PIDS_PATH.exists():
+                return json.loads(WORKER_PIDS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return {}
+
+    def _write_last_worker_pids(self, data: dict) -> None:
+        try:
+            WORKER_PIDS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            WORKER_PIDS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _get_cmdline_for_pid(self, pid: int) -> str:
+        """Best-effort process command line lookup (Windows)."""
+        if pid <= 0 or getattr(os, "name", "") != "nt":
+            return ""
+        try:
+            cmd = [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if($p){{$p.CommandLine}}",
+            ]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+            return (r.stdout or "").strip()
+        except Exception:
+            return ""
+
+    def _taskkill_pid(self, pid: int, *, force: bool = False) -> bool:
+        if pid <= 0 or getattr(os, "name", "") != "nt":
+            return False
+        try:
+            args = ["taskkill", "/PID", str(pid), "/T"]
+            if force:
+                args.append("/F")
+            r = subprocess.run(args, capture_output=True, text=True, timeout=4)
+            return r.returncode == 0
+        except Exception:
+            return False
+
+    def _cleanup_stale_workers(self) -> None:
+        """Try to release camera locks left by crashed runs (best-effort).
+
+        If a previous sweep died, its python worker might still be alive and
+        holding the camera. We only kill PIDs that look like our own workers
+        (guardrail: check cmdline).
+        """
+        try:
+            data = self._read_last_worker_pids()
+            pids: list[int] = []
+            for k in ("cam_pid", "daq_pid"):
+                try:
+                    v = int(data.get(k, 0) or 0)
+                except Exception:
+                    v = 0
+                if v > 0:
+                    pids.append(v)
+
+            if not pids:
+                return
+
+            for pid in pids:
+                cmdline = (self._get_cmdline_for_pid(pid) or "").lower()
+                looks_like_ours = any(m in cmdline for m in ("ion_state_worker", "daq_worker", "shutter_gui"))
+                if not looks_like_ours:
+                    continue
+
+                # Try gentle termination first; escalate to /F.
+                if not self._taskkill_pid(pid, force=False):
+                    self._taskkill_pid(pid, force=True)
+
+            # Clear after attempting cleanup.
+            self._write_last_worker_pids({})
+        except Exception:
+            pass
+
     # ---------------- Sweep runtime (queue-based) ----------------
     def _start_sweep(self) -> None:
         if self._sw_running:
             return
+
+        # If a previous run crashed, workers may still hold exclusive resources.
+        self._cleanup_stale_workers()
+
+        trig_cfg = self._camera_trigger_cfg_from_ui()
 
         try:
             freq_start = float(eval(self.sw_freq_start.get()))
@@ -1232,7 +1746,7 @@ class App(tk.Tk):
             seq_data = json.loads(seq_path.read_text(encoding="utf-8"))
             do_sequence = self._parse_sequence_text_from_raw(seq_data.get("sequence_text", ""))
             insert_index = int(seq_data.get("ao_insert_index", -1))
-            ao_width_ms = float(seq_data.get("ao_width_ms", 1.0))
+            ao_width_ms = float(seq_data.get("ao_width_ms", 15.0))
 
             n_target = int(self.sw_n_target.get())
             max_attempt = int(self.sw_max_attempt.get())
@@ -1242,7 +1756,7 @@ class App(tk.Tk):
             daq_mode = self.sw_daq_mode.get()
             cam_mode = self.sw_cam_mode.get()
             cam_exposure_s = self._get_camera_exposure_s()
-            device = self.sw_device.get().strip() or "Dev3"
+            device = self.sw_device.get().strip() or DEFAULT_DAQ_DEVICE
             visa_res = self.sw_visa.get().strip()
             no_fg = bool(self.sw_no_fg.get())
             fg_amp_vpp = self._get_fg_amp_vpp()
@@ -1256,6 +1770,12 @@ class App(tk.Tk):
         self._sw_running = True
         self._toggle_sweep_controls(False)
         self.sw_status.set("Starting...")
+
+        # Real camera requires real DAQ to provide hardware TTL triggers.
+        if cam_mode == "real" and daq_mode != "real":
+            messagebox.showerror("Sweep", "Camera mode is real but DAQ mode is not real. Set DAQ mode to real.")
+            self._stop_sweep(clean_only=True)
+            return
 
         # setup output dir
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1304,32 +1824,127 @@ class App(tk.Tk):
         cam_cfg: dict[str, Any] = {
             "mode": cam_mode,
             "exposure_s": float(cam_exposure_s),
-            "frame_timeout_s": 1.0,
+            # timeout should scale with exposure, especially in external-trigger mode.
+            "frame_timeout_s": max(1.0, float(cam_exposure_s) * 4.0 + 0.5),
             "bootstrap_n": 10,
+            "trigger": dict(trig_cfg),
+            "verbose": bool(self.camera_verbose_var.get()),
         }
+        try:
+            cam_cfg["log_path"] = str(out_dir / "camera_worker.log")
+        except Exception:
+            pass
         if dry_image_dir:
             cam_cfg["dry_image_dir"] = dry_image_dir
         cam_p = Process(target=ion_state_worker_main, args=(cam_cmd_q, cam_resp_q, cam_cfg), daemon=True)
         daq_p.start()
-        cam_p.start()
         self._sw_procs = [daq_p, cam_p]
 
-        # wait ready
+        # wait DAQ ready first (needed to prime camera triggers on real hardware)
         try:
-            daq_ready = daq_resp_q.get(timeout=5)
-            cam_ready = cam_resp_q.get(timeout=15)
+            daq_ready = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ ready")
             if not daq_ready.get("ok"):
                 raise RuntimeError(f"DAQ worker failed: {daq_ready}")
-            if not cam_ready.get("ok"):
-                raise RuntimeError(f"Camera worker failed: {cam_ready}")
         except Exception as e:
-            messagebox.showerror("Sweep", f"Worker init failed: {e}")
+            messagebox.showerror("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
+            self._stop_sweep(clean_only=True)
+            return
+
+        # start camera worker
+        cam_p.start()
+
+        # Record PIDs so we can clean up if the GUI crashes.
+        try:
+            self._write_last_worker_pids(
+                {
+                    "t_iso": datetime.now().isoformat(timespec="seconds"),
+                    "daq_pid": int(getattr(daq_p, "pid", 0) or 0),
+                    "cam_pid": int(getattr(cam_p, "pid", 0) or 0),
+                }
+            )
+        except Exception:
+            pass
+
+        # Prime external-trigger camera during bootstrap.
+        # The legacy DCAM stack in src/camera/lib sets TRIGGERSOURCE=EXTERNAL,
+        # so the worker may block until it receives enough TTL triggers.
+        # Use a loop to avoid racing with the camera capture start.
+        cam_ready: dict[str, Any] | None = None
+        if cam_mode == "real":
+            self.sw_status.set("Camera priming...")
+            self._ui_pump()
+            time.sleep(0.2)
+
+            prime_deadline = time.time() + 30.0
+            prime_seq_one = [(ALL_OFF, ROI_IDLE_S), (CAMERA_TRIGGER, ROI_PULSE_S), (ALL_OFF, ROI_IDLE_S)]
+
+            while time.time() < prime_deadline:
+                try:
+                    cam_ready = cam_resp_q.get_nowait()
+                    break
+                except Exception:
+                    pass
+
+                try:
+                    daq_cmd_q.put(
+                        {
+                            "cmd": "run_sequence_once",
+                            "do_sequence": prime_seq_one,
+                            "insert_index": -1,
+                            "ao_width_ms": 0.0,
+                            "ao_rate_hz": AO_RATE_HZ,
+                            "ao_v_high": 5.0,
+                            "ao_v_low": 0.0,
+                        }
+                    )
+                    _ = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ prime response")
+                except Exception:
+                    # If DAQ is temporarily busy, keep trying until deadline.
+                    time.sleep(0.05)
+
+                self._ui_pump()
+
+                # Small gap so we don't flood software-timed loops.
+                time.sleep(0.01)
+
+        # wait camera ready (if not already received during priming)
+        try:
+            if cam_ready is None:
+                cam_ready = self._mpq_get_with_ui(cam_resp_q, timeout=30, label="Camera ready")
+            if not cam_ready.get("ok"):
+                # Add actionable hints for the most common real-hardware failure.
+                hint = ""
+                err_s = str(cam_ready.get("error", ""))
+                if "timeout" in err_s.lower() and "bootstrap" in err_s.lower():
+                    hint = (
+                        "\n\nHint: 実機カメラが外部トリガ待ちの可能性があります。"
+                        "\n- CAMERA_TRIGGER(Port1/line2) がカメラ入力に接続されているか"
+                        "\n- トリガ極性/パルス幅(ROI_PULSE_S)がカメラ要件を満たすか"
+                        "\n- exposure(ms) が極端に長くないか"
+                        "\n- (切り分け用) 上の Cam trig を INTERNAL に切替可能"
+                    )
+                elif ("nocamera" in err_s.lower()) or ("-2147483130" in err_s):
+                    hint = (
+                        "\n\nHint: DCAM がカメラを検出できていません (NOCAMERA)。"
+                        "\n- 他のソフト(Hamamatsu系/Viewer等)でカメラを掴んでいないか確認"
+                        "\n- USB/CameraLink/電源/ケーブルを抜き差しして数秒待つ"
+                        "\n- 前回のプロセスが残っていないか確認（タスクマネージャで python.exe を終了）"
+                        "\n- それでもダメなら PC 再起動（ドライバが復帰することがあります）"
+                    )
+                raise RuntimeError(
+                    "Camera worker failed: "
+                    f"daq_mode={daq_mode}, device={device} | "
+                    f"cam_mode={cam_mode}, exposure_s={cam_exposure_s}, frame_timeout_s={cam_cfg.get('frame_timeout_s')}, bootstrap_n={cam_cfg.get('bootstrap_n')}\n"
+                    f"{cam_ready}{hint}"
+                )
+        except Exception as e:
+            messagebox.showerror("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
             self._stop_sweep(clean_only=True)
             return
 
         # ROI bootstrap: fire camera trigger TTL without 729 and wait for a valid camera reply.
         self.sw_status.set("ROI bootstrap...")
-        self.update_idletasks()
+        self._ui_pump()
         roi_ok = self._run_roi_bootstrap(daq_cmd_q, daq_resp_q, cam_cmd_q, cam_resp_q)
         if not roi_ok:
             messagebox.showerror("Sweep", "ROI bootstrap failed")
@@ -1427,10 +2042,10 @@ class App(tk.Tk):
                             }
                         )
 
-                        daq_resp = daq_resp_q.get(timeout=5)
+                        daq_resp = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ response")
                         if not daq_resp.get("ok"):
                             raise RuntimeError(f"DAQ error: {daq_resp}")
-                        cam_resp = cam_resp_q.get(timeout=5)
+                        cam_resp = self._mpq_get_with_ui(cam_resp_q, timeout=5, label="Camera response")
                         if not cam_resp.get("ok"):
                             continue
 
@@ -1466,7 +2081,7 @@ class App(tk.Tk):
                             self.sw_status.set(
                                 f"Running: step {step_idx+1}/{len(freqs)} freq={freq:.3e} Hz proc={processed}/{n_target}"
                             )
-                            self.update_idletasks()
+                            self._ui_pump()
 
                     p_bright = (n_bright / processed) if processed > 0 else 0.0
                     spec_writer.writerow(
@@ -1481,7 +2096,7 @@ class App(tk.Tk):
                     self._sw_results.append((float(freq), processed, n_bright))
                     self._update_sw_plot(step_idx, freq, processed, n_bright)
                     self.sw_status.set(f"Done step {step_idx+1}/{len(freqs)}")
-                    self.update_idletasks()
+                    self._ui_pump()
 
         except Exception as e:
             messagebox.showerror("Sweep", str(e))
@@ -1510,14 +2125,30 @@ class App(tk.Tk):
                 self._sw_queues["cam_cmd"].put({"cmd": "close"})
         except Exception:
             pass
-        time.sleep(0.2)
+
+        # Prefer graceful shutdown so camera resources are properly released.
+        # Order is [daq_p, cam_p]. Give camera longer.
+        for i, p in enumerate(self._sw_procs):
+            try:
+                timeout = 2.0 if i == 0 else 6.0
+                self._join_with_ui(p, timeout=timeout)
+            except Exception:
+                pass
+
         for p in self._sw_procs:
             try:
                 if p.is_alive():
                     p.terminate()
+                    self._join_with_ui(p, timeout=1.0)
             except Exception:
                 pass
         self._sw_procs = []
+
+        # Clear pid record after stopping sweep.
+        try:
+            self._write_last_worker_pids({})
+        except Exception:
+            pass
         self._toggle_sweep_controls(True)
         if not clean_only:
             self.sw_status.set("Stopped")

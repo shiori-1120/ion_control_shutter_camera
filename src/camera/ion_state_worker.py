@@ -39,6 +39,24 @@ def _limit_blas_threads() -> None:
 def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> None:
     _limit_blas_threads()
 
+    log_path = cfg.get("log_path")
+    _log_file: Any | None = None
+
+    def log(msg: str) -> None:
+        nonlocal _log_file
+        if not log_path:
+            return
+        try:
+            if _log_file is None:
+                p = Path(str(log_path))
+                p.parent.mkdir(parents=True, exist_ok=True)
+                _log_file = open(p, "a", encoding="utf-8")
+            ts = time.strftime("%Y-%m-%d %H:%M:%S")
+            _log_file.write(f"[{ts}] {msg}\n")
+            _log_file.flush()
+        except Exception:
+            pass
+
     # The legacy camera stack expects `import lib.*` to resolve to src/camera/lib.
     # When running as a module from repo root, we need to prepend src/camera to sys.path.
     import sys
@@ -47,6 +65,8 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     camera_dir = Path(__file__).resolve().parent
     if str(camera_dir) not in sys.path:
         sys.path.insert(0, str(camera_dir))
+
+    log(f"worker start | pid={os.getpid()} | mode={cfg.get('mode')} | exposure_s={cfg.get('exposure_s')} | frame_timeout_s={cfg.get('frame_timeout_s')} | bootstrap_n={cfg.get('bootstrap_n')}")
 
     mode = str(cfg.get("mode") or "dry")  # 'dry' | 'real'
 
@@ -58,6 +78,11 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
     tau_on = cfg.get("tau_on")
     tau_off = cfg.get("tau_off")
+
+    trigger_cfg = cfg.get("trigger")
+    cam_verbose = bool(cfg.get("verbose") or cfg.get("camera_verbose") or False)
+
+    log(f"trigger_cfg={trigger_cfg} | cam_verbose={cam_verbose}")
 
     prev_state: bool | None = None
 
@@ -116,9 +141,11 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
     try:
         if mode == "dry":
+            log("mode=dry -> sending ready")
             send({"ok": True, "event": "ready", "mode": "dry", "dry_samples": len(dry_samples)})
 
         elif mode == "real":
+            log("mode=real -> importing camera stack")
             # Import the real camera/analysis stack only in real mode.
             import numpy as np
 
@@ -126,15 +153,20 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             from .lib.ControlDevice import Control_qCMOScamera
             from .lib.thresholding import bootstrap_threshold_from_stream, classify_hysteresis, normalize_count
 
-            cam = Control_qCMOScamera()
+            log("creating Control_qCMOScamera")
+            cam = Control_qCMOScamera(trigger_cfg=trigger_cfg, verbose=cam_verbose)
+            log("OpenCamera_GetHandle")
             cam.OpenCamera_GetHandle()
             # Full frame by default (ROI can be applied in software)
+            log("SetParameters")
             cam.SetParameters(exposure_s)
+            log("StartCapture")
             cam.StartCapture()
 
             # Bootstrap ROI + thresholds if missing
             frames: list[np.ndarray] = []
-            for _ in range(max(1, bootstrap_n)):
+            for i in range(max(1, bootstrap_n)):
+                log(f"bootstrap wait_for_frame_ready {i+1}/{max(1, bootstrap_n)}")
                 ok, err = cam.wait_for_frame_ready(frame_timeout_s)
                 if not ok:
                     raise RuntimeError(f"Camera timeout during bootstrap: {err}")
@@ -185,6 +217,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     "exposure_s": float(exposure_s),
                 }
             )
+            log("sent ready")
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -269,10 +302,12 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
 
     except Exception as e:
+        log(f"FATAL: {e}\n{traceback.format_exc(limit=12)}")
         send({"ok": False, "event": "fatal", "error": str(e), "traceback": traceback.format_exc(limit=12)})
     finally:
         try:
             if cam is not None:
+                log("cleanup: StopCapture/ReleaseBuf/CloseUninitCamera")
                 try:
                     cam.StopCapture()
                 except Exception:
@@ -285,5 +320,11 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     cam.CloseUninitCamera()
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+        try:
+            if _log_file is not None:
+                _log_file.close()
         except Exception:
             pass

@@ -1,5 +1,5 @@
 {
-    "qCMOS.expose-time": 0.007,
+    "qCMOS.expose-time": 0.100,
     "qCMOS.subarray.h-width": 2108,
     "qCMOS.subarray.v-width": 768,
     "qCMOS.subarray.h-start": 848,

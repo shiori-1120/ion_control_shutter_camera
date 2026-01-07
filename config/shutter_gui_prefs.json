@@ -1,0 +1,11 @@
+{
+  "camera_trigger": {
+    "source": "INTERNAL",
+    "connector": "BNC",
+    "polarity": "POSITIVE",
+    "active": "EDGE",
+    "mode": "NORMAL",
+    "delay_s": "",
+    "verbose": false
+  }
+}

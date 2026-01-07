@@ -36,7 +36,7 @@ def daq_worker_mpq_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> Non
             pass
 
     try:
-        device = str(cfg.get("device") or "Dev3")
+        device = str(cfg.get("device") or "Dev1")
         mode = str(cfg.get("mode") or "real").lower()
         if mode == "dry":
             session = DryDaqSession(device=f"{device} (dry)")

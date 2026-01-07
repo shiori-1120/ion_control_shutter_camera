@@ -18,6 +18,8 @@ import argparse
 import csv
 import json
 import os
+import queue
+import threading
 import time
 from datetime import datetime
 from multiprocessing import Process, Queue
@@ -133,7 +135,7 @@ def main() -> None:
     ap.add_argument("--settle-s", type=float, default=0.02, help="Wait after setting frequency")
 
     ap.add_argument("--daq-mode", choices=["dry", "real"], default="real")
-    ap.add_argument("--device", default="Dev3", help="NI-DAQ device name (e.g., Dev3)")
+    ap.add_argument("--device", default="Dev1", help="NI-DAQ device name (e.g., Dev1)")
     ap.add_argument("--sequence-json", required=True, help="Sequence JSON saved from shutter_gui (Save)")
 
     ap.add_argument("--camera-mode", choices=["dry", "real"], default="dry")
@@ -142,6 +144,14 @@ def main() -> None:
     ap.add_argument("--bootstrap-n", type=int, default=10)
     ap.add_argument("--roi", nargs=4, type=int, help="ROI as xw yw xs ys")
     ap.add_argument("--bg-roi", nargs=4, type=int, help="Background ROI as xw yw xs ys")
+
+    ap.add_argument("--trigger-source", default="EXTERNAL", choices=["EXTERNAL", "INTERNAL", "EXT", "INT", "1", "2"])
+    ap.add_argument("--trigger-connector", default="BNC", choices=["BNC", "MULTI", "INTERFACE"])
+    ap.add_argument("--trigger-polarity", default="POSITIVE", choices=["POSITIVE", "NEGATIVE", "POS", "NEG", "RISING", "FALLING"])
+    ap.add_argument("--trigger-active", default="EDGE", choices=["EDGE", "LEVEL"])
+    ap.add_argument("--trigger-mode", default="NORMAL", choices=["NORMAL", "START"])
+    ap.add_argument("--trigger-delay-s", type=float)
+    ap.add_argument("--camera-verbose", action="store_true")
 
     args = ap.parse_args()
 
@@ -171,6 +181,15 @@ def main() -> None:
                 "bootstrap_n": args.bootstrap_n,
                 "roi": args.roi,
                 "bg_roi": args.bg_roi,
+                "trigger": {
+                    "source": args.trigger_source,
+                    "connector": args.trigger_connector,
+                    "polarity": args.trigger_polarity,
+                    "active": args.trigger_active,
+                    "mode": args.trigger_mode,
+                    "delay_s": args.trigger_delay_s,
+                },
+                "camera_verbose": bool(args.camera_verbose),
             },
             ensure_ascii=False,
             indent=2,
@@ -201,6 +220,15 @@ def main() -> None:
         "exposure_s": float(args.exposure_s),
         "frame_timeout_s": float(args.frame_timeout_s),
         "bootstrap_n": int(args.bootstrap_n),
+        "trigger": {
+            "source": str(args.trigger_source),
+            "connector": str(args.trigger_connector),
+            "polarity": str(args.trigger_polarity),
+            "active": str(args.trigger_active),
+            "mode": str(args.trigger_mode),
+            **({"delay_s": float(args.trigger_delay_s)} if args.trigger_delay_s is not None else {}),
+        },
+        "verbose": bool(args.camera_verbose),
     }
     if args.roi:
         cam_cfg["roi"] = list(map(int, args.roi))
@@ -212,9 +240,51 @@ def main() -> None:
     daq_p.start()
     cam_p.start()
 
+    # If camera bootstrap waits for external triggers, waiting for cam_ready
+    # before sending any TTL can deadlock. Prime the trigger line while waiting.
+    stop_prime = threading.Event()
+
+    ALL_OFF = 0b0000
+    CAMERA_TRIGGER = 0b0100  # port1/line2 (matches shutter_gui)
+    prime_sequence = [(ALL_OFF, 0.002), (CAMERA_TRIGGER, 0.002), (ALL_OFF, 0.002)]
+
+    def _prime_loop() -> None:
+        while not stop_prime.is_set():
+            try:
+                daq_cmd_q.put(
+                    {
+                        "cmd": "run_sequence_once",
+                        "do_sequence": prime_sequence,
+                        "insert_index": -1,
+                        "ao_width_ms": 0.0,
+                        "ao_rate_hz": 5000.0,
+                        "ao_v_high": 5.0,
+                        "ao_v_low": 0.0,
+                    }
+                )
+            except Exception:
+                pass
+
+            # Drain any responses so the queue doesn't grow.
+            t_end = time.time() + 0.01
+            while time.time() < t_end and not stop_prime.is_set():
+                try:
+                    daq_resp_q.get(timeout=0.01)
+                except queue.Empty:
+                    break
+                except Exception:
+                    break
+
+    prime_thread = None
+    if args.camera_mode == "real":
+        prime_thread = threading.Thread(target=_prime_loop, daemon=True)
+        prime_thread.start()
+
     # wait ready
     daq_ready = daq_resp_q.get(timeout=10)
     cam_ready = cam_resp_q.get(timeout=30)
+
+    stop_prime.set()
     if not daq_ready.get("ok"):
         raise RuntimeError(f"DAQ worker failed: {daq_ready}")
     if not cam_ready.get("ok"):
