@@ -88,6 +88,55 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
     cam: Any | None = None
 
+    def _to_uint8_image(arr: Any) -> Any:
+        """Convert arbitrary array-like image to uint8 in [0,255] for dry-mode tests."""
+        try:
+            import numpy as _np
+
+            x = _np.asarray(arr)
+            if x.size == 0:
+                return x.astype(_np.uint8)
+
+            # If already uint8, keep.
+            if x.dtype == _np.uint8:
+                return x
+
+            # Handle float images in [0,1]
+            x_f = x.astype(float)
+            finite = x_f[_np.isfinite(x_f)]
+            if finite.size == 0:
+                return _np.zeros_like(x_f, dtype=_np.uint8)
+
+            vmin = float(finite.min())
+            vmax = float(finite.max())
+
+            if 0.0 <= vmin and vmax <= 1.0:
+                y = _np.clip(x_f, 0.0, 1.0) * 255.0
+                return _np.asarray(_np.rint(y), dtype=_np.uint8)
+
+            # If already roughly in [0,255], just clip.
+            if -1.0 <= vmin and vmax <= 256.0:
+                y = _np.clip(x_f, 0.0, 255.0)
+                return _np.asarray(_np.rint(y), dtype=_np.uint8)
+
+            # Otherwise, normalize robustly (percentiles) then scale to [0,255].
+            p1 = float(_np.percentile(finite, 1))
+            p99 = float(_np.percentile(finite, 99))
+            if not _np.isfinite(p1) or not _np.isfinite(p99) or abs(p99 - p1) < 1e-12:
+                y = _np.clip(x_f, 0.0, 255.0)
+                return _np.asarray(_np.rint(y), dtype=_np.uint8)
+
+            y = (x_f - p1) / (p99 - p1)
+            y = _np.clip(y, 0.0, 1.0) * 255.0
+            return _np.asarray(_np.rint(y), dtype=_np.uint8)
+        except Exception:
+            return arr
+
+    # Imported lazily (real mode only)
+    np = None  # type: ignore
+    normalize_count = None  # type: ignore
+    classify_hysteresis = None  # type: ignore
+
     def send(msg: dict[str, Any]) -> None:
         try:
             resp_q.put(msg)
@@ -152,6 +201,11 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             from .lib.analysis_profiles import generate_rois_from_image
             from .lib.ControlDevice import Control_qCMOScamera
             from .lib.thresholding import bootstrap_threshold_from_stream, classify_hysteresis, normalize_count
+
+            # store for command loop
+            locals_np = np
+            locals_norm = normalize_count
+            locals_cls = classify_hysteresis
 
             log("creating Control_qCMOScamera")
             cam = Control_qCMOScamera(trigger_cfg=trigger_cfg, verbose=cam_verbose)
@@ -218,6 +272,11 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 }
             )
             log("sent ready")
+
+            # expose to command loop
+            np = locals_np
+            normalize_count = locals_norm
+            classify_hysteresis = locals_cls
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -235,7 +294,30 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 send({"ok": True, "event": "closing"})
                 break
 
-            if name != "get_state":
+            if name == "set_threshold":
+                try:
+                    tau_on_new = cmd.get("tau_on")
+                    tau_off_new = cmd.get("tau_off")
+                    tau_new = cmd.get("tau")
+
+                    if tau_new is not None:
+                        tau = float(tau_new)
+                        tau_on_new = float(tau + 1.0)
+                        tau_off_new = float(tau - 1.0)
+
+                    if tau_on_new is None or tau_off_new is None:
+                        raise ValueError("set_threshold requires tau or (tau_on and tau_off)")
+
+                    tau_on = float(tau_on_new)
+                    tau_off = float(tau_off_new)
+                    prev_state = None
+
+                    send({"ok": True, "event": "threshold", "tau_on": float(tau_on), "tau_off": float(tau_off)})
+                except Exception as e:
+                    send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
+                continue
+
+            if name not in ("get_state", "get_frame"):
                 send({"ok": False, "event": "error", "error": f"unknown cmd: {name}"})
                 continue
 
@@ -243,14 +325,47 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
             try:
                 if mode == "dry":
+                    if name == "get_frame":
+                        # Best-effort: return a representative sample frame.
+                        if dry_samples:
+                            import numpy as _np  # local import
+
+                            arr, bright_label, sample_name = random.choice(dry_samples)
+                            frame = _to_uint8_image(arr)
+                            frame = _np.asarray(frame)
+                            send(
+                                {
+                                    "ok": True,
+                                    "event": "frame",
+                                    "frame": frame,
+                                    "bright": bool(bright_label),
+                                    "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
+                                    "tau_on": None,
+                                    "tau_off": None,
+                                    "sample": sample_name,
+                                }
+                            )
+                            continue
+                        # synthetic fallback
+                        import numpy as _np  # local import
+
+                        is_bright = (random.random() < 0.5)
+                        base = 180.0 if is_bright else 40.0
+                        noise = _np.random.normal(loc=0.0, scale=18.0, size=(256, 256))
+                        frame_f = base + noise
+                        frame = _np.asarray(_np.clip(_np.rint(frame_f), 0, 255), dtype=_np.uint8)
+                        send({"ok": True, "event": "frame", "frame": frame, "bright": is_bright, "S_norm": float(_np.mean(frame)), "tau_on": None, "tau_off": None})
+                        continue
+
                     if dry_samples:
                         import numpy as np  # local import; used only when samples exist
 
                         arr, bright_label, name = random.choice(dry_samples)
                         try:
-                            s_norm = float(np.mean(arr))
+                            frame = np.asarray(_to_uint8_image(arr))
+                            s_norm = float(np.mean(frame)) if frame.size else float(random.gauss(120.0, 30.0))
                         except Exception:
-                            s_norm = float(random.gauss(50_000.0, 10_000.0))
+                            s_norm = float(random.gauss(120.0, 30.0))
                         send(
                             {
                                 "ok": True,
@@ -264,14 +379,15 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                         )
                         continue
                     # simple synthetic fallback
-                    s_norm = float(random.gauss(50_000.0, 10_000.0))
+                    s_norm = float(random.gauss(150.0, 25.0))
                     if random.random() < 0.5:
-                        s_norm *= 0.3
-                    bright = bool(s_norm > 20_000.0)
+                        s_norm = float(random.gauss(50.0, 15.0))
+                    s_norm = float(max(0.0, min(255.0, s_norm)))
+                    bright = bool(s_norm > 100.0)
                     send({"ok": True, "event": "state", "bright": bright, "S_norm": s_norm, "tau_on": None, "tau_off": None})
                     continue
 
-                if cam is None or roi_t is None or tau_on is None or tau_off is None:
+                if cam is None:
                     raise RuntimeError("Camera worker is not configured")
 
                 # Wait for next frame
@@ -281,22 +397,51 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     continue
 
                 _, frame = cam.GetLastFrame()
-                frame_np = np.asarray(frame)
-                norm = normalize_count(frame_np, roi_t, bg_roi=bg_roi_t, exposure_s=exposure_s)
-                S_norm = float(norm["S_norm"])
-                bright = classify_hysteresis(S_norm, prev_state_bright=prev_state, tau_on=float(tau_on), tau_off=float(tau_off))
-                prev_state = bool(bright)
+                frame_np = np.asarray(frame) if np is not None else frame
 
-                send(
-                    {
-                        "ok": True,
-                        "event": "state",
-                        "bright": bool(bright),
-                        "S_norm": S_norm,
-                        "tau_on": float(tau_on),
-                        "tau_off": float(tau_off),
-                    }
-                )
+                # ROI/threshold might not be ready yet in edge cases.
+                S_norm: float | None = None
+                bright: bool | None = None
+                if (normalize_count is not None) and (roi_t is not None):
+                    norm = normalize_count(frame_np, roi_t, bg_roi=bg_roi_t, exposure_s=exposure_s)
+                    S_norm = float(norm["S_norm"])
+                    if (classify_hysteresis is not None) and (tau_on is not None) and (tau_off is not None):
+                        bright = bool(
+                            classify_hysteresis(
+                                S_norm,
+                                prev_state_bright=prev_state,
+                                tau_on=float(tau_on),
+                                tau_off=float(tau_off),
+                            )
+                        )
+                        prev_state = bool(bright)
+
+                if name == "get_frame":
+                    send(
+                        {
+                            "ok": True,
+                            "event": "frame",
+                            "frame": frame_np,
+                            "roi": list(roi_t) if roi_t else None,
+                            "bg_roi": list(bg_roi_t) if bg_roi_t else None,
+                            "bright": bright,
+                            "S_norm": S_norm,
+                            "tau_on": float(tau_on) if tau_on is not None else None,
+                            "tau_off": float(tau_off) if tau_off is not None else None,
+                            "exposure_s": float(exposure_s),
+                        }
+                    )
+                else:
+                    send(
+                        {
+                            "ok": True,
+                            "event": "state",
+                            "bright": bool(bright) if bright is not None else False,
+                            "S_norm": S_norm,
+                            "tau_on": float(tau_on) if tau_on is not None else None,
+                            "tau_off": float(tau_off) if tau_off is not None else None,
+                        }
+                    )
 
             except Exception as e:
                 send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})

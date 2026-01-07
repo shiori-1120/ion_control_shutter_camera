@@ -52,6 +52,23 @@ def estimate_threshold_otsu_from_frames(frames: list[np.ndarray], nbins: int = 2
     return float(centers[idx])
 
 
+def estimate_threshold_otsu_from_pixels(
+    img: np.ndarray,
+    *,
+    roi: tuple[int, int, int, int] | None = None,
+    nbins: int = 256,
+) -> float:
+    """1枚の画像のピクセル値分布から Otsu 閾値を推定する。
+
+    - roi が指定されれば ROI 内ピクセルのみを対象
+    - roi=None の場合は画像全体を対象
+    """
+    a = np.asarray(img)
+    if roi is not None:
+        a = _crop_roi_np(a, roi)
+    return float(otsu_from_array(a.ravel(), nbins=int(max(2, nbins))))
+
+
 def split_images_by_threshold(frames: list[np.ndarray], threshold: float) -> tuple[list[np.ndarray], list[np.ndarray]]:
     light, dark = [], []
     for f in frames:
