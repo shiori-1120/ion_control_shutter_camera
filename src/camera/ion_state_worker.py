@@ -184,6 +184,8 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                                 continue
 
                 try_load("bright", True)
+                # Used for dry ROI check (should look bright).
+                try_load("roi_test", True)
                 try_load("dark", False)
         except Exception:
             dry_samples = []
@@ -330,7 +332,30 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                         if dry_samples:
                             import numpy as _np  # local import
 
-                            arr, bright_label, sample_name = random.choice(dry_samples)
+                            prefer = cmd.get("prefer_sample")
+                            pick = None
+                            if isinstance(prefer, str) and prefer.strip():
+                                prefer_path = Path(prefer)
+                                prefer_name = prefer_path.name.lower()
+                                prefer_stem = prefer_path.stem.lower()
+                                for a, b, n in dry_samples:
+                                    if not isinstance(n, str):
+                                        continue
+                                    n_l = n.lower()
+                                    if n_l == prefer_name:
+                                        pick = (a, b, n)
+                                        break
+                                    try:
+                                        if Path(n_l).stem == prefer_stem:
+                                            pick = (a, b, n)
+                                            break
+                                    except Exception:
+                                        continue
+
+                            if pick is None:
+                                pick = random.choice(dry_samples)
+
+                            arr, bright_label, sample_name = pick
                             frame = _to_uint8_image(arr)
                             frame = _np.asarray(frame)
                             send(

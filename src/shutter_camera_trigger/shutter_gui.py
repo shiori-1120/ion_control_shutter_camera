@@ -2229,7 +2229,13 @@ class App(tk.Tk):
             self.sw_status.set("ROI: acquiring frame...")
             self._ui_pump()
 
-            cam_cmd_q.put({"cmd": "get_frame", "timeout_s": 1.0})
+            cam_cmd = {"cmd": "get_frame", "timeout_s": 1.0}
+            try:
+                if self._sw_session and self._sw_session.get("cam_mode") == "dry":
+                    cam_cmd["prefer_sample"] = "roi_test.npy"
+            except Exception:
+                pass
+            cam_cmd_q.put(cam_cmd)
             daq_cmd_q.put(
                 {
                     "cmd": "run_sequence_once",
@@ -2246,7 +2252,75 @@ class App(tk.Tk):
             if not cam_resp.get("ok"):
                 raise RuntimeError(f"Camera frame failed: {cam_resp}")
             frame = np.asarray(cam_resp.get("frame"))
-            roi = cam_resp.get("roi")
+
+            # Step 1: determine ROI from this single frame (user should press while in bright state).
+            roi = None
+            try:
+                from src.camera.lib.analysis_profiles import generate_rois_from_image
+
+                rois = generate_rois_from_image(np.asarray(frame), plot=False)
+                best = None
+                best_sum = None
+                for r in rois or []:
+                    if not (isinstance(r, (list, tuple)) and len(r) == 4):
+                        continue
+                    xw, yw, xs, ys = map(int, r)
+                    crop = np.asarray(frame)[ys : ys + yw, xs : xs + xw]
+                    if crop.size == 0:
+                        continue
+                    s = float(np.sum(crop))
+                    if best_sum is None or s > best_sum:
+                        best_sum = s
+                        best = [int(xw), int(yw), int(xs), int(ys)]
+                if best is not None:
+                    roi = best
+            except Exception:
+                roi = None
+
+            # Fallback to worker-provided ROI if present.
+            if roi is None:
+                r = cam_resp.get("roi")
+                if isinstance(r, (list, tuple)) and len(r) == 4:
+                    try:
+                        roi = [int(r[0]), int(r[1]), int(r[2]), int(r[3])]
+                    except Exception:
+                        roi = None
+
+            # If the ROI frame looks dark, do not lock ROI (ask user to retry while bright).
+            roi_ok = True
+            if isinstance(roi, (list, tuple)) and len(roi) == 4:
+                try:
+                    xw, yw, xs, ys = map(int, roi)
+                    crop = np.asarray(frame)[ys : ys + yw, xs : xs + xw]
+                    roi_mean = float(np.mean(np.asarray(crop, dtype=float))) if crop.size else 0.0
+                    frame_mean = float(np.mean(np.asarray(frame, dtype=float))) if frame.size else 0.0
+                    frame_std = float(np.std(np.asarray(frame, dtype=float))) if frame.size else 0.0
+
+                    bright_flag = cam_resp.get("bright")
+                    if isinstance(bright_flag, bool):
+                        roi_ok = bool(bright_flag)
+                    else:
+                        # Heuristic: ROI should be noticeably brighter than typical pixels.
+                        roi_ok = bool(roi_mean > (frame_mean + 1.0 * frame_std))
+                except Exception:
+                    roi_ok = True
+            else:
+                roi_ok = False
+
+            if not roi_ok:
+                # Do not store ROI; user should retry ROI check while ion is bright.
+                roi = None
+                try:
+                    messagebox.showwarning(
+                        "Sweep",
+                        "ROI check frame looks DARK.\n\n明状態で 1) ROI check を押し直してください。",
+                        parent=self,
+                    )
+                except Exception:
+                    pass
+
+            if self._sw_session is not None:
+                self._sw_session["roi"] = roi
 
             # Save snapshot
             try:
@@ -2258,7 +2332,7 @@ class App(tk.Tk):
             self.sw_fig.clear()
             ax = self.sw_fig.add_subplot(111)
             ax.imshow(frame, cmap="gray")
-            ax.set_title("ROI check (397 only)")
+            ax.set_title("ROI check (press in bright state)")
             ax.set_axis_off()
             if isinstance(roi, (list, tuple)) and len(roi) == 4:
                 try:
@@ -2272,7 +2346,10 @@ class App(tk.Tk):
             self.sw_fig.tight_layout()
             self.sw_canvas.draw()
 
-            self.sw_status.set("ROI: plotted. Step 2: Threshold.")
+            if roi is None:
+                self.sw_status.set("ROI: frame looked dark. Retry Step 1.")
+            else:
+                self.sw_status.set("ROI: locked. Step 2: Threshold.")
             self._sw_refresh_buttons()
         except Exception as e:
             messagebox.showerror("Sweep", str(e))
@@ -2280,6 +2357,11 @@ class App(tk.Tk):
     def _sw_threshold_check(self) -> None:
         if not self._sw_prepared or not self._sw_running or not self._sw_session:
             messagebox.showerror("Sweep", "Run '1) ROI check' first.")
+            return
+
+        roi = self._sw_session.get("roi")
+        if not (isinstance(roi, (list, tuple)) and len(roi) == 4):
+            messagebox.showerror("Sweep", "ROI is not set. Run '1) ROI check' first.")
             return
 
         if self.sw_fig is None or self.sw_canvas is None:
@@ -2300,7 +2382,9 @@ class App(tk.Tk):
         max_attempt = int(self._sw_session.get("max_attempt") or max(100, n))
 
         # Acquire frames using the selected sequence; then classify post-hoc.
+        # Classification scalar S: mean value in ROI (no exposure normalization, no background subtraction).
         samples: list[float] = []
+        profiles: list[np.ndarray] = []  # per-shot 1D photon-count profile (integrated over y-axis)
         try:
             self.sw_status.set("Threshold: acquiring frames...")
             self._ui_pump()
@@ -2311,7 +2395,7 @@ class App(tk.Tk):
                 if len(samples) >= n:
                     break
 
-                # Get a frame for this shot (S_norm is computed from ROI sum / exposure).
+                # Get a frame for this shot and compute S from the Step-1 ROI.
                 cam_cmd_q.put({"cmd": "get_frame", "timeout_s": 1.0})
                 daq_cmd_q.put(
                     {
@@ -2332,11 +2416,16 @@ class App(tk.Tk):
                 if not cam_resp.get("ok"):
                     continue
 
-                s_norm = cam_resp.get("S_norm")
-                if s_norm is None:
+                frame = np.asarray(cam_resp.get("frame"))
+                xw, yw, xs, ys = map(int, roi)
+                crop = np.asarray(frame)[ys : ys + yw, xs : xs + xw]
+                if crop.size == 0:
                     continue
+
                 try:
-                    samples.append(float(s_norm))
+                    s = float(np.mean(np.asarray(crop, dtype=float)))
+                    samples.append(s)
+                    profiles.append(np.asarray(np.sum(np.asarray(crop, dtype=float), axis=0), dtype=float))
                 except Exception:
                     continue
 
@@ -2358,6 +2447,9 @@ class App(tk.Tk):
             bright_samples = [float(v) for v in samples if float(v) > tau]
             dark_samples = [float(v) for v in samples if float(v) <= tau]
 
+            bright_profiles = [profiles[i] for i, v in enumerate(samples) if float(v) > tau]
+            dark_profiles = [profiles[i] for i, v in enumerate(samples) if float(v) <= tau]
+
             # "Accuracy": agreement between simple threshold and hysteresis classifier.
             # (No external ground-truth in real experiment; this is a self-consistency metric.)
             try:
@@ -2377,31 +2469,59 @@ class App(tk.Tk):
             except Exception:
                 acc = 0.0
 
-            # Plot: bright/dark photon-count distributions on one graph (per-image)
+            # Plot: photon-count distributions (integrated over y-axis), per-pixel samples.
             self.sw_fig.clear()
             ax = self.sw_fig.add_subplot(111)
 
-            b = np.asarray(bright_samples, dtype=float)
-            d = np.asarray(dark_samples, dtype=float)
-            all_arr = np.asarray(samples, dtype=float)
-            all_arr = all_arr[np.isfinite(all_arr)]
-            if all_arr.size == 0:
-                raise RuntimeError("No finite samples")
+            def _concat_profiles(ps: list[np.ndarray]) -> np.ndarray:
+                arrs = []
+                for p in ps:
+                    a = np.asarray(p, dtype=float)
+                    a = a[np.isfinite(a)]
+                    if a.size:
+                        arrs.append(a)
+                return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
 
-            bins = 60
-            # Normalize per-image: probability per image bin = hist_count / N_images.
-            w_b = (np.ones_like(b, dtype=float) / float(max(1, len(b)))) if b.size > 0 else None
-            w_d = (np.ones_like(d, dtype=float) / float(max(1, len(d)))) if d.size > 0 else None
-            if d.size > 0:
-                ax.hist(d, bins=bins, weights=w_d, alpha=0.55, color="tab:blue", label=f"dark (n={len(dark_samples)})")
-            if b.size > 0:
-                ax.hist(b, bins=bins, weights=w_b, alpha=0.55, color="tab:orange", label=f"bright (n={len(bright_samples)})")
-            ax.axvline(tau, color="tab:red", linestyle="--", linewidth=2, label=f"tau={tau:.3g}")
+            light_counts = _concat_profiles(bright_profiles)
+            dark_counts = _concat_profiles(dark_profiles)
+            combined = np.concatenate([c for c in (light_counts, dark_counts) if c.size > 0])
+            if combined.size == 0:
+                raise RuntimeError("No valid photon-count samples")
 
-            ax.set_title(f"Photon-count distributions (per image) | agree={acc*100:.1f}%")
-            ax.set_xlabel("S_norm")
-            ax.set_ylabel("probability per image")
+            start = int(np.floor(float(np.nanmin(combined))))
+            end = int(np.ceil(float(np.nanmax(combined))))
+            bin_edges = np.arange(start - 0.5, end + 1.5, 1)
+
+            if light_counts.size > 0:
+                mean_light = float(np.mean(light_counts))
+                ax.hist(
+                    light_counts,
+                    bins=bin_edges,
+                    density=True,
+                    alpha=0.6,
+                    color="tab:orange",
+                    edgecolor="black",
+                    label=f"Light (mean={mean_light:.2f})",
+                )
+                ax.axvline(mean_light, color="tab:orange", linestyle="--")
+            if dark_counts.size > 0:
+                mean_dark = float(np.mean(dark_counts))
+                ax.hist(
+                    dark_counts,
+                    bins=bin_edges,
+                    density=True,
+                    alpha=0.6,
+                    color="navy",
+                    edgecolor="black",
+                    label=f"Dark (mean={mean_dark:.2f})",
+                )
+                ax.axvline(mean_dark, color="navy", linestyle="--")
+
+            ax.set_xlabel("Photon Count (integer bins)")
+            ax.set_ylabel("Probability density")
+            ax.set_title(f"Photon Distribution (integrated over y-axis) | agree={acc*100:.1f}%")
             ax.legend()
+            ax.grid(True, alpha=0.3)
 
             self.sw_fig.tight_layout()
             self.sw_canvas.draw()
@@ -2415,6 +2535,8 @@ class App(tk.Tk):
                                 "bright_samples_n": len(bright_samples),
                                 "dark_samples_n": len(dark_samples),
                                 "samples_n": int(len(samples)),
+                                "roi": list(roi) if isinstance(roi, (list, tuple)) else None,
+                                "sample_metric": "roi_mean",
                                 "threshold": th,
                                 "agreement": acc,
                             },
@@ -2430,7 +2552,7 @@ class App(tk.Tk):
             apply_ok = bool(
                 messagebox.askyesno(
                     "Threshold",
-                    f"Apply threshold?\nmode={th.get('mode')}\nagreement={acc*100:.1f}% (simple vs hysteresis)\n\n tau={tau:.3g}\n tau_on={tau_on:.3g}\n tau_off={tau_off:.3g}",
+                    f"Apply threshold?\nmode={th.get('mode')}\nagreement={acc*100:.1f}% (simple vs hysteresis)\n\n metric=roi_mean\n tau={tau:.3g}\n tau_on={tau_on:.3g}\n tau_off={tau_off:.3g}",
                     parent=self,
                 )
             )
