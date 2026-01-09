@@ -152,6 +152,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
     roi_t = as_roi_tuple(roi)
     bg_roi_t = as_roi_tuple(bg_roi)
+    subarray_t = as_roi_tuple(cfg.get("subarray"))
 
     dry_samples: list[tuple[Any, bool, str]] = []
     dry_dir = cfg.get("dry_image_dir")
@@ -202,6 +203,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
             from .lib.analysis_profiles import generate_rois_from_image
             from .lib.ControlDevice import Control_qCMOScamera
+            from .lib.image_ops import crop_roi
             from .lib.thresholding import bootstrap_threshold_from_stream, classify_hysteresis, normalize_count
 
             # store for command loop
@@ -213,9 +215,14 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             cam = Control_qCMOScamera(trigger_cfg=trigger_cfg, verbose=cam_verbose)
             log("OpenCamera_GetHandle")
             cam.OpenCamera_GetHandle()
-            # Full frame by default (ROI can be applied in software)
+            # Full frame by default. If subarray is configured, apply it at camera level.
             log("SetParameters")
-            cam.SetParameters(exposure_s)
+            if subarray_t is not None:
+                xw, yw, xs, ys = map(int, subarray_t)
+                cam.SetParameters(exposure_s, xw, yw, xs, ys)
+                log(f"subarray applied: x={xs} y={ys} w={xw} h={yw}")
+            else:
+                cam.SetParameters(exposure_s)
             log("StartCapture")
             cam.StartCapture()
 
@@ -241,7 +248,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     if r_t is None:
                         continue
                     xw, yw, xs, ys = r_t
-                    cropped = frames[-1][ys : ys + yw, xs : xs + xw]
+                    cropped = crop_roi(frames[-1], (xw, yw, xs, ys))
                     s = float(np.sum(cropped))
                     if best_sum is None or s > best_sum:
                         best_sum = s
@@ -302,7 +309,6 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     if roi_new is None:
                         raise ValueError("set_roi requires roi=[xw,yw,xs,ys]")
                     roi_t = roi_new
-                    # Reset hysteresis memory when ROI changes.
                     prev_state = None
                     send({"ok": True, "event": "roi", "roi": list(roi_t)})
                 except Exception as e:
@@ -373,6 +379,10 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                                             arr = _np.load(p)
                                     frame = _to_uint8_image(arr)
                                     frame = _np.asarray(frame)
+                                    if subarray_t is not None:
+                                        from .lib.image_ops import crop_roi
+
+                                        frame = crop_roi(frame, subarray_t)
                                     send(
                                         {
                                             "ok": True,
@@ -419,6 +429,10 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                             arr, bright_label, sample_name = pick
                             frame = _to_uint8_image(arr)
                             frame = _np.asarray(frame)
+                            if subarray_t is not None:
+                                from .lib.image_ops import crop_roi
+
+                                frame = crop_roi(frame, subarray_t)
                             send(
                                 {
                                     "ok": True,
@@ -440,18 +454,25 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                         noise = _np.random.normal(loc=0.0, scale=18.0, size=(256, 256))
                         frame_f = base + noise
                         frame = _np.asarray(_np.clip(_np.rint(frame_f), 0, 255), dtype=_np.uint8)
+                        if subarray_t is not None:
+                            from .lib.image_ops import crop_roi
+
+                            frame = crop_roi(frame, subarray_t)
                         send({"ok": True, "event": "frame", "frame": frame, "bright": is_bright, "S_norm": float(_np.mean(frame)), "tau_on": None, "tau_off": None})
                         continue
 
                     if dry_samples:
                         import numpy as np  # local import; used only when samples exist
+                        from .lib.image_ops import crop_roi
 
                         arr, bright_label, name = random.choice(dry_samples)
                         try:
                             frame = np.asarray(_to_uint8_image(arr))
+                            if subarray_t is not None:
+                                frame = crop_roi(frame, subarray_t)
                             if roi_t is not None:
                                 xw, yw, xs, ys = map(int, roi_t)
-                                crop = frame[ys : ys + yw, xs : xs + xw]
+                                crop = crop_roi(frame, (xw, yw, xs, ys))
                                 s_norm = float(np.mean(crop)) if getattr(crop, "size", 0) else float(np.mean(frame))
                             else:
                                 s_norm = float(np.mean(frame)) if frame.size else float(random.gauss(120.0, 30.0))

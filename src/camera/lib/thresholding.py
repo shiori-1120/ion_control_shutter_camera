@@ -1,6 +1,20 @@
 import numpy as np
 
 
+_EDGE_MARGIN_ENV = "ION_ROI_EDGE_MARGIN_PX"
+
+
+def _get_edge_margin_px() -> int:
+    try:
+        import os
+
+        v = os.environ.get(_EDGE_MARGIN_ENV, "0")
+        n = int(v)
+        return max(0, n)
+    except Exception:
+        return 0
+
+
 def otsu_from_array(arr: np.ndarray, nbins: int = 64) -> float:
     x = np.asarray(arr, dtype=float)
     x = x[np.isfinite(x)]
@@ -21,6 +35,11 @@ def otsu_from_array(arr: np.ndarray, nbins: int = 64) -> float:
     var_b = (mu_t * omega - mu_k) ** 2 / denom
     var_b[0] = np.nan
     var_b[-1] = np.nan
+    # Degenerate distributions (e.g., almost constant samples) can lead to var_b being all-NaN.
+    # In that case, fall back to a robust central value instead of raising.
+    if not np.any(np.isfinite(var_b)):
+        return float(np.median(x))
+
     k = int(np.nanargmax(var_b))
     return float(edges[k])
 
@@ -81,9 +100,28 @@ def split_images_by_threshold(frames: list[np.ndarray], threshold: float) -> tup
 # Ion-state detection helpers
 # -----------------------------
 
-def _crop_roi_np(img: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
-    """Crop with ROI=(x_width,y_width,x_start,y_start)."""
+def _crop_roi_np(
+    img: np.ndarray,
+    roi: tuple[int, int, int, int],
+    *,
+    edge_margin_px: int | None = None,
+) -> np.ndarray:
+    """Crop with ROI=(x_width,y_width,x_start,y_start).
+
+    edge_margin_px を指定すると ROI の端を各辺 edge_margin_px ピクセル除外する。
+    None の場合は環境変数 ION_ROI_EDGE_MARGIN_PX を参照。
+    """
     xw, yw, xs, ys = map(int, roi)
+
+    m = _get_edge_margin_px() if edge_margin_px is None else max(0, int(edge_margin_px))
+    if m > 0:
+        xs = xs + m
+        ys = ys + m
+        xw = xw - 2 * m
+        yw = yw - 2 * m
+        if xw <= 0 or yw <= 0:
+            return np.zeros((0, 0), dtype=img.dtype)
+
     ys = max(0, ys)
     xs = max(0, xs)
     y_end = max(ys, min(img.shape[0], ys + yw))
