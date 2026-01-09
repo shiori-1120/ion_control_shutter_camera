@@ -125,6 +125,70 @@ def _limit_blas_threads() -> None:
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
+
+def _format_worker_failure(resp: Any, *, label: str, log_path: str | None = None) -> str:
+    """Format worker failure dicts into a human-friendly message.
+
+    The camera/DAQ workers may return large dicts with tracebacks; showing them
+    verbatim in a messagebox is noisy. Keep UI actionable.
+    """
+    msg = ""
+    if isinstance(resp, dict):
+        event = str(resp.get("event") or "").strip()
+        err = resp.get("error")
+        if err is None:
+            # Best-effort fallback
+            err = resp.get("msg") or resp.get("message") or resp
+        msg = str(err)
+        if event:
+            msg = f"{label}: {msg} (event={event})"
+        else:
+            msg = f"{label}: {msg}"
+
+        # Common actionable hint for Hamamatsu DCAM
+        if "NOCAMERA" in msg or "No camera detected" in msg:
+            msg += (
+                "\n\nDCAM がカメラを検出できていません。\n"
+                "- カメラの電源/接続(USB/CameraLink等)\n"
+                "- Hamamatsu/DCAM-API ドライバの導入\n"
+                "- 他アプリがカメラを掴んでいないか\n"
+                "を確認してください。カメラ無しPCで試す場合は Camera mode を dry にしてください。"
+            )
+    else:
+        msg = f"{label}: {resp}"
+
+    if log_path:
+        try:
+            lp = str(log_path).strip()
+        except Exception:
+            lp = ""
+        if lp:
+            msg += f"\n\nLog: {lp}"
+    return msg
+
+
+def _robust_gray_limits(img: Any, *, lo_pct: float = 1.0, hi_pct: float = 99.0) -> tuple[float | None, float | None]:
+    """Return (vmin, vmax) for grayscale imshow using robust percentiles.
+
+    This prevents a few hot/saturated pixels from compressing contrast.
+    """
+    try:
+        arr = np.asarray(img)
+        if arr.size == 0:
+            return (None, None)
+        a = np.asarray(arr, dtype=float)
+        if not np.isfinite(a).any():
+            return (None, None)
+        vmin = float(np.nanpercentile(a, float(lo_pct)))
+        vmax = float(np.nanpercentile(a, float(hi_pct)))
+        if not np.isfinite(vmin) or not np.isfinite(vmax):
+            return (None, None)
+        if vmax <= vmin:
+            return (None, None)
+        return (vmin, vmax)
+    except Exception:
+        return (None, None)
+
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -218,6 +282,41 @@ class App(tk.Tk):
             raise ValueError("Exposure (ms) must be > 0")
         return ms / 1000.0
 
+    def _camera_subarray_from_ui(self) -> tuple[int, int, int, int] | None:
+        """Return subarray as ROI tuple (xw,yw,xs,ys) or None if disabled."""
+        try:
+            enabled = bool(getattr(self, "camera_subarray_enable_var").get())
+        except Exception:
+            enabled = False
+        if not enabled:
+            return None
+
+        def _get_int(var_name: str, label: str) -> int:
+            v = (getattr(self, var_name).get() or "").strip()
+            if not v:
+                raise ValueError(f"Subarray {label} is empty")
+            try:
+                return int(float(v))
+            except Exception as e:
+                raise ValueError(f"Invalid subarray {label}: {v!r}") from e
+
+        xs = _get_int("camera_sub_x_var", "X")
+        ys = _get_int("camera_sub_y_var", "Y")
+        xw = _get_int("camera_sub_w_var", "Width")
+        yw = _get_int("camera_sub_h_var", "Height")
+
+        if xs < 0 or ys < 0:
+            raise ValueError("Subarray X/Y must be >= 0")
+        if xw <= 0 or yw <= 0:
+            raise ValueError("Subarray Width/Height must be > 0")
+        return (int(xw), int(yw), int(xs), int(ys))
+
+    def _apply_subarray_to_cam_cfg(self, cfg: dict[str, Any]) -> None:
+        sub = self._camera_subarray_from_ui()
+        if sub is None:
+            return
+        cfg["subarray"] = [int(sub[0]), int(sub[1]), int(sub[2]), int(sub[3])]
+
     def _camera_trigger_cfg_from_ui(self) -> dict[str, Any]:
         delay_s_raw = (self.camera_trigger_delay_s_var.get() or "").strip()
         delay_s: float | None = None
@@ -308,6 +407,29 @@ class App(tk.Tk):
         except Exception:
             pass
 
+        # Optional: camera subarray
+        sub = data.get("camera_subarray")
+        if isinstance(sub, dict):
+            try:
+                self.camera_subarray_enable_var.set(bool(sub.get("enabled") or False))
+            except Exception:
+                pass
+            for key, var in (
+                ("x", self.camera_sub_x_var),
+                ("y", self.camera_sub_y_var),
+                ("width", self.camera_sub_w_var),
+                ("height", self.camera_sub_h_var),
+            ):
+                try:
+                    v = sub.get(key)
+                    if v is None:
+                        continue
+                    s = str(v).strip()
+                    if s:
+                        var.set(s)
+                except Exception:
+                    pass
+
     def _save_camera_trigger_prefs(self) -> None:
         p = self._prefs_path()
         try:
@@ -324,7 +446,15 @@ class App(tk.Tk):
             "delay_s": (self.camera_trigger_delay_s_var.get() or "").strip(),
             "verbose": bool(self.camera_verbose_var.get()),
         }
-        p.write_text(json.dumps({"camera_trigger": trig}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        sub = {
+            "enabled": bool(self.camera_subarray_enable_var.get()),
+            "x": (self.camera_sub_x_var.get() or "").strip(),
+            "y": (self.camera_sub_y_var.get() or "").strip(),
+            "width": (self.camera_sub_w_var.get() or "").strip(),
+            "height": (self.camera_sub_h_var.get() or "").strip(),
+        }
+        p.write_text(json.dumps({"camera_trigger": trig, "camera_subarray": sub}, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _build_ui(self) -> None:
         # Menu bar (Help -> open usage doc)
@@ -359,6 +489,13 @@ class App(tk.Tk):
         )
         self.camera_trigger_delay_s_var = tk.StringVar(value="")
         self.camera_verbose_var = tk.BooleanVar(value=False)
+
+        # Camera subarray (camera-level ROI for faster/consistent acquisition)
+        self.camera_subarray_enable_var = tk.BooleanVar(value=False)
+        self.camera_sub_x_var = tk.StringVar(value="0")
+        self.camera_sub_y_var = tk.StringVar(value="0")
+        self.camera_sub_w_var = tk.StringVar(value="")
+        self.camera_sub_h_var = tk.StringVar(value="")
 
         top = ttk.Frame(self, padding=10)
         top.pack(side=tk.TOP, fill=tk.X)
@@ -432,8 +569,27 @@ class App(tk.Tk):
         ttk.Entry(top, textvariable=self.camera_trigger_delay_s_var, width=10).grid(row=4, column=3, sticky=tk.W, padx=5, pady=(6, 0))
         ttk.Checkbutton(top, text="Cam verbose", variable=self.camera_verbose_var).grid(row=4, column=4, sticky=tk.W, padx=5, pady=(6, 0))
 
+        # Subarray settings (applied on next camera worker start: snap/check/sweep)
+        sub = ttk.LabelFrame(top, text="Subarray")
+        sub.grid(row=5, column=0, columnspan=9, sticky=tk.W + tk.E, pady=(8, 0))
+
+        ttk.Checkbutton(sub, text="Enable", variable=self.camera_subarray_enable_var).grid(row=0, column=0, sticky=tk.W, padx=6, pady=4)
+        ttk.Label(sub, text="X").grid(row=0, column=1, sticky=tk.W)
+        ttk.Entry(sub, textvariable=self.camera_sub_x_var, width=8).grid(row=0, column=2, sticky=tk.W, padx=(2, 10))
+        ttk.Label(sub, text="Y").grid(row=0, column=3, sticky=tk.W)
+        ttk.Entry(sub, textvariable=self.camera_sub_y_var, width=8).grid(row=0, column=4, sticky=tk.W, padx=(2, 10))
+        ttk.Label(sub, text="W").grid(row=0, column=5, sticky=tk.W)
+        ttk.Entry(sub, textvariable=self.camera_sub_w_var, width=8).grid(row=0, column=6, sticky=tk.W, padx=(2, 10))
+        ttk.Label(sub, text="H").grid(row=0, column=7, sticky=tk.W)
+        ttk.Entry(sub, textvariable=self.camera_sub_h_var, width=8).grid(row=0, column=8, sticky=tk.W, padx=(2, 10))
+
+        try:
+            sub.grid_columnconfigure(9, weight=1)
+        except Exception:
+            pass
+
         self.status_var = tk.StringVar(value="Disconnected")
-        ttk.Label(top, textvariable=self.status_var).grid(row=5, column=0, columnspan=9, sticky=tk.W, pady=(8, 0))
+        ttk.Label(top, textvariable=self.status_var).grid(row=6, column=0, columnspan=9, sticky=tk.W, pady=(8, 0))
 
         top.grid_columnconfigure(9, weight=1)
 
@@ -508,6 +664,11 @@ class App(tk.Tk):
             "trigger": dict(trig_cfg),
             "verbose": bool(self.camera_verbose_var.get()),
         }
+        try:
+            self._apply_subarray_to_cam_cfg(cfg)
+        except Exception as e:
+            messagebox.showerror("Subarray", str(e))
+            return
         if dry_image_dir:
             cfg["dry_image_dir"] = dry_image_dir
         try:
@@ -572,7 +733,13 @@ class App(tk.Tk):
                 if cam_ready is None:
                     cam_ready = cam_resp_q.get(timeout=15.0)
                 if not cam_ready.get("ok"):
-                    raise RuntimeError(f"Camera worker failed: {cam_ready}")
+                    raise RuntimeError(
+                        _format_worker_failure(
+                            cam_ready,
+                            label="Camera worker init failed",
+                            log_path=str(cfg.get("log_path") or "") or None,
+                        )
+                    )
 
                 # Request a frame, then fire one TTL pulse.
                 cam_cmd_q.put({"cmd": "get_frame", "timeout_s": 1.0})
@@ -595,9 +762,21 @@ class App(tk.Tk):
 
                 cam_resp = cam_resp_q.get(timeout=15.0)
                 if not cam_resp.get("ok"):
-                    raise RuntimeError(f"Camera frame failed: {cam_resp}")
+                    raise RuntimeError(
+                        _format_worker_failure(
+                            cam_resp,
+                            label="Camera frame failed",
+                            log_path=str(cfg.get("log_path") or "") or None,
+                        )
+                    )
                 if cam_resp.get("event") != "frame":
-                    raise RuntimeError(f"Unexpected camera response: {cam_resp}")
+                    raise RuntimeError(
+                        _format_worker_failure(
+                            cam_resp,
+                            label="Unexpected camera response",
+                            log_path=str(cfg.get("log_path") or "") or None,
+                        )
+                    )
 
                 frame = np.asarray(cam_resp.get("frame"))
                 npy_path = out_dir / "snap.npy"
@@ -617,7 +796,8 @@ class App(tk.Tk):
 
                 def _ui_update() -> None:
                     self._cam_ax.clear()
-                    self._cam_ax.imshow(frame, cmap="gray")
+                    vmin, vmax = _robust_gray_limits(frame)
+                    self._cam_ax.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
                     self._cam_ax.set_title(f"snap | {mode} | saved: {npy_path}")
                     self._cam_ax.set_axis_off()
 
@@ -1246,6 +1426,11 @@ class App(tk.Tk):
                 except Exception:
                     pass
                 try:
+                    # Best-effort: return front panel to LOCAL control.
+                    self._fg_handle.local()
+                except Exception:
+                    pass
+                try:
                     self._fg_handle.close()
                 except Exception:
                     pass
@@ -1274,6 +1459,13 @@ class App(tk.Tk):
         # For EXTERNAL trigger cameras, we can make this check succeed by
         # temporarily priming the camera trigger TTL via DAQ while the camera
         # worker performs bootstrap.
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_dir = Path("data/output") / "camera_check" / ts
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
         cfg: dict[str, Any] = {
             "mode": mode,
             "exposure_s": float(exposure_s),
@@ -1283,8 +1475,12 @@ class App(tk.Tk):
             "verbose": bool(self.camera_verbose_var.get()),
         }
         try:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            cfg["log_path"] = str(Path("data/output") / "camera_check" / ts / "camera_worker.log")
+            self._apply_subarray_to_cam_cfg(cfg)
+        except Exception as e:
+            messagebox.showerror("Subarray", str(e))
+            return
+        try:
+            cfg["log_path"] = str(out_dir / "camera_worker.log")
         except Exception:
             pass
         if mode == "dry" and dry_dir:
@@ -1331,10 +1527,11 @@ class App(tk.Tk):
                 return dq, rq, proc
 
             def _prime_loop_using_existing() -> None:
+                # Keep 397 ON while priming external-trigger camera.
                 roi_sequence = [
-                    (ALL_OFF, ROI_IDLE_S),
-                    (CAMERA_TRIGGER, ROI_PULSE_S),
-                    (ALL_OFF, ROI_IDLE_S),
+                    (NM_397, ROI_IDLE_S),
+                    (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S),
+                    (NM_397, ROI_IDLE_S),
                 ]
                 while not prime_stop.is_set():
                     try:
@@ -1355,10 +1552,11 @@ class App(tk.Tk):
                     _time.sleep(0.01)
 
             def _prime_loop_using_tmp(dq: Queue, rq: Queue) -> None:
+                # Keep 397 ON while priming external-trigger camera.
                 roi_sequence = [
-                    (ALL_OFF, ROI_IDLE_S),
-                    (CAMERA_TRIGGER, ROI_PULSE_S),
-                    (ALL_OFF, ROI_IDLE_S),
+                    (NM_397, ROI_IDLE_S),
+                    (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S),
+                    (NM_397, ROI_IDLE_S),
                 ]
                 while not prime_stop.is_set():
                     try:
@@ -1423,6 +1621,8 @@ class App(tk.Tk):
             ok = False
             ui_title = "Camera"
             ui_msg = ""
+            frame_np: Any | None = None
+            frame_path: str | None = None
             try:
                 # External-trigger bootstrap may take longer (depends on exposure).
                 ready = resp_q.get(timeout=max(15.0, float(cfg.get("bootstrap_n", 5)) * (float(exposure_s) + 0.05) + 5.0))
@@ -1432,13 +1632,52 @@ class App(tk.Tk):
                     extra = ""
                     if dry_samples is not None:
                         extra = f" | dry samples: {dry_samples}"
-                    ui_msg = f"Camera worker ready ({mode}){extra}"
+                    # Try to grab a single frame for visual confirmation.
+                    try:
+                        # For dry mode ROI check, prefer roi_test if available.
+                        prefer = ""
+                        if mode == "dry" and dry_dir:
+                            try:
+                                prefer = str((Path(dry_dir) / "roi_test.npy"))
+                            except Exception:
+                                prefer = ""
+                        cmd = {"cmd": "get_frame", "timeout_s": max(2.0, float(exposure_s) * 4.0 + 0.5)}
+                        if prefer:
+                            cmd["prefer_sample"] = prefer
+                        cmd_q.put(cmd)
+                        fr = resp_q.get(timeout=10.0)
+                        if isinstance(fr, dict) and fr.get("ok") and fr.get("event") == "frame":
+                            frame_np = fr.get("frame")
+                            try:
+                                import numpy as _np
+
+                                frame_arr = _np.asarray(frame_np)
+                                frame_path = str(out_dir / "frame.npy")
+                                _np.save(frame_path, frame_arr)
+                            except Exception:
+                                frame_path = None
+                    except Exception:
+                        frame_np = None
+                        frame_path = None
+
+                    if frame_path:
+                        ui_msg = f"Camera check OK ({mode}){extra}\nSaved: {frame_path}"
+                    else:
+                        ui_msg = f"Camera check OK ({mode}){extra}"
                     ui_kind = "info"
                 else:
-                    ui_msg = f"Failed: {ready}"
+                    ui_msg = _format_worker_failure(
+                        ready,
+                        label="Camera worker failed",
+                        log_path=str(cfg.get("log_path") or "") or None,
+                    )
                     ui_kind = "error"
             except Exception as e:
-                ui_msg = f"Failed: {e}"
+                ui_msg = _format_worker_failure(
+                    e,
+                    label="Camera check failed",
+                    log_path=str(cfg.get("log_path") or "") or None,
+                )
                 ui_kind = "error"
             finally:
                 prime_stop.set()
@@ -1479,6 +1718,18 @@ class App(tk.Tk):
 
             def _ui() -> None:
                 self._camera_connected = ok
+                # Update Camera tab plot if we captured a frame and matplotlib is available.
+                try:
+                    if frame_np is not None and self._cam_ax is not None and self._cam_canvas is not None and self._cam_fig is not None:
+                        self._cam_ax.clear()
+                        vmin, vmax = _robust_gray_limits(frame_np)
+                        self._cam_ax.imshow(frame_np, cmap="gray", vmin=vmin, vmax=vmax)
+                        self._cam_ax.set_title("camera_check")
+                        self._cam_ax.set_axis_off()
+                        self._cam_fig.tight_layout()
+                        self._cam_canvas.draw()
+                except Exception:
+                    pass
                 if ui_kind == "info":
                     messagebox.showinfo(ui_title, ui_msg)
                 else:
@@ -2090,6 +2341,12 @@ class App(tk.Tk):
             "verbose": bool(self.camera_verbose_var.get()),
         }
         try:
+            self._apply_subarray_to_cam_cfg(cam_cfg)
+        except Exception as e:
+            messagebox.showerror("Subarray", str(e))
+            self._stop_sweep(clean_only=True)
+            return False
+        try:
             cam_cfg["log_path"] = str(out_dir / "camera_worker.log")
         except Exception:
             pass
@@ -2165,7 +2422,13 @@ class App(tk.Tk):
             if cam_ready is None:
                 cam_ready = self._mpq_get_with_ui(cam_resp_q, timeout=30, label="Camera ready")
             if not cam_ready.get("ok"):
-                raise RuntimeError(f"Camera worker failed: {cam_ready}")
+                raise RuntimeError(
+                    _format_worker_failure(
+                        cam_ready,
+                        label="Camera worker init failed",
+                        log_path=str((self._sw_out_dir / "camera_worker.log") if self._sw_out_dir else "") or None,
+                    )
+                )
         except Exception as e:
             messagebox.showerror("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
             self._stop_sweep(clean_only=True)
@@ -2250,13 +2513,20 @@ class App(tk.Tk):
             _ = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ ROI response")
             cam_resp = self._mpq_get_with_ui(cam_resp_q, timeout=15, label="Camera ROI frame")
             if not cam_resp.get("ok"):
-                raise RuntimeError(f"Camera frame failed: {cam_resp}")
+                raise RuntimeError(
+                    _format_worker_failure(
+                        cam_resp,
+                        label="Camera frame failed",
+                        log_path=str((self._sw_out_dir / "camera_worker.log") if self._sw_out_dir else "") or None,
+                    )
+                )
             frame = np.asarray(cam_resp.get("frame"))
 
             # Step 1: determine ROI from this single frame (user should press while in bright state).
             roi = None
             try:
                 from src.camera.lib.analysis_profiles import generate_rois_from_image
+                from src.camera.lib.image_ops import crop_roi
 
                 rois = generate_rois_from_image(np.asarray(frame), plot=False)
                 best = None
@@ -2265,7 +2535,7 @@ class App(tk.Tk):
                     if not (isinstance(r, (list, tuple)) and len(r) == 4):
                         continue
                     xw, yw, xs, ys = map(int, r)
-                    crop = np.asarray(frame)[ys : ys + yw, xs : xs + xw]
+                    crop = crop_roi(np.asarray(frame), (xw, yw, xs, ys))
                     if crop.size == 0:
                         continue
                     s = float(np.sum(crop))
@@ -2307,23 +2577,116 @@ class App(tk.Tk):
 
             # Plot image only (photon distributions belong to Step 2: Threshold)
             self.sw_fig.clear()
-            ax = self.sw_fig.add_subplot(111)
-            # Keep the persistent axis reference in sync after figure.clear().
-            self.sw_ax = ax
-            ax.imshow(frame, cmap="gray")
-            ax.set_title("ROI check")
-            ax.set_axis_off()
-            if isinstance(roi, (list, tuple)) and len(roi) == 4:
+            try:
+                # 2x2 layout: image on the left (spans rows), profiles on right.
+                gs = self.sw_fig.add_gridspec(2, 2, width_ratios=[2.2, 1.0], height_ratios=[1.0, 1.0])
+                ax_img = self.sw_fig.add_subplot(gs[:, 0])
+                ax_x = self.sw_fig.add_subplot(gs[0, 1])
+                ax_y = self.sw_fig.add_subplot(gs[1, 1])
+
+                # Keep the persistent axis reference in sync after figure.clear().
+                self.sw_ax = ax_img
+
+                vmin, vmax = _robust_gray_limits(frame)
+                ax_img.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
+                ax_img.set_title("ROI check")
+                ax_img.set_axis_off()
+                if isinstance(roi, (list, tuple)) and len(roi) == 4:
+                    try:
+                        xw, yw, xs, ys = map(int, roi)
+                        from matplotlib.patches import Rectangle
+
+                        ax_img.add_patch(Rectangle((xs, ys), xw, yw, fill=False, edgecolor="tab:red", linewidth=2))
+                    except Exception:
+                        pass
+
+                # Fit profiles and overlay curves (best-effort).
                 try:
-                    xw, yw, xs, ys = map(int, roi)
-                    from matplotlib.patches import Rectangle
+                    from src.camera.lib.analysis_profiles import lorentz_fit_profiles
 
-                    ax.add_patch(Rectangle((xs, ys), xw, yw, fill=False, edgecolor="tab:red", linewidth=2))
+                    results = lorentz_fit_profiles(np.asarray(frame), plot=False) or {}
+                    horiz = results.get("horizontal") or {}
+                    vert = results.get("vertical") or {}
+
+                    # Horizontal profile (sum over y)
+                    if isinstance(horiz, dict) and horiz.get("profile") is not None:
+                        x_prof = np.asarray(horiz.get("profile"), dtype=float)
+                        x_axis = np.asarray(horiz.get("x"), dtype=float) if horiz.get("x") is not None else np.arange(len(x_prof))
+                        ax_x.plot(x_axis, x_prof, color="tab:blue", linewidth=1.0, label="profile")
+                        if horiz.get("fitted") is not None:
+                            ax_x.plot(x_axis, np.asarray(horiz.get("fitted"), dtype=float), color="tab:orange", linewidth=1.5, label="fit")
+                        centers = horiz.get("centers")
+                        fwhms = horiz.get("fwhms")
+                        if isinstance(centers, (list, tuple)) and centers:
+                            for i, c in enumerate(centers[:5]):
+                                try:
+                                    ax_x.axvline(float(c), color="tab:red", alpha=0.6, linewidth=1.0)
+                                except Exception:
+                                    pass
+                        title = "X profile"
+                        try:
+                            if isinstance(fwhms, (list, tuple)) and fwhms:
+                                title += f" (FWHM~{float(np.mean([float(w) for w in fwhms])):.1f}px)"
+                        except Exception:
+                            pass
+                        ax_x.set_title(title)
+                        ax_x.grid(True, alpha=0.2)
+                        ax_x.tick_params(labelsize=8)
+                        try:
+                            ax_x.legend(fontsize=7, loc="best")
+                        except Exception:
+                            pass
+                    else:
+                        ax_x.set_title("X profile (fit failed)")
+                        ax_x.set_axis_off()
+
+                    # Vertical profile (sum over x)
+                    if isinstance(vert, dict) and vert.get("profile") is not None:
+                        y_prof = np.asarray(vert.get("profile"), dtype=float)
+                        y_axis = np.asarray(vert.get("x"), dtype=float) if vert.get("x") is not None else np.arange(len(y_prof))
+                        ax_y.plot(y_axis, y_prof, color="tab:blue", linewidth=1.0, label="profile")
+                        if vert.get("fitted") is not None:
+                            ax_y.plot(y_axis, np.asarray(vert.get("fitted"), dtype=float), color="tab:orange", linewidth=1.5, label="fit")
+                        try:
+                            yc = float(vert.get("center"))
+                            ax_y.axvline(yc, color="tab:red", alpha=0.6, linewidth=1.0)
+                        except Exception:
+                            pass
+                        title = "Y profile"
+                        try:
+                            if vert.get("fwhm") is not None:
+                                title += f" (FWHM~{float(vert.get('fwhm')):.1f}px)"
+                        except Exception:
+                            pass
+                        ax_y.set_title(title)
+                        ax_y.grid(True, alpha=0.2)
+                        ax_y.tick_params(labelsize=8)
+                        try:
+                            ax_y.legend(fontsize=7, loc="best")
+                        except Exception:
+                            pass
+                    else:
+                        ax_y.set_title("Y profile (fit failed)")
+                        ax_y.set_axis_off()
                 except Exception:
-                    pass
+                    # If scipy/fit isn't available, just keep the image.
+                    ax_x.set_title("profiles unavailable")
+                    ax_x.set_axis_off()
+                    ax_y.set_axis_off()
 
-            self.sw_fig.tight_layout()
-            self.sw_canvas.draw()
+                self.sw_fig.tight_layout()
+                self.sw_canvas.draw()
+            except Exception:
+                # Last-resort fallback: image only.
+                self.sw_fig.clear()
+                ax = self.sw_fig.add_subplot(111)
+                self.sw_ax = ax
+                vmin, vmax = _robust_gray_limits(frame)
+                ax.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
+                ax.set_title("ROI check")
+                ax.set_axis_off()
+                self.sw_fig.tight_layout()
+                self.sw_canvas.draw()
 
             if roi is None:
                 self.sw_status.set("ROI: failed to detect ROI. Retry Step 1.")
@@ -2360,10 +2723,30 @@ class App(tk.Tk):
         n = int(self._sw_session.get("n_target") or 50)
         max_attempt = int(self._sw_session.get("max_attempt") or max(100, n))
 
+        # Frame acquisition timeout must cover the whole shot duration.
+        # If timeout is too short (e.g. fixed 1s) and the DO sequence is longer,
+        # the camera worker will repeatedly return timeouts and we collect 0 samples.
+        try:
+            cam_exposure_s = float(self._sw_session.get("cam_exposure_s") or 0.001)
+        except Exception:
+            cam_exposure_s = 0.001
+        seq_s = 0.0
+        try:
+            for step in (do_sequence or []):
+                if isinstance(step, (list, tuple)) and len(step) >= 2:
+                    seq_s += float(step[1])
+        except Exception:
+            seq_s = 0.0
+        # generous margin for DAQ jitter / scheduling
+        shot_timeout_s = max(1.5, float(seq_s) + float(cam_exposure_s) + 0.8)
+
         # Acquire frames using the selected sequence; then classify post-hoc.
         # Classification scalar S: mean value in ROI (no exposure normalization, no background subtraction).
         samples: list[float] = []
         profiles: list[np.ndarray] = []  # per-shot 1D photon-count profile (integrated over y-axis)
+        last_cam_event: str | None = None
+        last_cam_error: str | None = None
+        cam_timeout_count = 0
         try:
             self.sw_status.set("Threshold: acquiring frames...")
             self._ui_pump()
@@ -2375,7 +2758,7 @@ class App(tk.Tk):
                     break
 
                 # Get a frame for this shot and compute S from the Step-1 ROI.
-                cam_cmd_q.put({"cmd": "get_frame", "timeout_s": 1.0})
+                cam_cmd_q.put({"cmd": "get_frame", "timeout_s": float(shot_timeout_s)})
                 daq_cmd_q.put(
                     {
                         "cmd": "run_sequence_once",
@@ -2393,11 +2776,16 @@ class App(tk.Tk):
                     raise RuntimeError(f"DAQ error: {daq_resp}")
                 cam_resp = self._mpq_get_with_ui(cam_resp_q, timeout=15, label="Camera frame")
                 if not cam_resp.get("ok"):
+                    last_cam_event = str(cam_resp.get("event") or "") or None
+                    last_cam_error = str(cam_resp.get("error") or "") or None
+                    if (cam_resp.get("event") == "timeout"):
+                        cam_timeout_count += 1
                     continue
 
                 frame = np.asarray(cam_resp.get("frame"))
-                xw, yw, xs, ys = map(int, roi)
-                crop = np.asarray(frame)[ys : ys + yw, xs : xs + xw]
+                from src.camera.lib.image_ops import crop_roi
+
+                crop = crop_roi(np.asarray(frame), roi)
                 if crop.size == 0:
                     continue
 
@@ -2413,7 +2801,16 @@ class App(tk.Tk):
                     self._ui_pump()
 
             if len(samples) < max(5, min(10, n)):
-                raise RuntimeError(f"Too few samples: {len(samples)}")
+                detail = f"Too few samples: {len(samples)}"
+                if len(samples) == 0:
+                    detail += f" | seq_s~{seq_s:.3f}s exposure_s~{cam_exposure_s:.3f}s get_frame_timeout_s~{shot_timeout_s:.3f}s"
+                    if cam_timeout_count:
+                        detail += f" | camera_timeouts={cam_timeout_count}"
+                    if last_cam_event:
+                        detail += f" | last_cam_event={last_cam_event}"
+                    if last_cam_error:
+                        detail += f" | last_cam_error={last_cam_error}"
+                raise RuntimeError(detail)
 
             from src.camera.lib.thresholding import quick_threshold_from_samples
 
