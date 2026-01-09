@@ -2292,6 +2292,13 @@ class App(tk.Tk):
             if self._sw_session is not None:
                 self._sw_session["roi"] = roi
 
+            # Propagate ROI to camera worker so get_state uses the same ROI scalar as Step 2.
+            try:
+                cam_cmd_q.put({"cmd": "set_roi", "roi": list(roi) if roi is not None else None})
+                _ = self._mpq_get_with_ui(cam_resp_q, timeout=5, label="Camera set_roi")
+            except Exception:
+                pass
+
             # Save snapshot
             try:
                 np.save(self._sw_out_dir / "roi_check.npy", frame)
@@ -2301,6 +2308,8 @@ class App(tk.Tk):
             # Plot image only (photon distributions belong to Step 2: Threshold)
             self.sw_fig.clear()
             ax = self.sw_fig.add_subplot(111)
+            # Keep the persistent axis reference in sync after figure.clear().
+            self.sw_ax = ax
             ax.imshow(frame, cmap="gray")
             ax.set_title("ROI check")
             ax.set_axis_off()
@@ -2439,9 +2448,15 @@ class App(tk.Tk):
             except Exception:
                 acc = 0.0
 
-            # Plot: photon-count distributions (integrated over y-axis), per-pixel samples.
+            # Plot:
+            #  (top) photon-count distributions (integrated over y-axis), per-column samples
+            #  (bottom) roi_mean distribution (the scalar used for tau)
             self.sw_fig.clear()
-            ax = self.sw_fig.add_subplot(111)
+            ax_ph = self.sw_fig.add_subplot(211)
+            ax_s = self.sw_fig.add_subplot(212)
+            # Keep the persistent axis reference in sync after figure.clear().
+            # Use the bottom axis as the "current" one.
+            self.sw_ax = ax_s
 
             def _concat_profiles(ps: list[np.ndarray]) -> np.ndarray:
                 arrs = []
@@ -2458,40 +2473,124 @@ class App(tk.Tk):
             if combined.size == 0:
                 raise RuntimeError("No valid photon-count samples")
 
+            # NOTE: The histogram below is for 1D profiles integrated over y-axis
+            # (i.e., per-column sums). The threshold tau is computed on roi_mean
+            # (mean over all ROI pixels), so convert tau to this axis by scaling
+            # with ROI height (yw): tau_plot ~= tau * yw.
+            try:
+                tau_plot = float(tau) * float(yw)
+            except Exception:
+                tau_plot = float(tau)
+
             start = int(np.floor(float(np.nanmin(combined))))
             end = int(np.ceil(float(np.nanmax(combined))))
+            # Ensure the threshold line is within the plotted range.
+            try:
+                start = int(min(start, np.floor(float(tau_plot))))
+                end = int(max(end, np.ceil(float(tau_plot))))
+            except Exception:
+                pass
             bin_edges = np.arange(start - 0.5, end + 1.5, 1)
 
             if light_counts.size > 0:
                 mean_light = float(np.mean(light_counts))
-                ax.hist(
+                ax_ph.hist(
                     light_counts,
                     bins=bin_edges,
                     density=True,
                     alpha=0.6,
                     color="tab:orange",
-                    edgecolor="black",
+                    edgecolor="none",
                     label=f"Light (mean={mean_light:.2f})",
                 )
-                ax.axvline(mean_light, color="tab:orange", linestyle="--")
+                ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
             if dark_counts.size > 0:
                 mean_dark = float(np.mean(dark_counts))
-                ax.hist(
+                ax_ph.hist(
                     dark_counts,
                     bins=bin_edges,
                     density=True,
                     alpha=0.6,
                     color="navy",
-                    edgecolor="black",
+                    edgecolor="none",
                     label=f"Dark (mean={mean_dark:.2f})",
                 )
-                ax.axvline(mean_dark, color="navy", linestyle="--")
+                ax_ph.axvline(mean_dark, color="navy", linestyle="--")
 
-            ax.set_xlabel("Photon Count (integer bins)")
-            ax.set_ylabel("Probability density")
-            ax.set_title(f"Photon Distribution (integrated over y-axis) | agree={acc*100:.1f}%")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
+            # Plot threshold in the same axis unit as this histogram (per-column sum).
+            try:
+                ax_ph.axvline(
+                    float(tau_plot),
+                    color="tab:red",
+                    linestyle="-",
+                    linewidth=2,
+                    label=f"Threshold (tau*yw={float(tau_plot):.2f})",
+                )
+            except Exception:
+                pass
+
+            ax_ph.set_xlabel("Photon Count (per-column sum; integer bins)")
+            ax_ph.set_ylabel("Probability density")
+            ax_ph.set_title(f"Photon Distribution (integrated over y-axis) | agree={acc*100:.1f}%")
+            # loc="best" can be slow; use a fixed location for snappy UI.
+            ax_ph.legend(loc="upper right")
+            ax_ph.grid(True, alpha=0.3)
+
+            # Bottom: roi_mean distribution used for tau
+            try:
+                s_all = np.asarray(samples, dtype=float)
+                s_all = s_all[np.isfinite(s_all)]
+            except Exception:
+                s_all = np.asarray([], dtype=float)
+
+            if s_all.size > 0:
+                try:
+                    s_bright = np.asarray(bright_samples, dtype=float)
+                    s_dark = np.asarray(dark_samples, dtype=float)
+                except Exception:
+                    s_bright = np.asarray([], dtype=float)
+                    s_dark = np.asarray([], dtype=float)
+
+                try:
+                    s_min = float(np.nanmin(s_all))
+                    s_max = float(np.nanmax(s_all))
+                    s_min = min(s_min, float(tau))
+                    s_max = max(s_max, float(tau))
+                    bins_s = max(10, min(80, int(np.sqrt(s_all.size)) * 4))
+                    edges_s = np.linspace(s_min, s_max, bins_s + 1)
+                except Exception:
+                    edges_s = 50
+
+                if s_bright.size > 0:
+                    ax_s.hist(
+                        s_bright,
+                        bins=edges_s,
+                        density=True,
+                        alpha=0.6,
+                        color="tab:orange",
+                        edgecolor="none",
+                        label=f"roi_mean bright (n={int(s_bright.size)})",
+                    )
+                    ax_s.axvline(float(np.mean(s_bright)), color="tab:orange", linestyle="--")
+                if s_dark.size > 0:
+                    ax_s.hist(
+                        s_dark,
+                        bins=edges_s,
+                        density=True,
+                        alpha=0.6,
+                        color="navy",
+                        edgecolor="none",
+                        label=f"roi_mean dark (n={int(s_dark.size)})",
+                    )
+                    ax_s.axvline(float(np.mean(s_dark)), color="navy", linestyle="--")
+
+                ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
+
+            ax_s.set_xlabel("roi_mean (used for tau)")
+            ax_s.set_ylabel("Probability density")
+            ax_s.set_title("ROI-mean distribution")
+            ax_s.legend(loc="upper right")
+            ax_s.grid(True, alpha=0.3)
 
             self.sw_fig.tight_layout()
             self.sw_canvas.draw()
@@ -2610,6 +2709,16 @@ class App(tk.Tk):
         self._sw_freqs = freqs
         self._sw_results = []
         self._sw_next_update = time.time() + update_interval
+
+        # Reset plot area for Step 3 (single axis), so it doesn't inherit Step 2 subplots.
+        try:
+            if self.sw_fig is not None and self.sw_canvas is not None:
+                self.sw_fig.clear()
+                self.sw_ax = self.sw_fig.add_subplot(111)
+                self.sw_fig.tight_layout()
+                self.sw_canvas.draw()
+        except Exception:
+            pass
 
         try:
             with shots_path.open("w", newline="", encoding="utf-8") as f_shots, spec_path.open(
@@ -2878,7 +2987,7 @@ class App(tk.Tk):
         self.sw_ax.set_xlabel("freq (Hz)")
         self.sw_ax.set_ylabel("p_bright")
         self.sw_ax.grid(True, alpha=0.3)
-        self.sw_fig.tight_layout()
+        # tight_layout() is expensive; avoid calling it on every update.
         self.sw_canvas.draw()
 
 
