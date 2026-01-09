@@ -296,6 +296,29 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 send({"ok": True, "event": "closing"})
                 break
 
+            if name == "set_roi":
+                try:
+                    roi_new = as_roi_tuple(cmd.get("roi"))
+                    if roi_new is None:
+                        raise ValueError("set_roi requires roi=[xw,yw,xs,ys]")
+                    roi_t = roi_new
+                    # Reset hysteresis memory when ROI changes.
+                    prev_state = None
+                    send({"ok": True, "event": "roi", "roi": list(roi_t)})
+                except Exception as e:
+                    send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
+                continue
+
+            if name == "set_bg_roi":
+                try:
+                    bg_new = as_roi_tuple(cmd.get("bg_roi"))
+                    bg_roi_t = bg_new
+                    prev_state = None
+                    send({"ok": True, "event": "bg_roi", "bg_roi": (list(bg_roi_t) if bg_roi_t else None)})
+                except Exception as e:
+                    send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
+                continue
+
             if name == "set_threshold":
                 try:
                     tau_on_new = cmd.get("tau_on")
@@ -426,17 +449,44 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                         arr, bright_label, name = random.choice(dry_samples)
                         try:
                             frame = np.asarray(_to_uint8_image(arr))
-                            s_norm = float(np.mean(frame)) if frame.size else float(random.gauss(120.0, 30.0))
+                            if roi_t is not None:
+                                xw, yw, xs, ys = map(int, roi_t)
+                                crop = frame[ys : ys + yw, xs : xs + xw]
+                                s_norm = float(np.mean(crop)) if getattr(crop, "size", 0) else float(np.mean(frame))
+                            else:
+                                s_norm = float(np.mean(frame)) if frame.size else float(random.gauss(120.0, 30.0))
                         except Exception:
                             s_norm = float(random.gauss(120.0, 30.0))
+
+                        # If a threshold has been applied (Step 2), classify using it.
+                        # This keeps dry mode consistent with the sweep logic.
+                        bright: bool
+                        try:
+                            if (tau_on is not None) and (tau_off is not None):
+                                # If hysteresis is disabled (tau_on==tau_off), use a simple threshold.
+                                if abs(float(tau_on) - float(tau_off)) < 1e-12:
+                                    bright = bool(float(s_norm) > float(tau_on))
+                                else:
+                                    # Simple hysteresis (no external deps in dry mode).
+                                    if prev_state is None:
+                                        prev_state = bool(float(s_norm) > float(tau_on))
+                                    if prev_state:
+                                        prev_state = bool(float(s_norm) > float(tau_off))
+                                    else:
+                                        prev_state = bool(float(s_norm) > float(tau_on))
+                                    bright = bool(prev_state)
+                            else:
+                                bright = bool(bright_label)
+                        except Exception:
+                            bright = bool(bright_label)
                         send(
                             {
                                 "ok": True,
                                 "event": "state",
-                                "bright": bool(bright_label),
+                                "bright": bool(bright),
                                 "S_norm": s_norm,
-                                "tau_on": None,
-                                "tau_off": None,
+                                "tau_on": float(tau_on) if tau_on is not None else None,
+                                "tau_off": float(tau_off) if tau_off is not None else None,
                                 "sample": name,
                             }
                         )
