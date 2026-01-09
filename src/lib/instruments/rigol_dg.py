@@ -18,6 +18,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pyvisa
+try:
+    from pyvisa import constants as _visa_constants
+except Exception:  # pragma: no cover
+    _visa_constants = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,11 @@ class RigolDG:
     def close(self) -> None:
         try:
             if self._inst is not None:
+                # Best-effort: return to LOCAL (front panel) control.
+                try:
+                    self.local()
+                except Exception:
+                    pass
                 self._inst.close()
         finally:
             self._inst = None
@@ -56,6 +65,28 @@ class RigolDG:
                     self._rm.close()
             finally:
                 self._rm = None
+
+    def local(self) -> None:
+        """Return instrument to LOCAL (front panel) mode.
+
+        Some instruments stay in remote mode even after the VISA session is
+        closed unless we explicitly release it.
+        """
+        if self._inst is None:
+            return
+        # SCPI: many Rigol instruments support SYST:LOC.
+        try:
+            self._inst.write(":SYST:LOC")
+            return
+        except Exception:
+            pass
+
+        # VISA REN line operation (if supported by backend/instrument).
+        try:
+            if _visa_constants is not None:
+                self._inst.control_ren(_visa_constants.RENLineOperation.go_to_local)
+        except Exception:
+            pass
 
     def query(self, cmd: str) -> str:
         if self._inst is None:
