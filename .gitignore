@@ -9,6 +9,10 @@ __pycache__/
 data/output/
 logs/
 
+# Local GUI/runtime state
+config/shutter_gui_prefs.json
+config/last_worker_pids.json
+
 # Common tooling caches
 .pytest_cache/
 .mypy_cache/
