@@ -2232,7 +2232,7 @@ class App(tk.Tk):
             cam_cmd = {"cmd": "get_frame", "timeout_s": 1.0}
             try:
                 if self._sw_session and self._sw_session.get("cam_mode") == "dry":
-                    cam_cmd["prefer_sample"] = "roi_test.npy"
+                    cam_cmd["prefer_sample"] = "data/input/dry_samples/roi_test.npy"
             except Exception:
                 pass
             cam_cmd_q.put(cam_cmd)
@@ -2286,38 +2286,8 @@ class App(tk.Tk):
                     except Exception:
                         roi = None
 
-            # If the ROI frame looks dark, do not lock ROI (ask user to retry while bright).
-            roi_ok = True
-            if isinstance(roi, (list, tuple)) and len(roi) == 4:
-                try:
-                    xw, yw, xs, ys = map(int, roi)
-                    crop = np.asarray(frame)[ys : ys + yw, xs : xs + xw]
-                    roi_mean = float(np.mean(np.asarray(crop, dtype=float))) if crop.size else 0.0
-                    frame_mean = float(np.mean(np.asarray(frame, dtype=float))) if frame.size else 0.0
-                    frame_std = float(np.std(np.asarray(frame, dtype=float))) if frame.size else 0.0
-
-                    bright_flag = cam_resp.get("bright")
-                    if isinstance(bright_flag, bool):
-                        roi_ok = bool(bright_flag)
-                    else:
-                        # Heuristic: ROI should be noticeably brighter than typical pixels.
-                        roi_ok = bool(roi_mean > (frame_mean + 1.0 * frame_std))
-                except Exception:
-                    roi_ok = True
-            else:
-                roi_ok = False
-
-            if not roi_ok:
-                # Do not store ROI; user should retry ROI check while ion is bright.
-                roi = None
-                try:
-                    messagebox.showwarning(
-                        "Sweep",
-                        "ROI check frame looks DARK.\n\n明状態で 1) ROI check を押し直してください。",
-                        parent=self,
-                    )
-                except Exception:
-                    pass
+            # ROI check assumes the user triggers it in a bright state.
+            # Do not gate ROI locking by any bright/dark heuristic here.
 
             if self._sw_session is not None:
                 self._sw_session["roi"] = roi
@@ -2332,7 +2302,7 @@ class App(tk.Tk):
             self.sw_fig.clear()
             ax = self.sw_fig.add_subplot(111)
             ax.imshow(frame, cmap="gray")
-            ax.set_title("ROI check (press in bright state)")
+            ax.set_title("ROI check")
             ax.set_axis_off()
             if isinstance(roi, (list, tuple)) and len(roi) == 4:
                 try:
@@ -2347,7 +2317,7 @@ class App(tk.Tk):
             self.sw_canvas.draw()
 
             if roi is None:
-                self.sw_status.set("ROI: frame looked dark. Retry Step 1.")
+                self.sw_status.set("ROI: failed to detect ROI. Retry Step 1.")
             else:
                 self.sw_status.set("ROI: locked. Step 2: Threshold.")
             self._sw_refresh_buttons()
@@ -2440,8 +2410,9 @@ class App(tk.Tk):
 
             th = quick_threshold_from_samples(list(samples))
             tau = float(th["tau"])
-            tau_on = float(th["tau_on"])
-            tau_off = float(th["tau_off"])
+            # Disable hysteresis: use a single threshold.
+            tau_on = float(tau)
+            tau_off = float(tau)
 
             # Post-hoc classification using tau
             bright_samples = [float(v) for v in samples if float(v) > tau]
@@ -2450,8 +2421,7 @@ class App(tk.Tk):
             bright_profiles = [profiles[i] for i, v in enumerate(samples) if float(v) > tau]
             dark_profiles = [profiles[i] for i, v in enumerate(samples) if float(v) <= tau]
 
-            # "Accuracy": agreement between simple threshold and hysteresis classifier.
-            # (No external ground-truth in real experiment; this is a self-consistency metric.)
+            # "Agreement": self-consistency metric. With hysteresis disabled, this should be ~100%.
             try:
                 from src.camera.lib.thresholding import classify_hysteresis
 
@@ -2552,7 +2522,7 @@ class App(tk.Tk):
             apply_ok = bool(
                 messagebox.askyesno(
                     "Threshold",
-                    f"Apply threshold?\nmode={th.get('mode')}\nagreement={acc*100:.1f}% (simple vs hysteresis)\n\n metric=roi_mean\n tau={tau:.3g}\n tau_on={tau_on:.3g}\n tau_off={tau_off:.3g}",
+                    f"Apply threshold?\nmode={th.get('mode')}\nagreement={acc*100:.1f}% (hysteresis OFF)\n\n metric=roi_mean\n tau={tau:.3g}",
                     parent=self,
                 )
             )

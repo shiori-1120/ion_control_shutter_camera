@@ -304,8 +304,9 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
                     if tau_new is not None:
                         tau = float(tau_new)
-                        tau_on_new = float(tau + 1.0)
-                        tau_off_new = float(tau - 1.0)
+                        # Hysteresis disabled: use a single threshold.
+                        tau_on_new = float(tau)
+                        tau_off_new = float(tau)
 
                     if tau_on_new is None or tau_off_new is None:
                         raise ValueError("set_threshold requires tau or (tau_on and tau_off)")
@@ -328,6 +329,43 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             try:
                 if mode == "dry":
                     if name == "get_frame":
+                        # Force a specific sample if requested (useful for ROI check).
+                        # This works even when dry_image_dir is not configured.
+                        try:
+                            prefer = cmd.get("prefer_sample")
+                            if isinstance(prefer, str) and prefer.strip():
+                                p = Path(prefer)
+                                if p.exists() and p.is_file():
+                                    import numpy as _np  # local import
+
+                                    arr: Any
+                                    if p.suffix.lower() == ".npy":
+                                        arr = _np.load(p)
+                                    else:
+                                        try:
+                                            from PIL import Image  # type: ignore
+
+                                            arr = _np.asarray(Image.open(p).convert("L"))
+                                        except Exception:
+                                            arr = _np.load(p)
+                                    frame = _to_uint8_image(arr)
+                                    frame = _np.asarray(frame)
+                                    send(
+                                        {
+                                            "ok": True,
+                                            "event": "frame",
+                                            "frame": frame,
+                                            "bright": True,
+                                            "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
+                                            "tau_on": None,
+                                            "tau_off": None,
+                                            "sample": str(p),
+                                        }
+                                    )
+                                    continue
+                        except Exception:
+                            pass
+
                         # Best-effort: return a representative sample frame.
                         if dry_samples:
                             import numpy as _np  # local import
@@ -430,16 +468,21 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 if (normalize_count is not None) and (roi_t is not None):
                     norm = normalize_count(frame_np, roi_t, bg_roi=bg_roi_t, exposure_s=exposure_s)
                     S_norm = float(norm["S_norm"])
-                    if (classify_hysteresis is not None) and (tau_on is not None) and (tau_off is not None):
-                        bright = bool(
-                            classify_hysteresis(
-                                S_norm,
-                                prev_state_bright=prev_state,
-                                tau_on=float(tau_on),
-                                tau_off=float(tau_off),
+                    if (tau_on is not None) and (tau_off is not None):
+                        # If tau_on==tau_off, treat it as a simple threshold (no hysteresis).
+                        if abs(float(tau_on) - float(tau_off)) < 1e-12:
+                            bright = bool(S_norm > float(tau_on))
+                            prev_state = bool(bright)
+                        elif classify_hysteresis is not None:
+                            bright = bool(
+                                classify_hysteresis(
+                                    S_norm,
+                                    prev_state_bright=prev_state,
+                                    tau_on=float(tau_on),
+                                    tau_off=float(tau_off),
+                                )
                             )
-                        )
-                        prev_state = bool(bright)
+                            prev_state = bool(bright)
 
                 if name == "get_frame":
                     send(
