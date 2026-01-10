@@ -3130,10 +3130,12 @@ class App(tk.Tk):
                         "attempt_idx",
                         "processed_idx",
                         "bright",
+                        "label_bright",
                         "S_norm",
                         "tau_on",
                         "tau_off",
                         "cam_event",
+                        "cam_sample",
                     ],
                 )
                 shots_writer.writeheader()
@@ -3179,6 +3181,7 @@ class App(tk.Tk):
                             continue
 
                         bright = bool(cam_resp.get("bright"))
+                        label_bright = cam_resp.get("label_bright")
                         s_norm = cam_resp.get("S_norm")
                         tau_on = cam_resp.get("tau_on")
                         tau_off = cam_resp.get("tau_off")
@@ -3195,10 +3198,12 @@ class App(tk.Tk):
                                 "attempt_idx": attempt_idx,
                                 "processed_idx": processed,
                                 "bright": int(bright),
+                                "label_bright": "" if label_bright is None else int(bool(label_bright)),
                                 "S_norm": "" if s_norm is None else float(s_norm),
                                 "tau_on": "" if tau_on is None else float(tau_on),
                                 "tau_off": "" if tau_off is None else float(tau_off),
                                 "cam_event": str(cam_resp.get("event")),
+                                "cam_sample": str(cam_resp.get("sample")) if cam_resp.get("sample") is not None else "",
                             }
                         )
 

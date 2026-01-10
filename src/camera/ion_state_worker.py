@@ -466,6 +466,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                         from .lib.image_ops import crop_roi
 
                         arr, bright_label, name = random.choice(dry_samples)
+                        label_bright = bool(bright_label)
                         try:
                             frame = np.asarray(_to_uint8_image(arr))
                             if subarray_t is not None:
@@ -497,14 +498,15 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                                         prev_state = bool(float(s_norm) > float(tau_on))
                                     bright = bool(prev_state)
                             else:
-                                bright = bool(bright_label)
+                                bright = bool(label_bright)
                         except Exception:
-                            bright = bool(bright_label)
+                            bright = bool(label_bright)
                         send(
                             {
                                 "ok": True,
                                 "event": "state",
                                 "bright": bool(bright),
+                                "label_bright": bool(label_bright),
                                 "S_norm": s_norm,
                                 "tau_on": float(tau_on) if tau_on is not None else None,
                                 "tau_off": float(tau_off) if tau_off is not None else None,
@@ -518,7 +520,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                         s_norm = float(random.gauss(50.0, 15.0))
                     s_norm = float(max(0.0, min(255.0, s_norm)))
                     bright = bool(s_norm > 100.0)
-                    send({"ok": True, "event": "state", "bright": bright, "S_norm": s_norm, "tau_on": None, "tau_off": None})
+                    send({"ok": True, "event": "state", "bright": bright, "label_bright": None, "S_norm": s_norm, "tau_on": None, "tau_off": None, "sample": None})
                     continue
 
                 if cam is None:
