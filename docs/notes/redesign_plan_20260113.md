@@ -524,7 +524,7 @@
 ## SweepController 状態機械とイベント仕様（フェーズ1・設計）
 **目的**: 状態遷移を明確化し、安全停止とUI通知を一貫させる。
 
-### 状態定義
+### 状態定義（SweepPhase）
 - idle: 初期状態。ワーカー未起動。
 - prepared: セッション生成完了。ROIチェック可能。
 - roi_done: ROI確定済み。Threshold可能。
@@ -533,23 +533,21 @@
 - stopping: 停止処理中（安全停止）。
 - error: 例外発生。停止済み/要復帰。
 
-### 遷移
-- idle -> prepared: prepare()
-- prepared -> roi_done: roi_check()成功
-- roi_done -> threshold_done: threshold_check()適用
-- threshold_done -> running: start()
-- running -> stopping: stop() or exception
+### 遷移（現行実装）
+- idle -> prepared: prepare_session()
+- prepared -> roi_done: roi_check()でROI検出
+- roi_done -> threshold_done: threshold_check()で適用
+- threshold_done -> running: start_sweep()
+- running -> stopping: stop_sweep()または例外
 - stopping -> idle: cleanup完了
 - any -> error: 例外発生（ログ記録 + 安全停止）
-- error -> idle: reset()
 
-### APIと状態制約
-- prepare(inputs): idleのみ許可
-- roi_check(state): preparedのみ許可
-- threshold_check(state): roi_doneのみ許可
-- start(state): threshold_doneのみ許可
-- stop(state, reason): running or prepared/roi_done/threshold_done から許可（安全停止）
-- status(state): すべての状態で許可
+### ガード（SweepController）
+- prepare_session: idle/roi_done/threshold_done/prepared は許可、running/stopping/errorは拒否
+- roi_check: prepared/roi_done/threshold_doneのみ許可
+- threshold_check: prepared/roi_done/threshold_doneのみ許可（ROI未設定はエラー）
+- start_sweep: threshold_doneのみ許可
+- stop_sweep: idle以外は許可
 
 ### イベント（UI向け）
 - on_status(text): 進捗/状態ラベル
@@ -706,6 +704,38 @@
 - 2026-01-13: sweep primingのprime_cmdをDaqSequenceCommandで渡すようにし、dict依存を低減。
 - 2026-01-13: manual actions/DAQ connect/disconnectのset_doをDaqClientDevice経由に置換。
 - 2026-01-13: camera_checkの一時DAQ primingもDaqQueueDevice経由に置換。
+- 2026-01-14: Sweepのイベント通知をSweepEventsに集約。
+- 2026-01-14: plot更新/入力エラー通知もSweepEventsへ統合。
+- 2026-01-14: SweepIOにsubarray/threshold確認を切り出し、UI依存を分離。
+- 2026-01-14: SweepUiを廃止し、Events/IO/Depsの境界に整理。
+- 2026-01-14: Events/IO/Depsの最小セットに整理してworkflow依存を明確化。
+- 2026-01-14: workflowのスタブ実行用スクリプトを追加（smoketest）。
+- 2026-01-14: SweepPhaseの状態トラッキングとon_state_changeイベントを追加。
+- 2026-01-14: DiagnosticsにSweep state履歴を追加し、状態遷移を可視化。
+- 2026-01-14: SweepStateのrunning/prepared/threshold_doneをphaseへ統合。
+- 2026-01-14: phaseに合わせてSweep status文言とボタン状態の更新を整理。
+- 2026-01-14: SweepControllerでphaseガードを集約し、UI操作制限を明確化。
+- 2026-01-14: Sweep status文言を統一し、次のアクションが分かる表示に整備。
+- 2026-01-14: Sweepガード/エラーメッセージの文言を定数化して重複を削減。
+- 2026-01-14: ガード文言をUIボタン表記（ROI/Threshold/Start）に合わせて統一。
+- 2026-01-14: Sequence JSONのao_insert_index/ao_width_msをUIに反映し、読み取り表示と一致させた。
+- 2026-01-14: SequenceタブのAO insert indexを読み取り専用に変更。
+- 2026-01-14: SweepPhaseの状態定義/遷移/ガードを最新実装に更新。
+- 2026-01-14: SetupのAO width入力を読み取り専用にし、Sequence JSONに合わせた。
+- 2026-01-14: Sequence実行をJSON由来のdo_sequence/aoパラメータに統一。
+- 2026-01-14: Sequenceタブ初期表示をDeviceRegistryのsequence_json_pathに追従させた。
+- 2026-01-14: Sequence実行時にJSONパス未設定/不存在のガードを追加。
+- 2026-01-14: ログ初期化でDeviceRegistryのlogs_rootを優先するようにした。
+- 2026-01-14: output_rootをsweep/cameraの出力ディレクトリに反映。
+- 2026-01-14: run_shutter_sequenceの出力先もoutput_rootに追従させた。
+- 2026-01-14: log_utils.make_run_folderもoutput_rootに追従させた。
+- 2026-01-14: output_rootの解決をdevice_registryのユーティリティに集約。
+- 2026-01-14: camera_tabのoutput_rootフォールバックもresolve_output_rootへ統一。
+- 2026-01-14: run_spectrumの出力先もoutput_rootに追従させた。
+- 2026-01-14: run_spectrumのSequence JSONパースをread_sequence_json_paramsへ統一。
+- 2026-01-14: run_spectrumのDAQ呼び出しをDaqQueueDevice経由に統一。
+- 2026-01-14: Sequence JSONのcamera_actions/sync_markersを検証して保持するよう追加。
+- 2026-01-14: sweepセッションにcamera_actions/sync_markersを引き回すよう追加。
 
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）

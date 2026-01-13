@@ -1,73 +1,36 @@
 ﻿from __future__ import annotations
 
 import threading
-import tkinter as tk
+from pathlib import Path
 from typing import Any
 from tkinter import messagebox
 
 from ..daq.guards import require_connected
 
-from ..gui_support.sequence_text import SequenceParseOptions, parse_do_sequence_text
 from ..gui_support.diagnostics import resolve_log_path, set_last_error
 from ..hardware import DaqClientDevice, DaqSequenceCommand
+from ..sweep.session_parse import read_sequence_json_params
 
 
-def parse_sequence_text(
-    app: Any,
-    *,
-    seq_bits: int,
-    all_off: int,
-    nm_397: int,
-    nm_397_sig: int,
-    nm_729: int,
-    nm_854: int,
-) -> list[tuple[int, float]]:
-    raw = app.seq_text.get("1.0", tk.END)
-    name_to_value = {
-        "ALL_OFF": int(all_off),
-        "NM_397": int(nm_397),
-        "NM_397_SIG": int(nm_397_sig),
-        "NM_729": int(nm_729),
-        "NM_854": int(nm_854),
-        "NM_729_854": int(nm_729 | nm_854),
-    }
-    return parse_do_sequence_text(
-        raw,
-        options=SequenceParseOptions(
-            bits=int(seq_bits),
-            strict_bitstring_length=True,
-            allow_symbolic_names=True,
-        ),
-        name_to_value=name_to_value,
-        value_min=0,
-        value_max=0b1111,
-    )
+def _load_sequence_params(seq_path: Path):
+    return read_sequence_json_params(seq_path=seq_path)
 
 
 def start_sequence(
     app: Any,
     *,
-    seq_bits: int,
-    all_off: int,
-    nm_397: int,
-    nm_397_sig: int,
-    nm_729: int,
-    nm_854: int,
+    seq_path: Path,
     ao_rate_hz: float,
+    nm_397: int,
 ) -> None:
     try:
+        if not seq_path or not Path(seq_path).exists():
+            raise FileNotFoundError(f"Sequence JSON not found: {seq_path}")
         require_connected(app)
-        insert_index = int(app.insert_index_var.get())
-        width_ms = float(app.width_var.get())
-        do_sequence = parse_sequence_text(
-            app,
-            seq_bits=seq_bits,
-            all_off=all_off,
-            nm_397=nm_397,
-            nm_397_sig=nm_397_sig,
-            nm_729=nm_729,
-            nm_854=nm_854,
-        )
+        params = _load_sequence_params(Path(seq_path))
+        insert_index = int(params.ao_insert_index)
+        width_ms = float(params.ao_width_ms)
+        do_sequence = list(params.do_sequence)
     except Exception as e:
         messagebox.showerror("Sequence", str(e))
         set_last_error(

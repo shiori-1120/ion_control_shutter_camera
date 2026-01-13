@@ -3,6 +3,7 @@ from datetime import datetime
 import time
 import nidaqmx
 
+from .config.device_registry import resolve_output_root
 # 固定の出力先ユーティリティ
 def ensure_output_dir(path: str) -> Path:
     p = Path(path)
@@ -18,7 +19,7 @@ def make_run_folder(base: Path) -> Path:
 OUTPUT_DIR = 'data/output/shutter'
 
 def main():
-    base = ensure_output_dir(OUTPUT_DIR)
+    base = ensure_output_dir(str(resolve_output_root() / "shutter"))
     run_dir = make_run_folder(base)
     print(f"シャッターシーケンスの出力先: {run_dir}")
     # TODO: ここでユーザー定義の2進シーケンスを読み込み、実行する

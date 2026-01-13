@@ -3,19 +3,15 @@
 from pathlib import Path
 from typing import Any
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from ..sequence.controller import start_sequence, stop_sequence
 
 
-def _load_sequence_text(path: Path) -> str:
-    try:
-        from ..sweep.session_parse import read_sequence_json_params
+def _load_sequence_params(path: Path):
+    from ..sweep.session_parse import read_sequence_json_params
 
-        params = read_sequence_json_params(seq_path=path)
-        return str(params.sequence_text or "")
-    except Exception:
-        return ""
+    return read_sequence_json_params(seq_path=path)
 
 
 def _resolve_sequence_path(app: Any, default_seq_path: Path) -> Path:
@@ -34,7 +30,13 @@ def _refresh_sequence_text(app: Any, *, default_seq_path: Path) -> None:
     if getattr(app, "seq_text", None) is None:
         return
     path = _resolve_sequence_path(app, default_seq_path)
-    text = _load_sequence_text(path)
+    try:
+        params = _load_sequence_params(path)
+        text = str(params.sequence_text or "")
+    except Exception as e:
+        messagebox.showerror("Sequence", str(e))
+        text = f"# Error loading sequence JSON\n# {e}\n"
+        params = None
     try:
         app.seq_text.configure(state=tk.NORMAL)
         app.seq_text.delete("1.0", tk.END)
@@ -42,6 +44,16 @@ def _refresh_sequence_text(app: Any, *, default_seq_path: Path) -> None:
         app.seq_text.configure(state=tk.DISABLED)
     except Exception:
         pass
+    if params is not None:
+        try:
+            app.insert_index_var.set(str(int(params.ao_insert_index)))
+        except Exception:
+            pass
+        try:
+            if getattr(app, "width_var", None) is not None:
+                app.width_var.set(str(float(params.ao_width_ms)))
+        except Exception:
+            pass
 
 
 def build_sequence_tab(
@@ -65,7 +77,7 @@ def build_sequence_tab(
 
     ttk.Label(row, text="AO insert index").grid(row=0, column=0, sticky=tk.W)
     app.insert_index_var = tk.StringVar(value="1")
-    ttk.Entry(row, textvariable=app.insert_index_var, width=6).grid(row=0, column=1, padx=4)
+    ttk.Entry(row, textvariable=app.insert_index_var, width=6, state="readonly").grid(row=0, column=1, padx=4)
 
     ttk.Label(row, text=bitstring_help).grid(row=0, column=2, sticky=tk.W, padx=(8, 0))
 
@@ -77,13 +89,9 @@ def build_sequence_tab(
         text="Start",
         command=lambda: start_sequence(
             app,
-            seq_bits=seq_bits,
-            all_off=all_off,
-            nm_397=nm_397,
-            nm_397_sig=nm_397_sig,
-            nm_729=nm_729,
-            nm_854=nm_854,
+            seq_path=_resolve_sequence_path(app, default_seq_path),
             ao_rate_hz=ao_rate_hz,
+            nm_397=nm_397,
         ),
     )
     app.start_btn.pack(side=tk.LEFT, padx=4)
@@ -106,7 +114,22 @@ def build_sequence_tab(
     ttk.Label(app.seq_tab, text="Sequence JSON (read-only view)").pack(anchor=tk.W, pady=(6, 4))
 
     app.seq_text = tk.Text(text_row, height=14, wrap=tk.NONE)
-    app.seq_text.insert("1.0", _load_sequence_text(default_seq_path))
+    try:
+        path = _resolve_sequence_path(app, default_seq_path)
+        params = _load_sequence_params(path)
+        initial_text = str(params.sequence_text or "")
+        try:
+            app.insert_index_var.set(str(int(params.ao_insert_index)))
+        except Exception:
+            pass
+        try:
+            if getattr(app, "width_var", None) is not None:
+                app.width_var.set(str(float(params.ao_width_ms)))
+        except Exception:
+            pass
+    except Exception as e:
+        initial_text = f"# Error loading sequence JSON\n# {e}\n"
+    app.seq_text.insert("1.0", initial_text)
     app.seq_text.configure(state=tk.DISABLED)
     app.seq_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 

@@ -8,7 +8,7 @@ import numpy as np
 
 from ..gui_support.image_utils import robust_gray_limits
 from ..gui_support.worker_messages import format_worker_failure
-from ..hardware import DaqQueueDevice, DaqSequenceCommand
+from ..hardware import CameraQueueDevice, DaqQueueDevice, DaqSequenceCommand
 from .roi_bootstrap import run_roi_bootstrap
 
 
@@ -100,10 +100,8 @@ def run_roi_check_stage(
         except Exception:
             pass
 
-    cam_cmd: dict[str, Any] = {"cmd": "get_frame", "timeout_s": 1.0}
-    if prefer_sample_path:
-        cam_cmd["prefer_sample"] = str(prefer_sample_path)
-    cam_cmd_q.put(cam_cmd)
+    cam_device = CameraQueueDevice(cmd_q=cam_cmd_q)
+    cam_device.send_get_frame(1.0, prefer_sample=(str(prefer_sample_path) if prefer_sample_path else None))
     DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
         DaqSequenceCommand(
             do_sequence=pulse_seq,
@@ -335,7 +333,7 @@ def run_threshold_stage(
         if len(samples) >= int(n_target):
             break
 
-        cam_cmd_q.put({"cmd": "get_frame", "timeout_s": float(shot_timeout_s)})
+        cam_device.send_get_frame(float(shot_timeout_s))
         try:
             DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
             DaqSequenceCommand(

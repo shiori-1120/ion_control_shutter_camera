@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from ..hardware import FgDevice, RigolFgDevice
 from .spectrum_stage import SpectrumRunResult, run_spectrum_stage
 
 
@@ -14,18 +15,19 @@ def _setup_fg_for_sweep(
     fg_amp_vpp: float,
     no_fg: bool,
     warn_cb: Callable[[str], None] | None,
-) -> tuple[Any | None, bool]:
+) -> tuple[FgDevice | Any | None, bool]:
     if no_fg:
         return None, False
 
     if fg_connected and fg_handle is not None:
         rig = fg_handle
         try:
-            try:
+            if hasattr(rig, "apply"):
+                rig.apply({"amp_vpp": fg_amp_vpp})
+            elif hasattr(rig, "set_amplitude_vpp"):
                 rig.set_amplitude_vpp(fg_amp_vpp)
-            except Exception:
-                pass
-            rig.output(True)
+            if hasattr(rig, "output"):
+                rig.output(True)
         except Exception:
             pass
         return rig, False
@@ -35,12 +37,10 @@ def _setup_fg_for_sweep(
         return None, False
 
     try:
-        from src.lib.instruments.rigol_dg import RigolDG, RigolDgConfig
-
-        rig = RigolDG(RigolDgConfig(visa_resource=visa_res, channel=1, timeout_ms=5000))
-        rig.open()
+        rig = RigolFgDevice(channel=1, timeout_ms=5000)
+        rig.open(visa_res)
         try:
-            rig.set_amplitude_vpp(fg_amp_vpp)
+            rig.apply({"amp_vpp": fg_amp_vpp})
         except Exception:
             pass
         rig.output(True)
@@ -54,11 +54,12 @@ def _setup_fg_for_sweep(
         return None, False
 
 
-def _teardown_fg_for_sweep(rig: Any, rig_owned: bool) -> None:
+def _teardown_fg_for_sweep(rig: FgDevice | Any, rig_owned: bool) -> None:
     if rig is None:
         return
     try:
-        rig.output(False)
+        if hasattr(rig, "output"):
+            rig.output(False)
     except Exception:
         pass
     if rig_owned:
@@ -74,6 +75,7 @@ def run_spectrum_flow(
     do_sequence: list[tuple[int, float]],
     insert_index: int,
     ao_width_ms: float,
+    seq_cmd: Any | None,
     n_target: int,
     max_attempt: int,
     settle_s: float,
@@ -110,6 +112,7 @@ def run_spectrum_flow(
             do_sequence=do_sequence,
             insert_index=int(insert_index),
             ao_width_ms=float(ao_width_ms),
+            seq_cmd=seq_cmd,
             n_target=int(n_target),
             max_attempt=int(max_attempt),
             settle_s=float(settle_s),

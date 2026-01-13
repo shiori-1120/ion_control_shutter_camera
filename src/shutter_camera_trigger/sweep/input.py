@@ -5,14 +5,18 @@ from typing import Any
 
 from ..gui_support.validators import parse_camera_trigger_cfg, parse_exposure_s_safe, parse_fg_amp_vpp_safe
 from ..gui_support.diagnostics import resolve_log_path, set_last_error
-from .controller import SweepInput
+from .model import SweepInput
 from .session_parse import parse_freqs_from_expressions, read_sequence_json_params
-from ..sequence.parser import parse_sequence_text as parse_sequence_text_raw
 
 SEQUENCE_BITS = 4
 
 
-def collect_sweep_input(app: Any, *, default_daq_device: str) -> SweepInput | None:
+def collect_sweep_input(
+    app: Any,
+    *,
+    default_daq_device: str,
+    show_input_error_cb,
+) -> SweepInput | None:
     trig_cfg = parse_camera_trigger_cfg(app)
     try:
         freqs = parse_freqs_from_expressions(
@@ -22,9 +26,11 @@ def collect_sweep_input(app: Any, *, default_daq_device: str) -> SweepInput | No
         )
         seq_path = Path(app.sw_seq_path.get())
         seq_params = read_sequence_json_params(seq_path=seq_path)
-        do_sequence = parse_sequence_text_raw(seq_params.sequence_text, bits=SEQUENCE_BITS)
+        do_sequence = list(seq_params.do_sequence)
         insert_index = int(seq_params.ao_insert_index)
         ao_width_ms = float(seq_params.ao_width_ms)
+        camera_actions = list(seq_params.camera_actions)
+        sync_markers = list(seq_params.sync_markers)
         n_target = int(app.sw_n_target.get())
         max_attempt = int(app.sw_max_attempt.get())
         settle_s = float(app.sw_settle_s.get())
@@ -36,11 +42,11 @@ def collect_sweep_input(app: Any, *, default_daq_device: str) -> SweepInput | No
         visa_res = app.sw_visa.get().strip()
         no_fg = bool(app.sw_no_fg.get())
         fg_amp_vpp = parse_fg_amp_vpp_safe(app, max_mvpp=810.0, default_vpp=0.790)
-        dry_image_dir = app.dry_image_dir_var.get().strip()
     except Exception as e:
-        from tkinter import messagebox
-
-        messagebox.showerror("Sweep", str(e))
+        try:
+            show_input_error_cb(str(e))
+        except Exception:
+            pass
         set_last_error(
             app,
             label="Sweep input",
@@ -53,6 +59,8 @@ def collect_sweep_input(app: Any, *, default_daq_device: str) -> SweepInput | No
         do_sequence=do_sequence,
         insert_index=insert_index,
         ao_width_ms=ao_width_ms,
+        camera_actions=camera_actions,
+        sync_markers=sync_markers,
         n_target=n_target,
         max_attempt=max_attempt,
         settle_s=settle_s,
@@ -64,7 +72,6 @@ def collect_sweep_input(app: Any, *, default_daq_device: str) -> SweepInput | No
         visa_res=visa_res,
         no_fg=no_fg,
         fg_amp_vpp=fg_amp_vpp,
-        dry_image_dir=dry_image_dir,
         trig_cfg=trig_cfg,
         seq_path=seq_path,
         camera_verbose=app.camera_verbose_var.get(),

@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from pathlib import Path
 import tkinter as tk
 from typing import Any
 
@@ -17,7 +18,6 @@ def init_ui_state(
     app.sw_no_fg = tk.BooleanVar(value=True)
     app.camera_mode_top_var = tk.StringVar(value="dry")
     app.camera_exposure_ms_var = tk.StringVar(value="100.0")
-    app.dry_image_dir_var = tk.StringVar(value="")
     app.sw_seq_path = tk.StringVar(value=default_seq_path)
 
     app.camera_trigger_source_var = tk.StringVar(value="EXTERNAL")
@@ -25,7 +25,6 @@ def init_ui_state(
     app.camera_trigger_polarity_var = tk.StringVar(value="POSITIVE")
     app.camera_trigger_active_var = tk.StringVar(value="EDGE")
     app.camera_trigger_mode_var = tk.StringVar(value="NORMAL")
-    app.camera_trigger_delay_s_var = tk.StringVar(value="")
     app.camera_verbose_var = tk.BooleanVar(value=False)
     app.camera_verbose_additional_only = True
     app.show_debug_fields = True
@@ -39,6 +38,7 @@ def init_ui_state(
     app.device_var = tk.StringVar(value=default_daq_device)
     app.device_mode_var = tk.StringVar(value="dry")
     app.width_var = tk.StringVar(value="15.0")
+    app.output_root = Path("data/output")
 
     app.sw_n_target = tk.StringVar(value="50")
     app.sw_max_attempt = tk.StringVar(value="100")

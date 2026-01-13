@@ -56,6 +56,16 @@ def build_diagnostics_tab(
 
     app.diag_history_list.bind("<<ListboxSelect>>", lambda _e: _select_history(app))
 
+    ttk.Label(left, text="Sweep state history", font=("", 10, "bold")).pack(anchor=tk.W, pady=(12, 4))
+    state_row = ttk.Frame(left)
+    state_row.pack(fill=tk.BOTH, expand=True)
+
+    app.diag_state_list = tk.Listbox(state_row, height=6)
+    app.diag_state_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    state_scroll = ttk.Scrollbar(state_row, orient=tk.VERTICAL, command=app.diag_state_list.yview)
+    state_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+    app.diag_state_list.configure(yscrollcommand=state_scroll.set)
+
     right = ttk.LabelFrame(row, text="Quick summary")
     right.pack(side=tk.LEFT, fill=tk.Y)
     ttk.Label(right, text="Last error").pack(anchor=tk.W, padx=8, pady=(6, 0))

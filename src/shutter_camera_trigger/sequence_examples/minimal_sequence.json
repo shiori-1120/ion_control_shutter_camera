@@ -1,5 +1,10 @@
 {
   "ao_width_ms": 15.0,
   "ao_insert_index": -1,
+  "do_sequence": [
+    { "value": 0, "hold_s": 0.001 },
+    { "value": 1, "hold_s": 0.001 },
+    { "value": 0, "hold_s": 0.001 }
+  ],
   "sequence_text": "# Minimal DO-only sequence for bring-up\n# Format: <BITSTRING> <hold_s>\n0000 0.001\n0001 0.001\n0000 0.001\n"
 }

@@ -31,6 +31,16 @@ class RigolFgDevice(FgDevice):
         except Exception:
             pass
 
+    def set_frequency_hz(self, freq_hz: float) -> None:
+        if self._handle is None:
+            raise RuntimeError("FG not opened")
+        self._handle.set_frequency_hz(float(freq_hz))
+
+    def output(self, enabled: bool) -> None:
+        if self._handle is None:
+            raise RuntimeError("FG not opened")
+        self._handle.output(bool(enabled))
+
     def close(self) -> None:
         if self._handle is None:
             return

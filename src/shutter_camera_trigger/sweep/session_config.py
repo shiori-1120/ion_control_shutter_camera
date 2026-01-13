@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..hardware import DaqSequenceCommand
+
 
 @dataclass(frozen=True)
 class SweepPersistedConfig:
@@ -22,7 +24,6 @@ class SweepPersistedConfig:
     camera_mode: str
     camera_exposure_s: float
     fg_amp_mvpp: float
-    dry_image_dir: str
     roi_bootstrap: dict[str, Any]
 
     def to_json_dict(self) -> dict[str, Any]:
@@ -39,7 +40,6 @@ class SweepPersistedConfig:
             "camera_mode": str(self.camera_mode),
             "camera_exposure_s": float(self.camera_exposure_s),
             "fg_amp_mvpp": float(self.fg_amp_mvpp),
-            "dry_image_dir": str(self.dry_image_dir),
             "roi_bootstrap": dict(self.roi_bootstrap),
         }
 
@@ -59,6 +59,9 @@ def build_sweep_session_dict(
     do_sequence: list[tuple[int, float]],
     insert_index: int,
     ao_width_ms: float,
+    seq_cmd: DaqSequenceCommand | None,
+    camera_actions: list[dict[str, Any]],
+    sync_markers: list[dict[str, Any]],
     n_target: int,
     max_attempt: int,
     settle_s: float,
@@ -80,6 +83,9 @@ def build_sweep_session_dict(
         "do_sequence": list(do_sequence),
         "insert_index": int(insert_index),
         "ao_width_ms": float(ao_width_ms),
+        "seq_cmd": seq_cmd,
+        "camera_actions": list(camera_actions),
+        "sync_markers": list(sync_markers),
         "n_target": int(n_target),
         "max_attempt": int(max_attempt),
         "settle_s": float(settle_s),
@@ -94,3 +100,48 @@ def build_sweep_session_dict(
         "cam_exposure_s": float(cam_exposure_s),
         "seq_path": str(seq_path),
     }
+
+
+def build_daq_sequence_command(
+    *,
+    do_sequence: list[tuple[int, float]],
+    insert_index: int,
+    ao_width_ms: float,
+    ao_rate_hz: float,
+    ao_v_high: float = 5.0,
+    ao_v_low: float = 0.0,
+) -> DaqSequenceCommand:
+    return DaqSequenceCommand(
+        do_sequence=list(do_sequence),
+        ao_insert_index=int(insert_index),
+        ao_width_ms=float(ao_width_ms),
+        ao_rate_hz=float(ao_rate_hz),
+        ao_v_high=float(ao_v_high),
+        ao_v_low=float(ao_v_low),
+    )
+
+
+def write_manifest_json(*, out_dir: Path, run_type: str, files: dict[str, Path]) -> Path:
+    """Write manifest.json listing generated artifacts."""
+
+    manifest = {
+        "run_type": str(run_type),
+        "files": [],
+    }
+    for label, path in files.items():
+        try:
+            p = Path(path)
+        except Exception:
+            continue
+        if not p.exists():
+            continue
+        manifest["files"].append(
+            {
+                "name": str(label),
+                "path": str(p.name),
+            }
+        )
+
+    p = out_dir / "manifest.json"
+    p.write_text(json.dumps(manifest, ensure_ascii=True, indent=2), encoding="utf-8")
+    return p

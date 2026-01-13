@@ -23,8 +23,19 @@ from ..gui_support.validators import (
 from ..gui_support.worker_cleanup import cleanup_stale_workers, write_last_worker_pids
 from ..gui_support.worker_messages import format_worker_failure
 from ..hardware import CameraWorkerDevice, DaqClientDevice, DaqQueueDevice, DaqSequenceCommand
+from ..config.device_registry import resolve_output_root
 from ..workers.camera_worker_process import start_camera_worker_process, stop_worker_process
 from ..workers.daq_worker_process import start_daq_worker_process
+
+
+def _resolve_output_root(app: Any) -> Path:
+    try:
+        root = getattr(app, "output_root", None)
+        if root:
+            return Path(root)
+    except Exception:
+        pass
+    return resolve_output_root()
 
 
 def build_camera_tab(app: Any) -> None:
@@ -96,21 +107,19 @@ def camera_snap(
         except Exception:
             daq_log_path = None
             run_id = None
-    dry_image_dir = app.dry_image_dir_var.get().strip()
     try:
         if getattr(app, "_logger", None):
             app._logger.info(
-                "camera_snap_start mode=%s exposure_s=%.4f trig_src=%s dry_dir=%s",
+                "camera_snap_start mode=%s exposure_s=%.4f trig_src=%s",
                 mode,
                 float(exposure_s),
                 trig_src,
-                dry_image_dir,
             )
     except Exception:
         pass
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = Path("data/output/camera_snap") / ts
+    out_dir = _resolve_output_root(app) / "camera_snap" / ts
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cfg: dict[str, Any] = {
@@ -127,8 +136,6 @@ def camera_snap(
         messagebox.showerror("Subarray", str(e))
         set_last_error(app, label="Subarray", message=str(e))
         return
-    if dry_image_dir:
-        cfg["dry_image_dir"] = dry_image_dir
     log_ctx = getattr(app, "_log_ctx", None)
     try:
         if log_ctx is not None:
@@ -287,14 +294,13 @@ def camera_check(
     cleanup_stale_workers(app.worker_pids_path)
 
     mode = app.camera_mode_top_var.get().strip() or "dry"
-    dry_dir = app.dry_image_dir_var.get().strip()
     exposure_s = parse_exposure_s_safe(app)
 
     trig_cfg = parse_camera_trigger_cfg(app)
     trig_src = str(trig_cfg.get("source") or "EXTERNAL").strip().upper() or "EXTERNAL"
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = Path("data/output") / "camera_check" / ts
+    out_dir = _resolve_output_root(app) / "camera_check" / ts
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -323,9 +329,6 @@ def camera_check(
             cfg["log_path"] = str(out_dir / "camera_worker.log")
     except Exception:
         pass
-    if mode == "dry" and dry_dir:
-        cfg["dry_image_dir"] = dry_dir
-
     def _worker() -> None:
         p, cmd_q, resp_q = start_camera_worker_process(cfg=cfg)
         cam_device = CameraWorkerDevice(cmd_q=cmd_q, resp_q=resp_q)
@@ -449,34 +452,16 @@ def camera_check(
                 if dry_samples is not None:
                     extra = f" | dry samples: {dry_samples}"
                 try:
-                    prefer = ""
-                    if mode == "dry" and dry_dir:
-                        try:
-                            prefer = str((Path(dry_dir) / "roi_test.npy"))
-                        except Exception:
-                            prefer = ""
-                    if prefer:
-                        cmd_q.put(
-                            {
-                                "cmd": "get_frame",
-                                "timeout_s": max(2.0, float(exposure_s) * 4.0 + 0.5),
-                                "prefer_sample": prefer,
-                            }
-                        )
-                        fr = resp_q.get(timeout=10.0)
-                        if isinstance(fr, dict) and fr.get("ok") and fr.get("event") == "frame":
-                            frame_np = fr.get("frame")
-                    else:
-                        frame_result = cam_device.capture(timeout_s=max(2.0, float(exposure_s) * 4.0 + 0.5))
-                        frame_np = frame_result.frame
-                        try:
-                            import numpy as _np
+                    frame_result = cam_device.capture(timeout_s=max(2.0, float(exposure_s) * 4.0 + 0.5))
+                    frame_np = frame_result.frame
+                    try:
+                        import numpy as _np
 
-                            frame_arr = _np.asarray(frame_np)
-                            frame_path = str(out_dir / "frame.npy")
-                            _np.save(frame_path, frame_arr)
-                        except Exception:
-                            frame_path = None
+                        frame_arr = _np.asarray(frame_np)
+                        frame_path = str(out_dir / "frame.npy")
+                        _np.save(frame_path, frame_arr)
+                    except Exception:
+                        frame_path = None
                 except Exception:
                     frame_np = None
                     frame_path = None

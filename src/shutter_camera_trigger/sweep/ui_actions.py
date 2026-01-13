@@ -4,6 +4,7 @@ from typing import Any
 
 from ..gui_support.validators import parse_fg_amp_vpp_safe
 from .input import collect_sweep_input
+from .model import SweepPhase
 
 
 def prepare_session(app: Any, *, default_daq_device: str) -> bool:
@@ -12,7 +13,11 @@ def prepare_session(app: Any, *, default_daq_device: str) -> bool:
             app._logger.info("sweep_prepare_start")
     except Exception:
         pass
-    inputs = collect_sweep_input(app, default_daq_device=default_daq_device)
+    inputs = collect_sweep_input(
+        app,
+        default_daq_device=default_daq_device,
+        show_input_error_cb=getattr(getattr(app, "_sweep_events", None), "on_input_error", lambda msg: None),
+    )
     if inputs is None:
         try:
             if getattr(app, "_logger", None):
@@ -76,7 +81,7 @@ def start_sweep(
             app._logger.info("sweep_start")
     except Exception:
         pass
-    if not state.running:
+    if state.phase is SweepPhase.IDLE:
         if not prepare_session(app, default_daq_device=default_daq_device):
             return
 

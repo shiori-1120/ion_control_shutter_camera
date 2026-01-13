@@ -156,3 +156,25 @@ def save_device_registry(path: Path, registry: DeviceRegistry) -> None:
     validate_device_registry(registry)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(registry.to_dict(), indent=2), encoding="utf-8")
+
+
+def resolve_output_root(
+    *,
+    path: Path = Path("config") / "device_registry.json",
+    default: str = "data/output",
+) -> Path:
+    try:
+        registry = load_device_registry(path)
+        output_root = registry.io_paths.output_root
+        if output_root:
+            return Path(output_root)
+    except Exception:
+        try:
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                output_root = data.get("io_paths", {}).get("output_root", "")
+                if output_root:
+                    return Path(output_root)
+        except Exception:
+            pass
+    return Path(default)

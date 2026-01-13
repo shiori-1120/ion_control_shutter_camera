@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from ..hardware import DaqQueueDevice, DaqSequenceCommand
+from ..hardware import CameraQueueDevice, DaqQueueDevice, DaqSequenceCommand
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,7 @@ def run_spectrum_stage(
     do_sequence: list[tuple[int, float]],
     insert_index: int,
     ao_width_ms: float,
+    seq_cmd: DaqSequenceCommand | None,
     n_target: int,
     max_attempt: int,
     settle_s: float,
@@ -46,6 +47,14 @@ def run_spectrum_stage(
 
     next_update = time.time() + max(0.2, float(update_interval_s))
     results: list[tuple[float, int, int]] = []
+    seq_cmd_local = seq_cmd or DaqSequenceCommand(
+        do_sequence=list(do_sequence),
+        ao_insert_index=int(insert_index),
+        ao_width_ms=float(ao_width_ms),
+        ao_rate_hz=float(ao_rate_hz),
+        ao_v_high=5.0,
+        ao_v_low=0.0,
+    )
 
     def _status(msg: str) -> None:
         if status_cb is None:
@@ -91,6 +100,7 @@ def run_spectrum_stage(
         )
         spec_writer.writeheader()
 
+        cam_device = CameraQueueDevice(cmd_q=cam_cmd_q)
         for step_idx, freq in enumerate(freqs):
             if should_stop():
                 break
@@ -111,17 +121,10 @@ def run_spectrum_stage(
                 if processed >= int(n_target):
                     break
 
-                cam_cmd_q.put({"cmd": "get_state", "timeout_s": 1.0})
+                cam_device.send_get_state(1.0)
                 try:
                     DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
-                        DaqSequenceCommand(
-                            do_sequence=do_sequence,
-                            ao_insert_index=int(insert_index),
-                            ao_width_ms=float(ao_width_ms),
-                            ao_rate_hz=float(ao_rate_hz),
-                            ao_v_high=5.0,
-                            ao_v_low=0.0,
-                        )
+                        seq_cmd_local
                     )
                 except Exception as e:
                     raise RuntimeError(f"DAQ error: {e}")

@@ -13,7 +13,6 @@ def build_top_bar(
     disconnect_cb: Callable[[], None],
     fg_connect_cb: Callable[[], None],
     fg_disconnect_cb: Callable[[], None],
-    browse_dry_images_cb: Callable[[], None],
     pick_seq_json_cb: Callable[[], None],
 ) -> None:
     top = ttk.Frame(parent or app, padding=10)
@@ -31,7 +30,9 @@ def build_top_bar(
     )
 
     ttk.Label(daq, text="AO width").grid(row=0, column=4, sticky=tk.W)
-    ttk.Entry(daq, textvariable=app.width_var, width=10).grid(row=0, column=5, sticky=tk.W, padx=5)
+    ttk.Entry(daq, textvariable=app.width_var, width=10, state="readonly").grid(
+        row=0, column=5, sticky=tk.W, padx=5
+    )
     ttk.Label(daq, text="ms").grid(row=0, column=6, sticky=tk.W)
 
     app.connect_btn = ttk.Button(daq, text="Connect", command=connect_cb)
@@ -68,9 +69,6 @@ def build_top_bar(
     ttk.Label(cam, text="Exposure").grid(row=0, column=2, sticky=tk.W)
     ttk.Entry(cam, textvariable=app.camera_exposure_ms_var, width=10).grid(row=0, column=3, sticky=tk.W, padx=5)
     ttk.Label(cam, text="ms").grid(row=0, column=4, sticky=tk.W)
-    ttk.Label(cam, text="Dry images").grid(row=0, column=5, sticky=tk.W)
-    ttk.Entry(cam, textvariable=app.dry_image_dir_var, width=30).grid(row=0, column=6, sticky=tk.W, padx=5)
-    ttk.Button(cam, text="...", width=3, command=browse_dry_images_cb).grid(row=0, column=7)
 
     trig = ttk.LabelFrame(top, text="Trigger")
     trig.grid(row=4, column=0, sticky=tk.W + tk.E, pady=(0, 6))

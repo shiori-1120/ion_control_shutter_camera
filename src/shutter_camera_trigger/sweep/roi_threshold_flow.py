@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from ..hardware import CameraQueueDevice
+
 from .stages import RoiCheckResult, ThresholdStageResult, run_roi_check_stage, run_threshold_stage
 
 
@@ -46,7 +48,7 @@ def run_roi_check_flow(
 
     # Propagate ROI to camera worker so get_state uses the same ROI scalar as Step 2.
     try:
-        cam_cmd_q.put({"cmd": "set_roi", "roi": list(roi) if roi is not None else None})
+        CameraQueueDevice(cmd_q=cam_cmd_q).set_roi(list(roi) if roi is not None else None)
         _ = mpq_get_with_ui(cam_resp_q, timeout=5, label="Camera set_roi")
     except Exception:
         pass
@@ -111,7 +113,7 @@ def run_threshold_flow(
 
     apply_ok = bool(confirm_apply_cb(threshold, agreement, tau))
     if apply_ok:
-        cam_cmd_q.put({"cmd": "set_threshold", "tau_on": float(tau_on), "tau_off": float(tau_off)})
+        CameraQueueDevice(cmd_q=cam_cmd_q).set_threshold(float(tau_on), float(tau_off))
         ack = mpq_get_with_ui(cam_resp_q, timeout=5, label="Camera set_threshold")
         if not ack.get("ok"):
             raise RuntimeError(f"set_threshold failed: {ack}")

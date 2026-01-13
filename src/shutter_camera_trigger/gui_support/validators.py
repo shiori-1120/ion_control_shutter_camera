@@ -70,14 +70,6 @@ def apply_subarray_to_cam_cfg(app: Any, cfg: dict[str, Any]) -> None:
 
 
 def parse_camera_trigger_cfg(app: Any) -> dict[str, Any]:
-    delay_s_raw = (app.camera_trigger_delay_s_var.get() or "").strip()
-    delay_s: float | None = None
-    if delay_s_raw:
-        try:
-            delay_s = float(delay_s_raw)
-        except Exception:
-            raise ValueError(f"Invalid trigger delay (s): {delay_s_raw!r}")
-
     cfg: dict[str, Any] = {
         "source": (app.camera_trigger_source_var.get() or "EXTERNAL").strip().upper() or "EXTERNAL",
         "connector": (app.camera_trigger_connector_var.get() or "BNC").strip().upper() or "BNC",
@@ -85,8 +77,6 @@ def parse_camera_trigger_cfg(app: Any) -> dict[str, Any]:
         "active": (app.camera_trigger_active_var.get() or "EDGE").strip().upper() or "EDGE",
         "mode": (app.camera_trigger_mode_var.get() or "NORMAL").strip().upper() or "NORMAL",
     }
-    if delay_s is not None:
-        cfg["delay_s"] = float(delay_s)
     return cfg
 
 

@@ -5,6 +5,42 @@ from pathlib import Path
 from typing import Any
 
 
+def append_state_history(app: Any, *, prev: str, next_state: str) -> None:
+    """Record a sweep state transition in the Diagnostics tab."""
+
+    try:
+        history = getattr(app, "_state_history", None)
+        if history is None:
+            history = []
+            app._state_history = history
+        entry = {
+            "t": datetime.now().strftime("%H:%M:%S"),
+            "prev": str(prev),
+            "next": str(next_state),
+        }
+        history.append(entry)
+        if len(history) > 40:
+            del history[:-40]
+    except Exception:
+        return
+
+    try:
+        lb = getattr(app, "diag_state_list", None)
+        if lb is not None:
+            lb.delete(0, "end")
+            for item in getattr(app, "_state_history", []):
+                lb.insert("end", f"{item.get('t','')} {item.get('prev','')} -> {item.get('next','')}")
+            lb.see("end")
+    except Exception:
+        pass
+
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info("diagnostics_state prev=%s next=%s", prev, next_state)
+    except Exception:
+        pass
+
+
 def set_last_error(app: Any, *, label: str, message: str, log_path: str | None = None) -> None:
     """Update the Diagnostics tab with the latest error information."""
 

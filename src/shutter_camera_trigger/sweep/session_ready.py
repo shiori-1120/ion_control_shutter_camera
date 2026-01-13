@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..hardware import DaqQueueDevice, DaqSequenceCommand
+from .session_config import build_daq_sequence_command
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,8 @@ def prepare_sweep_session(
     trig_cfg,
     cam_exposure_s,
     seq_path,
-    dry_image_dir,
+    camera_actions,
+    sync_markers,
     camera_verbose,
     subarray_cb: Callable[[dict], None],
     write_sweep_config_json,
@@ -55,7 +57,7 @@ def prepare_sweep_session(
     mpq_get_with_ui,
     ui_pump,
     status_cb,
-    messagebox,
+    show_error_cb,
     stop_sweep_cb,
     write_last_worker_pids_cb,
     format_worker_failure,
@@ -80,7 +82,6 @@ def prepare_sweep_session(
                 camera_mode=cam_mode,
                 camera_exposure_s=float(cam_exposure_s),
                 fg_amp_mvpp=float(fg_amp_vpp) * 1000.0,
-                dry_image_dir=dry_image_dir,
                 roi_bootstrap={
                     "pulse_s": ROI_PULSE_S,
                     "idle_s": ROI_IDLE_S,
@@ -103,8 +104,6 @@ def prepare_sweep_session(
             cam_cfg["log_path"] = str(out_dir / "camera_worker.log")
         if run_id:
             cam_cfg["run_id"] = str(run_id)
-        if dry_image_dir:
-            cam_cfg["dry_image_dir"] = dry_image_dir
         daq_log_path = str(Path(log_dir) / "daq_worker.log") if log_dir is not None else None
         workers = create_sweep_workers(
             device=device,
@@ -174,7 +173,10 @@ def prepare_sweep_session(
             ui_pump=ui_pump,
         )
         if not roi_ok:
-            messagebox.showerror("Sweep", "ROI bootstrap failed")
+            try:
+                show_error_cb("Sweep", "ROI bootstrap failed")
+            except Exception:
+                pass
             stop_sweep_cb(clean_only=True)
             return SweepSessionReady(ok=False, session=None, workers=None)
         session_dict = build_sweep_session_dict(
@@ -182,6 +184,16 @@ def prepare_sweep_session(
             do_sequence=do_sequence,
             insert_index=insert_index,
             ao_width_ms=ao_width_ms,
+            seq_cmd=build_daq_sequence_command(
+                do_sequence=do_sequence,
+                insert_index=insert_index,
+                ao_width_ms=ao_width_ms,
+                ao_rate_hz=AO_RATE_HZ,
+                ao_v_high=5.0,
+                ao_v_low=0.0,
+            ),
+            camera_actions=camera_actions,
+            sync_markers=sync_markers,
             n_target=n_target,
             max_attempt=max_attempt,
             settle_s=settle_s,
@@ -198,6 +210,9 @@ def prepare_sweep_session(
         )
         return SweepSessionReady(ok=True, session=session_dict, workers=workers)
     except Exception as e:
-        messagebox.showerror("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
+        try:
+            show_error_cb("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
+        except Exception:
+            pass
         stop_sweep_cb(clean_only=True)
         return SweepSessionReady(ok=False, session=None, workers=None)

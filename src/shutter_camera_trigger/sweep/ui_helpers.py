@@ -4,6 +4,7 @@ import queue
 import time
 from typing import Any
 
+from .model import SweepPhase
 from .spectrum_ui import reset_spectrum_plot, update_spectrum_plot
 from ..gui_support.process_cleanup import join_with_ui as join_process_with_ui
 
@@ -27,7 +28,7 @@ def mpq_get_with_ui(
     """Queue.get(timeout=...) that keeps the Tk UI responsive."""
     deadline = time.time() + float(timeout)
     while True:
-        if not app._sweep_state.running:
+        if app._sweep_state.phase in {SweepPhase.IDLE, SweepPhase.STOPPING, SweepPhase.ERROR}:
             raise RuntimeError("Stopped")
         try:
             return q.get_nowait()
@@ -62,16 +63,27 @@ def refresh_sweep_buttons(app: Any) -> None:
     """Update Sweep tab button enabled/disabled states based on stage."""
     try:
         state = app._sweep_state
-        if not state.running:
+        phase = state.phase
+        if phase is SweepPhase.IDLE:
             app.sw_stop_btn.configure(state="disabled")
             app.sw_roi_btn.configure(state="normal")
-            app.sw_thr_btn.configure(state=("normal" if state.prepared else "disabled"))
-            app.sw_start_btn.configure(state=("normal" if state.threshold_done else "disabled"))
-        else:
+            app.sw_thr_btn.configure(state="disabled")
+            app.sw_start_btn.configure(state="disabled")
+        elif phase in {SweepPhase.PREPARED, SweepPhase.ROI_DONE, SweepPhase.THRESHOLD_DONE}:
             app.sw_stop_btn.configure(state="normal")
-            app.sw_roi_btn.configure(state=("normal" if state.prepared else "disabled"))
-            app.sw_thr_btn.configure(state=("normal" if state.prepared else "disabled"))
-            app.sw_start_btn.configure(state=("normal" if state.threshold_done else "disabled"))
+            app.sw_roi_btn.configure(state="normal")
+            app.sw_thr_btn.configure(state="normal")
+            app.sw_start_btn.configure(state=("normal" if phase is SweepPhase.THRESHOLD_DONE else "disabled"))
+        elif phase is SweepPhase.RUNNING:
+            app.sw_stop_btn.configure(state="normal")
+            app.sw_roi_btn.configure(state="disabled")
+            app.sw_thr_btn.configure(state="disabled")
+            app.sw_start_btn.configure(state="disabled")
+        else:
+            app.sw_stop_btn.configure(state="disabled")
+            app.sw_roi_btn.configure(state="disabled")
+            app.sw_thr_btn.configure(state="disabled")
+            app.sw_start_btn.configure(state="disabled")
     except Exception:
         pass
 

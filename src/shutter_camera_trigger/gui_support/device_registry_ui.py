@@ -97,6 +97,10 @@ def apply_device_registry_to_ui(app: Any, registry: DeviceRegistry) -> None:
         app.show_debug_fields = bool(registry.ui.show_debug_fields)
     except Exception:
         pass
+    try:
+        app.output_root = Path(registry.io_paths.output_root)
+    except Exception:
+        pass
 
 
 def build_device_registry_from_ui(app: Any) -> DeviceRegistry:

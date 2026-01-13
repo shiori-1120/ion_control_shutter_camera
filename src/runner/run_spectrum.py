@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import os
 import queue
 import threading
@@ -26,6 +25,10 @@ from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any
 
+from src.shutter_camera_trigger.config.device_registry import resolve_output_root
+from src.shutter_camera_trigger.hardware import DaqQueueDevice, DaqSequenceCommand
+from src.shutter_camera_trigger.sweep.session_parse import read_sequence_json_params
+
 
 
 def _limit_blas_threads() -> None:
@@ -34,47 +37,11 @@ def _limit_blas_threads() -> None:
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
 
-def _parse_sequence_text(raw: str) -> list[tuple[int, float]]:
-    steps: list[tuple[int, float]] = []
-    for line in raw.splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        parts = s.split()
-        if len(parts) < 2:
-            raise ValueError(f"Invalid sequence line: {line!r}")
-        key = parts[0]
-        hold_s = float(parts[1])
-        if hold_s < 0:
-            raise ValueError(f"hold_s must be >= 0: {line!r}")
-
-        if all(ch in "01" for ch in key):
-            value = int(key, 2)
-        else:
-            value = int(key, 0)
-
-        if not (0 <= value <= 0b1111):
-            raise ValueError(f"DO value must be 0..15 (4-bit): {line!r}")
-
-        steps.append((int(value), float(hold_s)))
-
-    if not steps:
-        raise ValueError("Sequence is empty")
-    return steps
-
-
-def _load_sequence_json(path: str) -> tuple[list[tuple[int, float]], int, float]:
-    p = Path(path)
-    data = json.loads(p.read_text(encoding="utf-8"))
-    raw = str(data.get("sequence_text") or "")
-    insert_index = int(data.get("ao_insert_index", -1))
-    ao_width_ms = float(data.get("ao_width_ms", 1.0))
-    return _parse_sequence_text(raw), insert_index, ao_width_ms
-
-
 def _make_run_dir(base: str = "data/output/spectrum") -> Path:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out = Path(base) / ts
+    root = resolve_output_root(default="data/output") / "spectrum"
+    out = Path(base) if base != "data/output/spectrum" else root
+    out = out / ts
     out.mkdir(parents=True, exist_ok=True)
     return out
 
@@ -159,7 +126,10 @@ def main() -> None:
         raise SystemExit("Specify --visa-resource, or use --no-fg for dry bring-up")
 
     freqs = _freq_list_from_args(args)
-    do_sequence, insert_index, ao_width_ms = _load_sequence_json(args.sequence_json)
+    seq_params = read_sequence_json_params(seq_path=Path(args.sequence_json))
+    do_sequence = list(seq_params.do_sequence)
+    insert_index = int(seq_params.ao_insert_index)
+    ao_width_ms = float(seq_params.ao_width_ms)
 
     out_dir = _make_run_dir()
     (out_dir / "config.json").write_text(
@@ -249,19 +219,18 @@ def main() -> None:
     prime_sequence = [(ALL_OFF, 0.002), (CAMERA_TRIGGER, 0.002), (ALL_OFF, 0.002)]
 
     def _prime_loop() -> None:
+        daq_device = DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q)
+        prime_cmd = DaqSequenceCommand(
+            do_sequence=prime_sequence,
+            ao_insert_index=-1,
+            ao_width_ms=0.0,
+            ao_rate_hz=5000.0,
+            ao_v_high=5.0,
+            ao_v_low=0.0,
+        )
         while not stop_prime.is_set():
             try:
-                daq_cmd_q.put(
-                    {
-                        "cmd": "run_sequence_once",
-                        "do_sequence": prime_sequence,
-                        "insert_index": -1,
-                        "ao_width_ms": 0.0,
-                        "ao_rate_hz": 5000.0,
-                        "ao_v_high": 5.0,
-                        "ao_v_low": 0.0,
-                    }
-                )
+                daq_device.run_sequence_once(prime_cmd)
             except Exception:
                 pass
 
@@ -343,16 +312,15 @@ def main() -> None:
                 # Arm camera first (waits for next frame), then trigger via DAQ.
                 cam_cmd_q.put({"cmd": "get_state", "timeout_s": float(args.frame_timeout_s)})
 
-                daq_cmd_q.put(
-                    {
-                        "cmd": "run_sequence_once",
-                        "do_sequence": do_sequence,
-                        "insert_index": int(insert_index),
-                        "ao_width_ms": float(ao_width_ms),
-                        "ao_rate_hz": 5000.0,
-                        "ao_v_high": 5.0,
-                        "ao_v_low": 0.0,
-                    }
+                DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
+                    DaqSequenceCommand(
+                        do_sequence=do_sequence,
+                        ao_insert_index=int(insert_index),
+                        ao_width_ms=float(ao_width_ms),
+                        ao_rate_hz=5000.0,
+                        ao_v_high=5.0,
+                        ao_v_low=0.0,
+                    )
                 )
 
                 daq_resp = daq_resp_q.get(timeout=10)

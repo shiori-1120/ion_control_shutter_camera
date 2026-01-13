@@ -9,8 +9,9 @@ from ..gui_support.perf import limit_blas_threads
 from ..gui_support.validators import apply_subarray_to_cam_cfg
 from ..gui_support.worker_cleanup import cleanup_stale_workers, write_last_worker_pids
 from ..gui_support.worker_messages import format_worker_failure
-from ..gui_support.diagnostics import set_last_error
-from .controller import SweepController, SweepDeps, SweepState, SweepUi
+from ..gui_support.diagnostics import append_state_history, set_last_error
+from .controller import SweepController
+from .model import SweepDeps, SweepEvents, SweepIO, SweepState
 from .roi_threshold_flow import format_threshold_prompt
 from .session_config import SweepPersistedConfig, build_sweep_session_dict, write_sweep_config_json
 from .session_start import bootstrap_workers_for_sweep
@@ -156,31 +157,39 @@ def build_sweep_tab(
         ttk.Label(app.sweep_tab, text="matplotlib not available; real-time plot disabled").pack()
 
     app._sweep_state = SweepState()
+    app._sweep_show_input_error_cb = lambda msg: messagebox.showerror("Sweep", msg)
+    app._sweep_events = SweepEvents(
+        on_status=app.sw_status.set,
+        on_warning=lambda msg: messagebox.showwarning("FG", msg),
+        on_error=lambda title, msg: messagebox.showerror(title, msg),
+        on_input_error=app._sweep_show_input_error_cb,
+        on_plot_reset=lambda: reset_spectrum_plot_ui(app),
+        on_plot_update=lambda step_idx, freq, processed, n_bright: update_spectrum_plot_ui(
+            app,
+            step_idx,
+            freq,
+            processed,
+            n_bright,
+        ),
+        on_state_change=lambda prev, next_state: append_state_history(
+            app,
+            prev=getattr(prev, "value", str(prev)),
+            next_state=getattr(next_state, "value", str(next_state)),
+        ),
+    )
     app._sweep_ctrl = SweepController(
-        ui=SweepUi(
-            status_cb=app.sw_status.set,
-            messagebox=messagebox,
-            ui_pump=lambda: ui_pump(app),
-            mpq_get_with_ui=lambda q, timeout, label: mpq_get_with_ui(app, q, timeout=timeout, label=label),
+        events=app._sweep_events,
+        io=SweepIO(
             toggle_controls=lambda enable: toggle_sweep_controls(app, enable),
             refresh_buttons=lambda: refresh_sweep_buttons(app),
             cleanup_stale_workers=lambda: cleanup_stale_workers(app.worker_pids_path),
-            apply_subarray_cb=lambda cfg: apply_subarray_to_cam_cfg(app, cfg),
+            apply_subarray=lambda cfg: apply_subarray_to_cam_cfg(app, cfg),
             write_last_worker_pids_cb=lambda data: write_last_worker_pids(app.worker_pids_path, data),
             format_worker_failure=format_worker_failure,
-            confirm_threshold_cb=lambda th, acc, tau: messagebox.askyesno(
+            confirm_threshold=lambda th, acc, tau: messagebox.askyesno(
                 "Threshold",
                 format_threshold_prompt(th, acc, tau),
                 parent=app,
-            ),
-            warn_cb=lambda msg: messagebox.showwarning("FG", msg),
-            reset_plot_cb=lambda: reset_spectrum_plot_ui(app),
-            update_plot_cb=lambda step_idx, freq, processed, n_bright: update_spectrum_plot_ui(
-                app,
-                step_idx,
-                freq,
-                processed,
-                n_bright,
             ),
             join_with_ui=lambda proc, timeout: join_with_ui(app, proc, timeout=timeout),
             set_last_error_cb=lambda label, message, log_path: set_last_error(
@@ -198,6 +207,8 @@ def build_sweep_tab(
             build_sweep_session_dict=build_sweep_session_dict,
             run_roi_bootstrap_stage=run_roi_bootstrap_stage,
             stop_sweep_workers=stop_sweep_workers,
+            mpq_get_with_ui=lambda q, timeout, label: mpq_get_with_ui(app, q, timeout=timeout, label=label),
+            ui_pump=lambda: ui_pump(app),
             AO_RATE_HZ=ao_rate_hz,
             NM_397=nm_397,
             CAMERA_TRIGGER=camera_trigger,
@@ -206,5 +217,6 @@ def build_sweep_tab(
             ROI_MAX_ATTEMPT=roi_max_attempt,
             log_dir=getattr(getattr(app, "_log_ctx", None), "log_dir", None),
             run_id=getattr(getattr(app, "_log_ctx", None), "run_id", None),
+            output_root=getattr(app, "output_root", None),
         ),
     )

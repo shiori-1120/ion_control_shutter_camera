@@ -28,7 +28,8 @@ from multiprocessing import Process
 from .clients.daq_client import DaqClient
 from .gui_support.prefs import resolve_repo_relative_path
 from .gui_support.app_lifecycle import apply_default_fonts, load_camera_prefs, on_close
-from .gui_support.dialogs import browse_dry_images, pick_seq_json
+from .gui_support.dialogs import pick_seq_json
+from .config.device_registry import load_device_registry
 from .gui_support.device_registry_ui import load_device_registry_ui, save_device_registry_ui
 from .gui_support.logging_setup import init_app_logging
 from .gui_support.log_panel import build_log_panel
@@ -99,7 +100,17 @@ WORKER_PIDS_PATH = Path("config") / "last_worker_pids.json"
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self._log_ctx = init_app_logging()
+        self.worker_pids_path = resolve_repo_relative_path(__file__, WORKER_PIDS_PATH)
+        self._prefs_path = resolve_repo_relative_path(__file__, GUI_PREFS_PATH)
+        self._device_registry_path = resolve_repo_relative_path(__file__, DEVICE_REGISTRY_PATH)
+        logs_root = "logs"
+        try:
+            registry = load_device_registry(self._device_registry_path)
+            if registry.io_paths.logs_root:
+                logs_root = str(registry.io_paths.logs_root)
+        except Exception:
+            pass
+        self._log_ctx = init_app_logging(logs_root=logs_root)
         self._logger = self._log_ctx.logger
         try:
             self._logger.info("app_start")
@@ -138,10 +149,6 @@ class App(tk.Tk):
         self._plot_container: ttk.Frame | None = None
         self._plot_placeholder: ttk.Label | None = None
         self._plot_fig = None
-
-        self.worker_pids_path = resolve_repo_relative_path(__file__, WORKER_PIDS_PATH)
-        self._prefs_path = resolve_repo_relative_path(__file__, GUI_PREFS_PATH)
-        self._device_registry_path = resolve_repo_relative_path(__file__, DEVICE_REGISTRY_PATH)
 
         self._build_ui()
 
@@ -207,7 +214,6 @@ class App(tk.Tk):
                 ),
             ),
             fg_disconnect_cb=lambda: disconnect_fg(self),
-            browse_dry_images_cb=lambda: browse_dry_images(self),
             pick_seq_json_cb=lambda: pick_seq_json(self),
         )
 

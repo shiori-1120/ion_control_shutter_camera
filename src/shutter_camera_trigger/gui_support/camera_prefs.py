@@ -18,7 +18,6 @@ def load_camera_trigger_prefs(app: Any, *, prefs_path) -> None:
             ("polarity", app.camera_trigger_polarity_var),
             ("active", app.camera_trigger_active_var),
             ("mode", app.camera_trigger_mode_var),
-            ("delay_s", app.camera_trigger_delay_s_var),
         ):
             try:
                 v = trig.get(key)
@@ -65,7 +64,6 @@ def save_camera_trigger_prefs(app: Any, *, prefs_path) -> None:
         "polarity": (app.camera_trigger_polarity_var.get() or "").strip(),
         "active": (app.camera_trigger_active_var.get() or "").strip(),
         "mode": (app.camera_trigger_mode_var.get() or "").strip(),
-        "delay_s": (app.camera_trigger_delay_s_var.get() or "").strip(),
         "verbose": bool(app.camera_verbose_var.get()),
     }
 
