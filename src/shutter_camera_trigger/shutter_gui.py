@@ -47,7 +47,7 @@ from .gui_support.sequence_text import SequenceParseOptions, parse_do_sequence_t
 from .gui_support.worker_messages import format_worker_failure
 from .workers.daq_worker_process import start_daq_worker_process
 from .workers.camera_worker_process import start_camera_worker_process, stop_worker_process
-from .sweep.roi_bootstrap import run_roi_bootstrap
+from .sweep.stages import run_roi_bootstrap_stage
 from .sweep.session_workers import create_sweep_workers
 from .sweep.session_config import SweepPersistedConfig, build_sweep_session_dict, write_sweep_config_json
 from .sweep.session_parse import parse_freqs_from_expressions, read_sequence_json_params
@@ -1601,20 +1601,6 @@ class App(tk.Tk):
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _run_roi_bootstrap(self, daq_cmd_q: Queue, daq_resp_q: Queue, cam_cmd_q: Queue, cam_resp_q: Queue) -> bool:
-        return run_roi_bootstrap(
-            daq_cmd_q=daq_cmd_q,
-            daq_resp_q=daq_resp_q,
-            cam_cmd_q=cam_cmd_q,
-            cam_resp_q=cam_resp_q,
-            nm_397=NM_397,
-            camera_trigger=CAMERA_TRIGGER,
-            roi_pulse_s=ROI_PULSE_S,
-            roi_idle_s=ROI_IDLE_S,
-            max_attempt=ROI_MAX_ATTEMPT,
-            status_cb=self.sw_status.set,
-        )
-
     def _require_connected(self) -> None:
         if not self._daq.connected:
             raise RuntimeError("Not connected")
@@ -2165,9 +2151,19 @@ class App(tk.Tk):
             pass
 
         # ROI bootstrap
-        self.sw_status.set("ROI bootstrap...")
-        self._ui_pump()
-        roi_ok = self._run_roi_bootstrap(daq_cmd_q, daq_resp_q, cam_cmd_q, cam_resp_q)
+        roi_ok = run_roi_bootstrap_stage(
+            daq_cmd_q=daq_cmd_q,
+            daq_resp_q=daq_resp_q,
+            cam_cmd_q=cam_cmd_q,
+            cam_resp_q=cam_resp_q,
+            nm_397=NM_397,
+            camera_trigger=CAMERA_TRIGGER,
+            roi_pulse_s=ROI_PULSE_S,
+            roi_idle_s=ROI_IDLE_S,
+            max_attempt=ROI_MAX_ATTEMPT,
+            status_cb=self.sw_status.set,
+            ui_pump=self._ui_pump,
+        )
         if not roi_ok:
             messagebox.showerror("Sweep", "ROI bootstrap failed")
             self._stop_sweep(clean_only=True)
