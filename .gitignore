@@ -1,5 +1,6 @@
 nidaqmx-python-master/
 .venv
+.github
 
 # Python caches
 __pycache__/
