@@ -1,0 +1,158 @@
+# Refactor計画（camera / shutter_gui）2026-01-12
+
+## 0. この計画の目的（最重要）
+この計画の最優先ゴールは「あなたが自力でコードの全体像を把握し、実験運用中に“AIへ丸投げ”せずに、どこを直せばよいか自分で判断できる状態」になることです。
+
+あなたの要望（原文）:
+
+> 今からやりたいのはこのプロジェクトの特にcamera, shutter_gui.pyのプログラムのリファクタリングです。  
+> AIにコードを書かせていたのでどこに何が開いてあるかわかりません。また、shutter_guiはgui以外の機能がほとんどであり、コード数が非常に多いため分割しディレクトリ構成から作り直すべきだと思います。目標は私がコードの全体像を把握して、実験でコードの実行を行ったときにAIにデバッグを丸投げするのではなく、自分でどこを直したらいいかわかるまで理解すること、およびその理解を助けるためのリファクタリングです
+
+このために、この計画は「動く状態を維持しつつ」「理解のための境界（責務）を切る」ことを第一原則にします。
+
+---
+
+## 1. 現状の把握（入口と責務）
+
+### 1.1 主要な入口（まずここだけ覚える）
+- GUI: [src/shutter_camera_trigger/shutter_gui.py](../../src/shutter_camera_trigger/shutter_gui.py)
+- Runner（dry bring-up）: [src/runner/run_spectrum.py](../../src/runner/run_spectrum.py)
+- Camera worker: [src/camera/ion_state_worker.py](../../src/camera/ion_state_worker.py)
+
+### 1.2 shutter_gui.py の「中に入っているもの」
+`App` クラスに以下が混在しています（理解しづらくなる原因）:
+- Tk/ttk のUI生成
+- DAQ worker の起動/停止/IPC（Queue）
+- Camera worker の起動/停止/IPC
+- Sequence（DO→AO→DO）パース/描画/実行
+- Sweep（ROI→Threshold→Spectrum）の状態遷移と結果保存
+- 画像表示（matplotlib）
+- 設定の保存/復元
+
+このため、「GUI」ではなく「制御アプリ全部」が 1ファイルに入っている状態です。
+
+### 1.3 camera 側の特徴
+- `src/camera/lib/` が大きく、DCAM/デバイス依存と解析ロジックが混在しがち
+- `ion_state_worker.py` は実験運用の中心（GUI/runner から叩かれる）
+
+---
+
+## 2. リファクタリングの原則（壊さない＋理解を作る）
+
+### 2.1 ルール
+- **Big-bang禁止**: 一気にディレクトリ作り直しはしない。小さく切り出して都度importが通る状態を維持。
+- **動作は同じ**: まずは「整理（移動/抽出）」で挙動を変えない。挙動変更は別PR/別ステップ。
+- **責務で切る**: 「UI」「状態機械」「I/O（DAQ/Camera/FG）」「解析（ROI/threshold）」「永続化（config/log/output）」。
+- **入口を固定**: 入口の `python -m ...` は当面変えない（変える場合は互換入口を残す）。
+
+### 2.2 “理解のため”に必ず作るもの
+- 依存関係図（簡易でOK）
+- 用語集（ROI, tau, S_norm, “dry/real”, “prime” など）
+- 状態遷移図（Sweep: idle→roi→threshold→running→stopped）
+
+---
+
+## 3. 進め方（フェーズ分割）
+
+### フェーズ0: 現状把握の足場（完了）
+すでに “巨大ファイルの中の汎用ヘルパ” を切り出して、読むべき範囲を減らしました。
+- 追加: [src/shutter_camera_trigger/gui_support/](../../src/shutter_camera_trigger/gui_support/)
+
+**理解チェック（あなた向け）**
+- Q0-1: `shutter_gui.py` は「GUI」だけでなく何をしている？（3つ挙げる）
+- Q0-2: “入口” はどの3ファイル？
+
+### フェーズ1: shutter_gui を「UI」と「アプリ制御」に分割
+目的: `App(tk.Tk)` を“薄く”して読みやすくする。
+
+**やること**
+1) `App` の責務を2層に分ける
+   - UI層: Tk/ttk widget, messagebox, after, layout
+   - アプリ層: 接続状態、Sequence/Sweepの状態機械、worker制御
+2) `App` のメソッド群を、まず「まとまりごと」にクラス分割（ファイル分割は後）
+   - 例: `DaqClient`, `CameraClient`, `SequenceController`, `SweepController`, `PrefsStore`
+
+**成果物（あなたが読むもの）**
+- `App` は「画面部品の作成」と「controller呼び出し」だけになる
+- “どの処理がどこにあるか” がクラス名でわかる
+
+**理解チェック（毎回の停止点）**
+- Q1-1: 「UI層」と「アプリ層」の境界はどこ？（具体的な関数名で1つ）
+- Q1-2: Sweepはどんな状態遷移？（矢印で5状態くらい）
+
+### フェーズ2: Sweep（ROI/Threshold/Spectrum）を独立モジュールに
+目的: 一番複雑な“手順物”を `shutter_gui.py` から外し、読む単位を小さくする。
+
+**やること**
+- `src/shutter_camera_trigger/sweep/` を作り、
+  - `model.py`（設定/結果のdataclass）
+  - `controller.py`（状態遷移）
+  - `io.py`（output保存、CSV/JSON）
+  - `plot.py`（matplotlib描画）
+  に分解
+- GUIは `SweepController` のAPIだけ呼ぶ
+
+**理解チェック**
+- Q2-1: Threshold（tau）は「何から」推定して「何に」使う？
+- Q2-2: ROI checkは “なぜ” 分布プロットをしない？
+
+### フェーズ3: worker IPC を“クライアント”として抽象化
+目的: Queueのput/getが散らばると理解が崩れるので、通信を1箇所に集約。
+
+**やること**
+- `DaqClient.request(cmd)->resp` のみで触れるようにする（timeout/エラー整形も集約）
+- `CameraClient` も同様
+- “プロセス掃除” も `ProcessManager` 的にまとめる（PID記録/cleanup）
+
+**理解チェック**
+- Q3-1: DAQ worker へのコマンドは大きく何種類？（set_do / run_sequence_once …）
+- Q3-2: request/response をロックしている理由は？
+
+### フェーズ4: camera 側の責務整理（解析 vs デバイス）
+目的: 実験でトラブルが起きる箇所（ドライバ/トリガ/ROI/threshold）をすぐ辿れるようにする。
+
+**やること（優先順）**
+1) `ion_state_worker.py` の “受け付けコマンド一覧” を先頭にまとめる（doc + dispatch整理）
+2) `src/camera/lib/` を
+   - device（DCAM等のI/O）
+   - processing（ROI, threshold, profiles, image ops）
+   に近づける
+3) trigger設定（env fallback / GUI設定 / cam_cfg）を一本化する
+
+**理解チェック**
+- Q4-1: 「カメラが見つからない」問題はどこを見る？（ファイル名で2つ）
+- Q4-2: trigger設定は“今”どこから来る？（GUI→worker→device）
+
+### フェーズ5: スモークテスト（dry）を固定化
+目的: リファクタ後でも「最低限は動く」をあなたが自分で確認できるようにする。
+
+**やること**
+- READMEの dry bring-up コマンドを“この計画に紐づく”形で整備
+- `python -m ...` の動作確認手順を固定化（GUI起動/runner起動/ログの場所）
+
+**理解チェック**
+- Q5-1: dryで「DAQだけ」「cameraだけ」「sweep一周」をどう切り分けて確認する？
+
+---
+
+## 4. 進行中の“理解確認”の運用ルール（重要）
+毎回の作業の最後に、あなたに以下を短く確認します。
+- いま触ったコードは「何の責務」？
+- 入口からそこに辿る経路は？（ファイル→クラス/関数）
+- 次にバグったらどこから疑う？（3択）
+
+※答えられない場合は、リファクタを止めて「図/メモを増やす」「命名を直す」「責務の境界を修正する」を優先します。
+
+---
+
+## 5. 近い次アクション（提案）
+次の着手は、理解効果が高くて安全な順で以下を推奨します。
+1) Sweep周り（`_sw_*`）を `sweep/` モジュールへ分割（フェーズ2）
+2) 次に `DaqClient` / `CameraClient` 化（フェーズ3）
+3) その後で camera 側（フェーズ4）
+
+---
+
+## 付録A: 参考ドキュメント
+- GUIの運用メモ: [docs/shutter_gui_usage.md](../shutter_gui_usage.md)
+- 引き継ぎ（2026-01-07）: [docs/notes/handoff_20260107.md](handoff_20260107.md)

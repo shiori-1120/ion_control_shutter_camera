@@ -39,8 +39,19 @@ from multiprocessing import Process, Queue
 
 import numpy as np
 
-from .daq_worker_dry import daq_worker_dry_main
-from .daq_worker_mpq import daq_worker_mpq_main
+from .clients.daq_client import DaqClient
+from .gui_support.image_utils import robust_gray_limits
+from .gui_support.perf import limit_blas_threads
+from .gui_support.prefs import read_json, resolve_repo_relative_path, write_json
+from .gui_support.sequence_text import SequenceParseOptions, parse_do_sequence_text
+from .gui_support.worker_messages import format_worker_failure
+from .workers.daq_worker_process import start_daq_worker_process
+from .workers.camera_worker_process import start_camera_worker_process, stop_worker_process
+from .sweep.stages import run_roi_bootstrap_stage
+from .sweep.session_workers import create_sweep_workers
+from .sweep.session_config import SweepPersistedConfig, build_sweep_session_dict, write_sweep_config_json
+from .sweep.session_parse import parse_freqs_from_expressions, read_sequence_json_params
+from .sweep.session_start import bootstrap_workers_for_sweep
 
 # -------------------------
 # DO bit mapping (port1/line0:3)
@@ -115,80 +126,6 @@ GUI_PREFS_PATH = Path("config") / "shutter_gui_prefs.json"
 WORKER_PIDS_PATH = Path("config") / "last_worker_pids.json"
 
 
-# -------------------------
-# Helper: limit BLAS threads (for online run jitter削減)
-# -------------------------
-def _limit_blas_threads() -> None:
-    import os
-
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-
-
-def _format_worker_failure(resp: Any, *, label: str, log_path: str | None = None) -> str:
-    """Format worker failure dicts into a human-friendly message.
-
-    The camera/DAQ workers may return large dicts with tracebacks; showing them
-    verbatim in a messagebox is noisy. Keep UI actionable.
-    """
-    msg = ""
-    if isinstance(resp, dict):
-        event = str(resp.get("event") or "").strip()
-        err = resp.get("error")
-        if err is None:
-            # Best-effort fallback
-            err = resp.get("msg") or resp.get("message") or resp
-        msg = str(err)
-        if event:
-            msg = f"{label}: {msg} (event={event})"
-        else:
-            msg = f"{label}: {msg}"
-
-        # Common actionable hint for Hamamatsu DCAM
-        if "NOCAMERA" in msg or "No camera detected" in msg:
-            msg += (
-                "\n\nDCAM がカメラを検出できていません。\n"
-                "- カメラの電源/接続(USB/CameraLink等)\n"
-                "- Hamamatsu/DCAM-API ドライバの導入\n"
-                "- 他アプリがカメラを掴んでいないか\n"
-                "を確認してください。カメラ無しPCで試す場合は Camera mode を dry にしてください。"
-            )
-    else:
-        msg = f"{label}: {resp}"
-
-    if log_path:
-        try:
-            lp = str(log_path).strip()
-        except Exception:
-            lp = ""
-        if lp:
-            msg += f"\n\nLog: {lp}"
-    return msg
-
-
-def _robust_gray_limits(img: Any, *, lo_pct: float = 1.0, hi_pct: float = 99.0) -> tuple[float | None, float | None]:
-    """Return (vmin, vmax) for grayscale imshow using robust percentiles.
-
-    This prevents a few hot/saturated pixels from compressing contrast.
-    """
-    try:
-        arr = np.asarray(img)
-        if arr.size == 0:
-            return (None, None)
-        a = np.asarray(arr, dtype=float)
-        if not np.isfinite(a).any():
-            return (None, None)
-        vmin = float(np.nanpercentile(a, float(lo_pct)))
-        vmax = float(np.nanpercentile(a, float(hi_pct)))
-        if not np.isfinite(vmin) or not np.isfinite(vmax):
-            return (None, None)
-        if vmax <= vmin:
-            return (None, None)
-        return (vmin, vmax)
-    except Exception:
-        return (None, None)
-
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -198,13 +135,7 @@ class App(tk.Tk):
         self.geometry("900x650")
 
         self._daq_proc: Process | None = None
-        self._daq_cmd_q: Queue | None = None
-        self._daq_resp_q: Queue | None = None
-        # NOTE: DAQ worker uses a single response queue. Without serializing
-        # request/response pairs, concurrent callers can consume each other's
-        # responses and appear to hang.
-        self._daq_req_lock = threading.Lock()
-        self._daq_connected = False
+        self._daq = DaqClient()
         self._daq_device: str | None = None
         self._daq_mode: str = "real"
         self._seq_thread: threading.Thread | None = None
@@ -372,17 +303,11 @@ class App(tk.Tk):
 
     def _prefs_path(self) -> Path:
         # Store under repo's config/ by default.
-        try:
-            root = Path(__file__).resolve().parents[2]
-            return root / GUI_PREFS_PATH
-        except Exception:
-            return GUI_PREFS_PATH
+        return resolve_repo_relative_path(__file__, GUI_PREFS_PATH)
 
     def _load_camera_trigger_prefs(self) -> None:
         p = self._prefs_path()
-        if not p.exists():
-            return
-        data = json.loads(p.read_text(encoding="utf-8"))
+        data = read_json(p)
         trig = data.get("camera_trigger")
         if not isinstance(trig, dict):
             return
@@ -432,11 +357,6 @@ class App(tk.Tk):
 
     def _save_camera_trigger_prefs(self) -> None:
         p = self._prefs_path()
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-
         trig = {
             "source": (self.camera_trigger_source_var.get() or "").strip(),
             "connector": (self.camera_trigger_connector_var.get() or "").strip(),
@@ -454,7 +374,7 @@ class App(tk.Tk):
             "width": (self.camera_sub_w_var.get() or "").strip(),
             "height": (self.camera_sub_h_var.get() or "").strip(),
         }
-        p.write_text(json.dumps({"camera_trigger": trig, "camera_subarray": sub}, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_json(p, {"camera_trigger": trig, "camera_subarray": sub})
 
     def _build_ui(self) -> None:
         # Menu bar (Help -> open usage doc)
@@ -642,7 +562,7 @@ class App(tk.Tk):
             return
 
         # DAQ is needed to output TTL on real hardware.
-        if not self._daq_connected:
+        if not self._daq.connected:
             messagebox.showerror("Camera", "DAQ is not connected. Please Connect first.")
             return
 
@@ -680,25 +600,7 @@ class App(tk.Tk):
         pulse_seq = [(NM_397, ROI_IDLE_S), (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S), (NM_397, ROI_IDLE_S)]
 
         def _worker() -> None:
-            from src.camera.ion_state_worker import ion_state_worker_main
-
-            cam_cmd_q: Queue = Queue()
-            cam_resp_q: Queue = Queue()
-            cam_p = Process(target=ion_state_worker_main, args=(cam_cmd_q, cam_resp_q, cfg), daemon=True)
-            cam_p.start()
-
-            def _cleanup() -> None:
-                try:
-                    cam_cmd_q.put({"cmd": "close"})
-                except Exception:
-                    pass
-                try:
-                    cam_p.join(timeout=3.0)
-                    if cam_p.is_alive():
-                        cam_p.terminate()
-                        cam_p.join(timeout=1.0)
-                except Exception:
-                    pass
+            cam_p, cam_cmd_q, cam_resp_q = start_camera_worker_process(cfg=cfg)
 
             try:
                 self.after(0, lambda: self._cam_status.set("Snap: starting camera..."))
@@ -734,7 +636,7 @@ class App(tk.Tk):
                     cam_ready = cam_resp_q.get(timeout=15.0)
                 if not cam_ready.get("ok"):
                     raise RuntimeError(
-                        _format_worker_failure(
+                        format_worker_failure(
                             cam_ready,
                             label="Camera worker init failed",
                             log_path=str(cfg.get("log_path") or "") or None,
@@ -763,7 +665,7 @@ class App(tk.Tk):
                 cam_resp = cam_resp_q.get(timeout=15.0)
                 if not cam_resp.get("ok"):
                     raise RuntimeError(
-                        _format_worker_failure(
+                        format_worker_failure(
                             cam_resp,
                             label="Camera frame failed",
                             log_path=str(cfg.get("log_path") or "") or None,
@@ -771,7 +673,7 @@ class App(tk.Tk):
                     )
                 if cam_resp.get("event") != "frame":
                     raise RuntimeError(
-                        _format_worker_failure(
+                        format_worker_failure(
                             cam_resp,
                             label="Unexpected camera response",
                             log_path=str(cfg.get("log_path") or "") or None,
@@ -796,7 +698,7 @@ class App(tk.Tk):
 
                 def _ui_update() -> None:
                     self._cam_ax.clear()
-                    vmin, vmax = _robust_gray_limits(frame)
+                    vmin, vmax = robust_gray_limits(frame)
                     self._cam_ax.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
                     self._cam_ax.set_title(f"snap | {mode} | saved: {npy_path}")
                     self._cam_ax.set_axis_off()
@@ -821,7 +723,7 @@ class App(tk.Tk):
                 self.after(0, lambda msg=str(e): messagebox.showerror("Camera", msg))
                 self.after(0, lambda: self._cam_status.set("Snap: failed"))
             finally:
-                _cleanup()
+                stop_worker_process(proc=cam_p, cmd_q=cam_cmd_q)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -1257,7 +1159,7 @@ class App(tk.Tk):
 
     # ---------------- Sweep tab (queue-based auto sweep) ----------------
     def _build_sweep_tab(self) -> None:
-        _limit_blas_threads()
+        limit_blas_threads()
 
         row = ttk.Frame(self.sweep_tab)
         row.pack(fill=tk.X, pady=(0, 8))
@@ -1491,11 +1393,7 @@ class App(tk.Tk):
             import threading as _threading
             import time as _time
 
-            from src.camera.ion_state_worker import ion_state_worker_main
-
-            cmd_q: Queue = Queue()
-            resp_q: Queue = Queue()
-            p = Process(target=ion_state_worker_main, args=(cmd_q, resp_q, cfg), daemon=True)
+            p, cmd_q, resp_q = start_camera_worker_process(cfg=cfg)
 
             # Optional: DAQ priming (external trigger)
             prime_stop = _threading.Event()
@@ -1513,17 +1411,7 @@ class App(tk.Tk):
                         "Camera check in EXTERNAL trigger mode requires DAQ mode 'real' (to output TTL)."
                     )
 
-                dq: Queue = Queue()
-                rq: Queue = Queue()
-                proc = Process(
-                    target=daq_worker_mpq_main,
-                    args=(dq, rq, {"device": device, "mode": daq_mode}),
-                    daemon=True,
-                )
-                proc.start()
-                ready = rq.get(timeout=8)
-                if not ready.get("ok"):
-                    raise RuntimeError(f"DAQ worker failed: {ready}")
+                proc, dq, rq = start_daq_worker_process(device=device, mode=daq_mode)
                 return dq, rq, proc
 
             def _prime_loop_using_existing() -> None:
@@ -1586,7 +1474,7 @@ class App(tk.Tk):
             want_prime = (mode == "real") and (trig_src in ("EXTERNAL", "EXT", "2", ""))
             if want_prime:
                 try:
-                    if self._daq_connected:
+                    if self._daq.connected:
                         prime_thread = _threading.Thread(target=_prime_loop_using_existing, daemon=True)
                         prime_thread.start()
                     else:
@@ -1605,8 +1493,6 @@ class App(tk.Tk):
 
                     self.after(0, _ui_fail)
                     return
-
-            p.start()
 
             try:
                 self._write_last_worker_pids(
@@ -1666,14 +1552,14 @@ class App(tk.Tk):
                         ui_msg = f"Camera check OK ({mode}){extra}"
                     ui_kind = "info"
                 else:
-                    ui_msg = _format_worker_failure(
+                    ui_msg = format_worker_failure(
                         ready,
                         label="Camera worker failed",
                         log_path=str(cfg.get("log_path") or "") or None,
                     )
                     ui_kind = "error"
             except Exception as e:
-                ui_msg = _format_worker_failure(
+                ui_msg = format_worker_failure(
                     e,
                     label="Camera check failed",
                     log_path=str(cfg.get("log_path") or "") or None,
@@ -1681,19 +1567,7 @@ class App(tk.Tk):
                 ui_kind = "error"
             finally:
                 prime_stop.set()
-                try:
-                    cmd_q.put({"cmd": "close"})
-                except Exception:
-                    pass
-                try:
-                    # Give the worker a chance to run its cleanup (camera close/uninit)
-                    # before falling back to terminate.
-                    p.join(timeout=3.0)
-                    if p.is_alive():
-                        p.terminate()
-                        p.join(timeout=1.0)
-                except Exception:
-                    pass
+                stop_worker_process(proc=p, cmd_q=cmd_q)
 
                 # Clear pid record after this check.
                 try:
@@ -1702,19 +1576,7 @@ class App(tk.Tk):
                     pass
 
                 # Close temporary DAQ (if we started one)
-                try:
-                    if tmp_daq_cmd_q is not None:
-                        tmp_daq_cmd_q.put({"cmd": "close"})
-                except Exception:
-                    pass
-                try:
-                    if tmp_daq_proc is not None and tmp_daq_proc.is_alive():
-                        tmp_daq_proc.join(timeout=2.0)
-                        if tmp_daq_proc.is_alive():
-                            tmp_daq_proc.terminate()
-                            tmp_daq_proc.join(timeout=1.0)
-                except Exception:
-                    pass
+                stop_worker_process(proc=tmp_daq_proc, cmd_q=tmp_daq_cmd_q, join_timeout_s=2.0, terminate_timeout_s=1.0)
 
             def _ui() -> None:
                 self._camera_connected = ok
@@ -1722,7 +1584,7 @@ class App(tk.Tk):
                 try:
                     if frame_np is not None and self._cam_ax is not None and self._cam_canvas is not None and self._cam_fig is not None:
                         self._cam_ax.clear()
-                        vmin, vmax = _robust_gray_limits(frame_np)
+                        vmin, vmax = robust_gray_limits(frame_np)
                         self._cam_ax.imshow(frame_np, cmap="gray", vmin=vmin, vmax=vmax)
                         self._cam_ax.set_title("camera_check")
                         self._cam_ax.set_axis_off()
@@ -1739,54 +1601,8 @@ class App(tk.Tk):
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _run_roi_bootstrap(self, daq_cmd_q: Queue, daq_resp_q: Queue, cam_cmd_q: Queue, cam_resp_q: Queue) -> bool:
-        """Send simple TTL pulses (camera trigger only) until camera replies or attempts are exhausted."""
-        # Keep 397 ON during ROI/bootstrap so ions remain cooled/visible.
-        roi_sequence = [
-            (NM_397, ROI_IDLE_S),
-            (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S),
-            (NM_397, ROI_IDLE_S),
-        ]
-        success = 0
-        last_err: str | None = None
-
-        for _attempt in range(ROI_MAX_ATTEMPT):
-            try:
-                daq_cmd_q.put(
-                    {
-                        "cmd": "run_sequence_once",
-                        "do_sequence": roi_sequence,
-                        "insert_index": -1,
-                        "ao_width_ms": 0.0,
-                        "ao_rate_hz": AO_RATE_HZ,
-                        "ao_v_high": 5.0,
-                        "ao_v_low": 0.0,
-                    }
-                )
-                daq_resp = daq_resp_q.get(timeout=5)
-                if not daq_resp.get("ok"):
-                    last_err = f"DAQ: {daq_resp}"
-                    continue
-
-                cam_cmd_q.put({"cmd": "get_state", "timeout_s": 1.0})
-                cam_resp = cam_resp_q.get(timeout=5)
-                if not cam_resp.get("ok"):
-                    last_err = f"Camera: {cam_resp}"
-                    continue
-
-                success += 1
-                if success >= 1:
-                    return True
-            except Exception as e:
-                last_err = str(e)
-            time.sleep(max(0.0, ROI_IDLE_S))
-
-        if last_err:
-            self.sw_status.set(f"ROI bootstrap failed: {last_err}")
-        return False
-
     def _require_connected(self) -> None:
-        if not self._daq_connected:
+        if not self._daq.connected:
             raise RuntimeError("Not connected")
 
     def _connect(self) -> None:
@@ -1794,7 +1610,6 @@ class App(tk.Tk):
             device = self.device_var.get().strip() or DEFAULT_DAQ_DEVICE
             mode = self.device_mode_var.get().strip().lower() or "real"
             self._start_daq_worker(device=device, mode=mode)
-            self._daq_connected = True
             self._daq_device = device
             self._daq_mode = mode
 
@@ -1808,7 +1623,6 @@ class App(tk.Tk):
             self.connect_btn.configure(state=tk.DISABLED)
             self.disconnect_btn.configure(state=tk.NORMAL)
         except Exception as e:
-            self._daq_connected = False
             self._daq_device = None
             messagebox.showerror("Connect failed", str(e))
 
@@ -1819,7 +1633,7 @@ class App(tk.Tk):
             pass
 
         try:
-            if self._daq_connected:
+            if self._daq.connected:
                 try:
                     self._daq_request({"cmd": "set_do", "value": ALL_OFF}, timeout=2.0)
                 except Exception:
@@ -1828,7 +1642,6 @@ class App(tk.Tk):
         except Exception:
             pass
 
-        self._daq_connected = False
         self._daq_device = None
         self.status_var.set("Disconnected")
         self.connect_btn.configure(state=tk.NORMAL)
@@ -1837,26 +1650,12 @@ class App(tk.Tk):
     def _start_daq_worker(self, *, device: str, mode: str) -> None:
         self._stop_daq_worker()
 
-        cmd_q: Queue = Queue()
-        resp_q: Queue = Queue()
-        worker = daq_worker_dry_main if mode == "dry" else daq_worker_mpq_main
-        proc = Process(target=worker, args=(cmd_q, resp_q, {"device": device, "mode": mode}), daemon=True)
-        proc.start()
-
-        ready = resp_q.get(timeout=8)
-        if not ready.get("ok"):
-            raise RuntimeError(f"DAQ worker failed: {ready}")
-
+        proc, cmd_q, resp_q = start_daq_worker_process(device=device, mode=mode)
         self._daq_proc = proc
-        self._daq_cmd_q = cmd_q
-        self._daq_resp_q = resp_q
+        self._daq.attach(cmd_q, resp_q)
 
     def _stop_daq_worker(self) -> None:
-        try:
-            if self._daq_cmd_q is not None:
-                self._daq_cmd_q.put({"cmd": "close"})
-        except Exception:
-            pass
+        self._daq.try_close()
 
         try:
             if self._daq_proc is not None and self._daq_proc.is_alive():
@@ -1868,22 +1667,10 @@ class App(tk.Tk):
             pass
 
         self._daq_proc = None
-        self._daq_cmd_q = None
-        self._daq_resp_q = None
-        self._daq_connected = False
+        self._daq.detach()
 
     def _daq_request(self, cmd: dict, timeout: float = 5.0) -> dict:
-        # Serialize to keep request/response pairing correct.
-        with self._daq_req_lock:
-            if not self._daq_connected or self._daq_cmd_q is None or self._daq_resp_q is None:
-                raise RuntimeError("Not connected")
-            self._daq_cmd_q.put(cmd)
-            resp = self._daq_resp_q.get(timeout=timeout)
-            if not isinstance(resp, dict):
-                raise RuntimeError(f"Invalid DAQ response: {resp!r}")
-            if not resp.get("ok"):
-                raise RuntimeError(resp.get("error", "DAQ error"))
-            return resp
+        return self._daq.request(cmd, timeout=timeout)
 
     def _all_off(self) -> None:
         try:
@@ -1921,6 +1708,7 @@ class App(tk.Tk):
             messagebox.showerror("Manual apply error", str(e))
 
     def _parse_sequence_text(self) -> list[tuple[int, float]]:
+        raw = self.seq_text.get("1.0", tk.END)
         name_to_value = {
             "ALL_OFF": ALL_OFF,
             "NM_397": NM_397,
@@ -1929,41 +1717,17 @@ class App(tk.Tk):
             "NM_854": NM_854,
             "NM_729_854": (NM_729 | NM_854),
         }
-
-        raw = self.seq_text.get("1.0", tk.END)
-        steps: list[tuple[int, float]] = []
-        for line in raw.splitlines():
-            s = line.strip()
-            if not s or s.startswith("#"):
-                continue
-            parts = s.split()
-            if len(parts) < 2:
-                raise ValueError(f"Invalid sequence line: {line!r}")
-            key = parts[0]
-            hold_s = float(parts[1])
-            if hold_s < 0:
-                raise ValueError(f"hold_s must be >= 0: {line!r}")
-
-            # Preferred: bitstring like 0101 (length=4)
-            if all(ch in "01" for ch in key):
-                if len(key) != SEQUENCE_BITS:
-                    raise ValueError(
-                        f"Bitstring must be {SEQUENCE_BITS} digits ({BITSTRING_HELP}): {line!r}"
-                    )
-                value = int(key, 2)
-            elif key in name_to_value:
-                value = name_to_value[key]
-            else:
-                value = int(key, 0)
-
-            if not (0 <= value <= 0b1111):
-                raise ValueError(f"DO value must be 0..15 (4-bit, port1/line0:3): {line!r}")
-
-            steps.append((int(value), float(hold_s)))
-
-        if not steps:
-            raise ValueError("Sequence is empty")
-        return steps
+        return parse_do_sequence_text(
+            raw,
+            options=SequenceParseOptions(
+                bits=SEQUENCE_BITS,
+                strict_bitstring_length=True,
+                allow_symbolic_names=True,
+            ),
+            name_to_value=name_to_value,
+            value_min=0,
+            value_max=0b1111,
+        )
 
     def _start_sequence(self) -> None:
         try:
@@ -1988,7 +1752,7 @@ class App(tk.Tk):
     def _sequence_stopped_ui(self) -> None:
         self.start_btn.configure(state=tk.NORMAL)
         self.stop_btn.configure(state=tk.DISABLED)
-        if self._daq_connected:
+        if self._daq.connected:
             # Return to cooling state when not running a sequence.
             try:
                 self._daq_request({"cmd": "set_do", "value": int(NM_397)}, timeout=2.0)
@@ -2235,29 +1999,17 @@ class App(tk.Tk):
         trig_cfg = self._camera_trigger_cfg_from_ui()
 
         try:
-            freq_start = float(eval(self.sw_freq_start.get()))
-            freq_stop = float(eval(self.sw_freq_stop.get()))
-            freq_step = float(eval(self.sw_freq_step.get()))
-            if freq_step == 0:
-                raise ValueError("freq_step must be non-zero")
-            freqs: list[float] = []
-            f = freq_start
-            if freq_step > 0:
-                while f <= freq_stop + 1e-12:
-                    freqs.append(float(f))
-                    f += freq_step
-            else:
-                while f >= freq_stop - 1e-12:
-                    freqs.append(float(f))
-                    f += freq_step
-            if not freqs:
-                raise ValueError("No frequencies generated")
+            freqs = parse_freqs_from_expressions(
+                start_expr=self.sw_freq_start.get(),
+                stop_expr=self.sw_freq_stop.get(),
+                step_expr=self.sw_freq_step.get(),
+            )
 
             seq_path = Path(self.sw_seq_path.get())
-            seq_data = json.loads(seq_path.read_text(encoding="utf-8"))
-            do_sequence = self._parse_sequence_text_from_raw(seq_data.get("sequence_text", ""))
-            insert_index = int(seq_data.get("ao_insert_index", -1))
-            ao_width_ms = float(seq_data.get("ao_width_ms", 15.0))
+            seq_params = read_sequence_json_params(seq_path=seq_path)
+            do_sequence = self._parse_sequence_text_from_raw(seq_params.sequence_text)
+            insert_index = int(seq_params.ao_insert_index)
+            ao_width_ms = float(seq_params.ao_width_ms)
 
             n_target = int(self.sw_n_target.get())
             max_attempt = int(self.sw_max_attempt.get())
@@ -2294,44 +2046,31 @@ class App(tk.Tk):
         out_dir.mkdir(parents=True, exist_ok=True)
         self._sw_out_dir = out_dir
 
-        # write config
-        cfg = {
-            "freqs": freqs,
-            "n_target": n_target,
-            "max_attempt": max_attempt,
-            "settle_s": settle_s,
-            "daq_mode": daq_mode,
-            "device": device,
-            "sequence_json": str(seq_path),
-            "insert_index": insert_index,
-            "ao_width_ms": ao_width_ms,
-            "camera_mode": cam_mode,
-            "camera_exposure_s": float(cam_exposure_s),
-            "fg_amp_mvpp": float(fg_amp_vpp) * 1000.0,
-            "dry_image_dir": dry_image_dir,
-            "roi_bootstrap": {
-                "pulse_s": ROI_PULSE_S,
-                "idle_s": ROI_IDLE_S,
-                "max_attempt": ROI_MAX_ATTEMPT,
-            },
-        }
-        (out_dir / "config.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_sweep_config_json(
+            out_dir=out_dir,
+            cfg=SweepPersistedConfig(
+                freqs=freqs,
+                n_target=n_target,
+                max_attempt=max_attempt,
+                settle_s=settle_s,
+                daq_mode=daq_mode,
+                device=device,
+                sequence_json=str(seq_path),
+                insert_index=insert_index,
+                ao_width_ms=ao_width_ms,
+                camera_mode=cam_mode,
+                camera_exposure_s=float(cam_exposure_s),
+                fg_amp_mvpp=float(fg_amp_vpp) * 1000.0,
+                dry_image_dir=dry_image_dir,
+                roi_bootstrap={
+                    "pulse_s": ROI_PULSE_S,
+                    "idle_s": ROI_IDLE_S,
+                    "max_attempt": ROI_MAX_ATTEMPT,
+                },
+            ),
+        )
 
         # start workers
-        daq_cmd_q: Queue = Queue()
-        daq_resp_q: Queue = Queue()
-        cam_cmd_q: Queue = Queue()
-        cam_resp_q: Queue = Queue()
-        self._sw_queues = {"daq_cmd": daq_cmd_q, "daq_resp": daq_resp_q, "cam_cmd": cam_cmd_q, "cam_resp": cam_resp_q}
-
-        if daq_mode == "dry":
-            from src.shutter_camera_trigger.daq_worker_dry import daq_worker_dry_main as daq_worker_main
-        else:
-            from src.shutter_camera_trigger.daq_worker_mpq import daq_worker_mpq_main as daq_worker_main
-
-        from src.camera.ion_state_worker import ion_state_worker_main
-
-        daq_p = Process(target=daq_worker_main, args=(daq_cmd_q, daq_resp_q, {"device": device, "mode": daq_mode}), daemon=True)
         cam_cfg: dict[str, Any] = {
             "mode": cam_mode,
             "exposure_s": float(cam_exposure_s),
@@ -2352,21 +2091,52 @@ class App(tk.Tk):
             pass
         if dry_image_dir:
             cam_cfg["dry_image_dir"] = dry_image_dir
-        cam_p = Process(target=ion_state_worker_main, args=(cam_cmd_q, cam_resp_q, cam_cfg), daemon=True)
+        workers = create_sweep_workers(device=device, daq_mode=daq_mode, cam_cfg=cam_cfg)
+        daq_p = workers.daq_proc
+        cam_p = workers.cam_proc
+        daq_cmd_q = workers.daq_cmd_q
+        daq_resp_q = workers.daq_resp_q
+        cam_cmd_q = workers.cam_cmd_q
+        cam_resp_q = workers.cam_resp_q
+        self._sw_queues = {"daq_cmd": daq_cmd_q, "daq_resp": daq_resp_q, "cam_cmd": cam_cmd_q, "cam_resp": cam_resp_q}
+
         daq_p.start()
         self._sw_procs = [daq_p, cam_p]
 
-        # wait DAQ ready first
+        trig_src = str(trig_cfg.get("source") or "EXTERNAL").strip().upper() or "EXTERNAL"
+        prime_seq_one = [(NM_397, ROI_IDLE_S), (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S), (NM_397, ROI_IDLE_S)]
+
         try:
-            daq_ready = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ ready")
-            if not daq_ready.get("ok"):
-                raise RuntimeError(f"DAQ worker failed: {daq_ready}")
+            _ = bootstrap_workers_for_sweep(
+                daq_resp_q=daq_resp_q,
+                cam_proc=cam_p,
+                cam_resp_q=cam_resp_q,
+                mpq_get_with_ui=lambda q, timeout, label: self._mpq_get_with_ui(q, timeout=timeout, label=label),
+                format_worker_failure=format_worker_failure,
+                cam_log_path=str((self._sw_out_dir / "camera_worker.log") if self._sw_out_dir else "") or None,
+                cam_mode=cam_mode,
+                trig_src=trig_src,
+                prime_cmd={
+                    "cmd": "run_sequence_once",
+                    "do_sequence": prime_seq_one,
+                    "insert_index": -1,
+                    "ao_width_ms": 0.0,
+                    "ao_rate_hz": AO_RATE_HZ,
+                    "ao_v_high": 5.0,
+                    "ao_v_low": 0.0,
+                },
+                daq_send=daq_cmd_q.put,
+                daq_recv=lambda timeout, label: self._mpq_get_with_ui(daq_resp_q, timeout=timeout, label=label),
+                ui_pump=self._ui_pump,
+                status_cb=self.sw_status.set,
+                daq_ready_timeout_s=5.0,
+                cam_ready_timeout_s=30.0,
+                prime_deadline_s=30.0,
+            )
         except Exception as e:
             messagebox.showerror("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
             self._stop_sweep(clean_only=True)
             return False
-
-        cam_p.start()
 
         # Record PIDs so we can clean up if the GUI crashes.
         try:
@@ -2380,89 +2150,45 @@ class App(tk.Tk):
         except Exception:
             pass
 
-        # Prime external-trigger camera during bootstrap.
-        cam_ready: dict[str, Any] | None = None
-        trig_src = str(trig_cfg.get("source") or "EXTERNAL").strip().upper() or "EXTERNAL"
-        if cam_mode == "real" and trig_src in ("EXTERNAL", "EXT", "2", ""):
-            self.sw_status.set("Camera priming...")
-            self._ui_pump()
-            time.sleep(0.2)
-
-            prime_deadline = time.time() + 30.0
-            prime_seq_one = [(NM_397, ROI_IDLE_S), (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S), (NM_397, ROI_IDLE_S)]
-
-            while time.time() < prime_deadline:
-                try:
-                    cam_ready = cam_resp_q.get_nowait()
-                    break
-                except Exception:
-                    pass
-
-                try:
-                    daq_cmd_q.put(
-                        {
-                            "cmd": "run_sequence_once",
-                            "do_sequence": prime_seq_one,
-                            "insert_index": -1,
-                            "ao_width_ms": 0.0,
-                            "ao_rate_hz": AO_RATE_HZ,
-                            "ao_v_high": 5.0,
-                            "ao_v_low": 0.0,
-                        }
-                    )
-                    _ = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ prime response")
-                except Exception:
-                    time.sleep(0.05)
-
-                self._ui_pump()
-                time.sleep(0.01)
-
-        # wait camera ready
-        try:
-            if cam_ready is None:
-                cam_ready = self._mpq_get_with_ui(cam_resp_q, timeout=30, label="Camera ready")
-            if not cam_ready.get("ok"):
-                raise RuntimeError(
-                    _format_worker_failure(
-                        cam_ready,
-                        label="Camera worker init failed",
-                        log_path=str((self._sw_out_dir / "camera_worker.log") if self._sw_out_dir else "") or None,
-                    )
-                )
-        except Exception as e:
-            messagebox.showerror("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
-            self._stop_sweep(clean_only=True)
-            return False
-
         # ROI bootstrap
-        self.sw_status.set("ROI bootstrap...")
-        self._ui_pump()
-        roi_ok = self._run_roi_bootstrap(daq_cmd_q, daq_resp_q, cam_cmd_q, cam_resp_q)
+        roi_ok = run_roi_bootstrap_stage(
+            daq_cmd_q=daq_cmd_q,
+            daq_resp_q=daq_resp_q,
+            cam_cmd_q=cam_cmd_q,
+            cam_resp_q=cam_resp_q,
+            nm_397=NM_397,
+            camera_trigger=CAMERA_TRIGGER,
+            roi_pulse_s=ROI_PULSE_S,
+            roi_idle_s=ROI_IDLE_S,
+            max_attempt=ROI_MAX_ATTEMPT,
+            status_cb=self.sw_status.set,
+            ui_pump=self._ui_pump,
+        )
         if not roi_ok:
             messagebox.showerror("Sweep", "ROI bootstrap failed")
             self._stop_sweep(clean_only=True)
             return False
 
         # Cache session parameters
-        self._sw_session = {
-            "freqs": freqs,
-            "do_sequence": do_sequence,
-            "insert_index": insert_index,
-            "ao_width_ms": ao_width_ms,
-            "n_target": n_target,
-            "max_attempt": max_attempt,
-            "settle_s": settle_s,
-            "update_interval": update_interval,
-            "daq_mode": daq_mode,
-            "cam_mode": cam_mode,
-            "device": device,
-            "visa_res": visa_res,
-            "no_fg": no_fg,
-            "fg_amp_vpp": fg_amp_vpp,
-            "trig_cfg": dict(trig_cfg),
-            "cam_exposure_s": float(cam_exposure_s),
-            "seq_path": str(seq_path),
-        }
+        self._sw_session = build_sweep_session_dict(
+            freqs=freqs,
+            do_sequence=do_sequence,
+            insert_index=insert_index,
+            ao_width_ms=ao_width_ms,
+            n_target=n_target,
+            max_attempt=max_attempt,
+            settle_s=settle_s,
+            update_interval=update_interval,
+            daq_mode=daq_mode,
+            cam_mode=cam_mode,
+            device=device,
+            visa_res=visa_res,
+            no_fg=no_fg,
+            fg_amp_vpp=fg_amp_vpp,
+            trig_cfg=dict(trig_cfg),
+            cam_exposure_s=float(cam_exposure_s),
+            seq_path=str(seq_path),
+        )
 
         self._sw_prepared = True
         self._sw_threshold_done = False
@@ -2514,7 +2240,7 @@ class App(tk.Tk):
             cam_resp = self._mpq_get_with_ui(cam_resp_q, timeout=15, label="Camera ROI frame")
             if not cam_resp.get("ok"):
                 raise RuntimeError(
-                    _format_worker_failure(
+                    format_worker_failure(
                         cam_resp,
                         label="Camera frame failed",
                         log_path=str((self._sw_out_dir / "camera_worker.log") if self._sw_out_dir else "") or None,
@@ -2587,7 +2313,7 @@ class App(tk.Tk):
                 # Keep the persistent axis reference in sync after figure.clear().
                 self.sw_ax = ax_img
 
-                vmin, vmax = _robust_gray_limits(frame)
+                vmin, vmax = robust_gray_limits(frame)
                 ax_img.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
                 ax_img.set_title("ROI check")
                 ax_img.set_axis_off()
@@ -2681,7 +2407,7 @@ class App(tk.Tk):
                 self.sw_fig.clear()
                 ax = self.sw_fig.add_subplot(111)
                 self.sw_ax = ax
-                vmin, vmax = _robust_gray_limits(frame)
+                vmin, vmax = robust_gray_limits(frame)
                 ax.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
                 ax.set_title("ROI check")
                 ax.set_axis_off()
@@ -2875,7 +2601,7 @@ class App(tk.Tk):
             # (mean over all ROI pixels), so convert tau to this axis by scaling
             # with ROI height (yw): tau_plot ~= tau * yw.
             try:
-                tau_plot = float(tau) * float(yw)
+                tau_plot = float(tau) * float(roi[1])
             except Exception:
                 tau_plot = float(tau)
 
@@ -3130,10 +2856,12 @@ class App(tk.Tk):
                         "attempt_idx",
                         "processed_idx",
                         "bright",
+                        "label_bright",
                         "S_norm",
                         "tau_on",
                         "tau_off",
                         "cam_event",
+                        "cam_sample",
                     ],
                 )
                 shots_writer.writeheader()
@@ -3179,6 +2907,7 @@ class App(tk.Tk):
                             continue
 
                         bright = bool(cam_resp.get("bright"))
+                        label_bright = cam_resp.get("label_bright")
                         s_norm = cam_resp.get("S_norm")
                         tau_on = cam_resp.get("tau_on")
                         tau_off = cam_resp.get("tau_off")
@@ -3195,10 +2924,12 @@ class App(tk.Tk):
                                 "attempt_idx": attempt_idx,
                                 "processed_idx": processed,
                                 "bright": int(bright),
+                                "label_bright": "" if label_bright is None else int(bool(label_bright)),
                                 "S_norm": "" if s_norm is None else float(s_norm),
                                 "tau_on": "" if tau_on is None else float(tau_on),
                                 "tau_off": "" if tau_off is None else float(tau_off),
                                 "cam_event": str(cam_resp.get("event")),
+                                "cam_sample": str(cam_resp.get("sample")) if cam_resp.get("sample") is not None else "",
                             }
                         )
 
@@ -3337,28 +3068,17 @@ class App(tk.Tk):
                     pass
 
     def _parse_sequence_text_from_raw(self, raw: str) -> list[tuple[int, float]]:
-        steps: list[tuple[int, float]] = []
-        for line in raw.splitlines():
-            s = line.strip()
-            if not s or s.startswith("#"):
-                continue
-            parts = s.split()
-            if len(parts) < 2:
-                raise ValueError(f"Invalid sequence line: {line!r}")
-            key = parts[0]
-            hold_s = float(parts[1])
-            if hold_s < 0:
-                raise ValueError(f"hold_s must be >= 0: {line!r}")
-            if all(ch in "01" for ch in key):
-                value = int(key, 2)
-            else:
-                value = int(key, 0)
-            if not (0 <= value <= 0b1111):
-                raise ValueError(f"DO value must be 0..15: {line!r}")
-            steps.append((int(value), float(hold_s)))
-        if not steps:
-            raise ValueError("Sequence is empty")
-        return steps
+        return parse_do_sequence_text(
+            raw,
+            options=SequenceParseOptions(
+                bits=SEQUENCE_BITS,
+                strict_bitstring_length=False,
+                allow_symbolic_names=False,
+            ),
+            name_to_value=None,
+            value_min=0,
+            value_max=0b1111,
+        )
 
     def _update_sw_plot(self, step_idx: int, freq: float, processed: int, n_bright: int) -> None:
         if self.sw_ax is None or self.sw_canvas is None:
