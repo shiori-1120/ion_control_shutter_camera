@@ -17,6 +17,14 @@
 
 （補足）この一連のリファクタは PR #5 として `main` にマージ済みで、`origin/main` の先頭は `a0fec59` です。
 
+### 2026-01-13 追加引継ぎ（ROI checkから進まない問題の修正）
+- 【発生事象】GUIでSweep開始後、"ready step 1 roi check" から進まずフリーズする問題が発生。
+- 【原因】sweep/session_ready.py の prepare_sweep_session が workers/queue を返さず、GUI側で self._sw_queues などにセットされていなかった。
+- 【修正内容】prepare_sweep_session の返り値に workers を追加し、shutter_gui.py 側で self._sw_queues, self._sw_procs に正しくセットするよう修正。
+- 【検証】py_compile・GUIスモークでエラーなし、ROI check以降のステップも進行することを確認。
+- 【今後の注意】この種の「責務分離時の参照漏れ」は、返り値・状態の受け渡し設計を都度見直すこと。
+
+
 ### 直近でできたこと（成果物）
 - worker 起動/停止の境界化
    - [src/shutter_camera_trigger/workers/daq_worker_process.py](../../src/shutter_camera_trigger/workers/daq_worker_process.py)
@@ -263,3 +271,36 @@ git pull
 ## 付録A: 参考ドキュメント
 - GUIの運用メモ: [docs/shutter_gui_usage.md](../shutter_gui_usage.md)
 - 引き継ぎ（2026-01-07）: [docs/notes/handoff_20260107.md](handoff_20260107.md)
+
+---
+
+## 6. Update (2026-01-13)
+- Sweep controller extracted: src/shutter_camera_trigger/sweep/controller.py
+- Sweep UI split: src/shutter_camera_trigger/sweep/ui_tab.py
+- GUI tabs split: src/shutter_camera_trigger/gui_tabs/{camera_tab.py,sequence_tab.py,manual_tab.py,top_bar.py}
+- Sequence loop extracted: src/shutter_camera_trigger/sequence/controller.py
+- Sweep input collection moved: src/shutter_camera_trigger/sweep/input.py
+- worker cleanup + camera prefs extracted: src/shutter_camera_trigger/gui_support/{worker_cleanup.py,camera_prefs.py}
+- Restored entrypoint: python -m src.shutter_camera_trigger.shutter_gui
+
+## 7. Update (2026-01-13 follow-up)
+- App をさらに薄くするため、Sweep のUI補助を sweep/ui_helpers.py に移動
+- Manual のアクションを gui_tabs/manual_actions.py へ移動し、App から削除
+- Sequence の Start/Stop は sequence/controller の関数を直接呼び出す形へ変更
+- camera_tab から worker_pids と trigger/subarray 参照を validators/worker_cleanup に集約
+
+## 8. Update (2026-01-13 follow-up 2)
+- top_bar/camera/sweep �� callback �����ɕύX���AApp �̏����� UI �A�N�V�������폜
+- sweep �� UI �ˑ��A�N�V������ sweep/ui_actions.py �Ɉړ�
+- file dialog �� gui_support/dialogs.py �ɏW��
+
+## 9. Update (2026-01-13 follow-up 3)
+- App �̃t�H���g/�ۑ�/�I�������� gui_support/app_lifecycle.py �Ɉړ�
+- shutter_gui.py �̏����� UI/�ۑ����\�b�h���팸
+
+## 10. Update (2026-01-13 follow-up 4)
+- DAQ worker/request �̔������b�p�[���폜���Aapp._daq.request �𒼐ڎg���悤����
+- daq/controller, daq/workers ���� App �����\�b�h�ˑ����폜
+
+## 11. Update (2026-01-13 follow-up 5)
+- require_connected �𒼐ڗ��p���AApp �� _require_connected ���폜
