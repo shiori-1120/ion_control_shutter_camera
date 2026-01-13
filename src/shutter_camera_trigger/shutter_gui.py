@@ -18,7 +18,6 @@ Run:
 
 from __future__ import annotations
 
-import csv
 import json
 import queue
 import subprocess
@@ -47,11 +46,12 @@ from .gui_support.sequence_text import SequenceParseOptions, parse_do_sequence_t
 from .gui_support.worker_messages import format_worker_failure
 from .workers.daq_worker_process import start_daq_worker_process
 from .workers.camera_worker_process import start_camera_worker_process, stop_worker_process
-from .sweep.stages import run_roi_bootstrap_stage
+from .sweep.stages import RoiCheckResult, ThresholdStageResult, run_roi_bootstrap_stage, run_roi_check_stage, run_threshold_stage
 from .sweep.session_workers import create_sweep_workers
 from .sweep.session_config import SweepPersistedConfig, build_sweep_session_dict, write_sweep_config_json
 from .sweep.session_parse import parse_freqs_from_expressions, read_sequence_json_params
 from .sweep.session_start import bootstrap_workers_for_sweep
+from .sweep.spectrum_stage import SpectrumRunResult, run_spectrum_stage
 
 # -------------------------
 # DO bit mapping (port1/line0:3)
@@ -2211,79 +2211,33 @@ class App(tk.Tk):
         if not (daq_cmd_q and daq_resp_q and cam_cmd_q and cam_resp_q):
             return
 
-        # ROI確認: 397のみ開けて、カメラトリガを1回。
-        pulse_seq = [(NM_397, ROI_IDLE_S), (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S), (NM_397, ROI_IDLE_S)]
-
         try:
-            self.sw_status.set("ROI: acquiring frame...")
-            self._ui_pump()
-
-            cam_cmd = {"cmd": "get_frame", "timeout_s": 1.0}
+            pulse_seq = [(NM_397, ROI_IDLE_S), (NM_397 | CAMERA_TRIGGER, ROI_PULSE_S), (NM_397, ROI_IDLE_S)]
+            prefer_sample = None
             try:
                 if self._sw_session and self._sw_session.get("cam_mode") == "dry":
-                    cam_cmd["prefer_sample"] = "data/input/dry_samples/roi_test.npy"
+                    prefer_sample = "data/input/dry_samples/roi_test.npy"
             except Exception:
-                pass
-            cam_cmd_q.put(cam_cmd)
-            daq_cmd_q.put(
-                {
-                    "cmd": "run_sequence_once",
-                    "do_sequence": pulse_seq,
-                    "insert_index": -1,
-                    "ao_width_ms": 0.0,
-                    "ao_rate_hz": AO_RATE_HZ,
-                    "ao_v_high": 5.0,
-                    "ao_v_low": 0.0,
-                }
+                prefer_sample = None
+
+            cam_log_path = str((self._sw_out_dir / "camera_worker.log") if self._sw_out_dir else "") or None
+            r: RoiCheckResult = run_roi_check_stage(
+                daq_cmd_q=daq_cmd_q,
+                daq_resp_q=daq_resp_q,
+                cam_cmd_q=cam_cmd_q,
+                cam_resp_q=cam_resp_q,
+                pulse_seq=pulse_seq,
+                ao_rate_hz=AO_RATE_HZ,
+                out_dir=self._sw_out_dir,
+                cam_log_path=cam_log_path,
+                mpq_get_with_ui=lambda q, timeout, label: self._mpq_get_with_ui(q, timeout=timeout, label=label),
+                ui_pump=self._ui_pump,
+                status_cb=self.sw_status.set,
+                fig=self.sw_fig,
+                canvas=self.sw_canvas,
+                prefer_sample_path=prefer_sample,
             )
-            _ = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ ROI response")
-            cam_resp = self._mpq_get_with_ui(cam_resp_q, timeout=15, label="Camera ROI frame")
-            if not cam_resp.get("ok"):
-                raise RuntimeError(
-                    format_worker_failure(
-                        cam_resp,
-                        label="Camera frame failed",
-                        log_path=str((self._sw_out_dir / "camera_worker.log") if self._sw_out_dir else "") or None,
-                    )
-                )
-            frame = np.asarray(cam_resp.get("frame"))
-
-            # Step 1: determine ROI from this single frame (user should press while in bright state).
-            roi = None
-            try:
-                from src.camera.lib.analysis_profiles import generate_rois_from_image
-                from src.camera.lib.image_ops import crop_roi
-
-                rois = generate_rois_from_image(np.asarray(frame), plot=False)
-                best = None
-                best_sum = None
-                for r in rois or []:
-                    if not (isinstance(r, (list, tuple)) and len(r) == 4):
-                        continue
-                    xw, yw, xs, ys = map(int, r)
-                    crop = crop_roi(np.asarray(frame), (xw, yw, xs, ys))
-                    if crop.size == 0:
-                        continue
-                    s = float(np.sum(crop))
-                    if best_sum is None or s > best_sum:
-                        best_sum = s
-                        best = [int(xw), int(yw), int(xs), int(ys)]
-                if best is not None:
-                    roi = best
-            except Exception:
-                roi = None
-
-            # Fallback to worker-provided ROI if present.
-            if roi is None:
-                r = cam_resp.get("roi")
-                if isinstance(r, (list, tuple)) and len(r) == 4:
-                    try:
-                        roi = [int(r[0]), int(r[1]), int(r[2]), int(r[3])]
-                    except Exception:
-                        roi = None
-
-            # ROI check assumes the user triggers it in a bright state.
-            # Do not gate ROI locking by any bright/dark heuristic here.
+            roi = r.roi
 
             if self._sw_session is not None:
                 self._sw_session["roi"] = roi
@@ -2294,125 +2248,6 @@ class App(tk.Tk):
                 _ = self._mpq_get_with_ui(cam_resp_q, timeout=5, label="Camera set_roi")
             except Exception:
                 pass
-
-            # Save snapshot
-            try:
-                np.save(self._sw_out_dir / "roi_check.npy", frame)
-            except Exception:
-                pass
-
-            # Plot image only (photon distributions belong to Step 2: Threshold)
-            self.sw_fig.clear()
-            try:
-                # 2x2 layout: image on the left (spans rows), profiles on right.
-                gs = self.sw_fig.add_gridspec(2, 2, width_ratios=[2.2, 1.0], height_ratios=[1.0, 1.0])
-                ax_img = self.sw_fig.add_subplot(gs[:, 0])
-                ax_x = self.sw_fig.add_subplot(gs[0, 1])
-                ax_y = self.sw_fig.add_subplot(gs[1, 1])
-
-                # Keep the persistent axis reference in sync after figure.clear().
-                self.sw_ax = ax_img
-
-                vmin, vmax = robust_gray_limits(frame)
-                ax_img.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
-                ax_img.set_title("ROI check")
-                ax_img.set_axis_off()
-                if isinstance(roi, (list, tuple)) and len(roi) == 4:
-                    try:
-                        xw, yw, xs, ys = map(int, roi)
-                        from matplotlib.patches import Rectangle
-
-                        ax_img.add_patch(Rectangle((xs, ys), xw, yw, fill=False, edgecolor="tab:red", linewidth=2))
-                    except Exception:
-                        pass
-
-                # Fit profiles and overlay curves (best-effort).
-                try:
-                    from src.camera.lib.analysis_profiles import lorentz_fit_profiles
-
-                    results = lorentz_fit_profiles(np.asarray(frame), plot=False) or {}
-                    horiz = results.get("horizontal") or {}
-                    vert = results.get("vertical") or {}
-
-                    # Horizontal profile (sum over y)
-                    if isinstance(horiz, dict) and horiz.get("profile") is not None:
-                        x_prof = np.asarray(horiz.get("profile"), dtype=float)
-                        x_axis = np.asarray(horiz.get("x"), dtype=float) if horiz.get("x") is not None else np.arange(len(x_prof))
-                        ax_x.plot(x_axis, x_prof, color="tab:blue", linewidth=1.0, label="profile")
-                        if horiz.get("fitted") is not None:
-                            ax_x.plot(x_axis, np.asarray(horiz.get("fitted"), dtype=float), color="tab:orange", linewidth=1.5, label="fit")
-                        centers = horiz.get("centers")
-                        fwhms = horiz.get("fwhms")
-                        if isinstance(centers, (list, tuple)) and centers:
-                            for i, c in enumerate(centers[:5]):
-                                try:
-                                    ax_x.axvline(float(c), color="tab:red", alpha=0.6, linewidth=1.0)
-                                except Exception:
-                                    pass
-                        title = "X profile"
-                        try:
-                            if isinstance(fwhms, (list, tuple)) and fwhms:
-                                title += f" (FWHM~{float(np.mean([float(w) for w in fwhms])):.1f}px)"
-                        except Exception:
-                            pass
-                        ax_x.set_title(title)
-                        ax_x.grid(True, alpha=0.2)
-                        ax_x.tick_params(labelsize=8)
-                        try:
-                            ax_x.legend(fontsize=7, loc="best")
-                        except Exception:
-                            pass
-                    else:
-                        ax_x.set_title("X profile (fit failed)")
-                        ax_x.set_axis_off()
-
-                    # Vertical profile (sum over x)
-                    if isinstance(vert, dict) and vert.get("profile") is not None:
-                        y_prof = np.asarray(vert.get("profile"), dtype=float)
-                        y_axis = np.asarray(vert.get("x"), dtype=float) if vert.get("x") is not None else np.arange(len(y_prof))
-                        ax_y.plot(y_axis, y_prof, color="tab:blue", linewidth=1.0, label="profile")
-                        if vert.get("fitted") is not None:
-                            ax_y.plot(y_axis, np.asarray(vert.get("fitted"), dtype=float), color="tab:orange", linewidth=1.5, label="fit")
-                        try:
-                            yc = float(vert.get("center"))
-                            ax_y.axvline(yc, color="tab:red", alpha=0.6, linewidth=1.0)
-                        except Exception:
-                            pass
-                        title = "Y profile"
-                        try:
-                            if vert.get("fwhm") is not None:
-                                title += f" (FWHM~{float(vert.get('fwhm')):.1f}px)"
-                        except Exception:
-                            pass
-                        ax_y.set_title(title)
-                        ax_y.grid(True, alpha=0.2)
-                        ax_y.tick_params(labelsize=8)
-                        try:
-                            ax_y.legend(fontsize=7, loc="best")
-                        except Exception:
-                            pass
-                    else:
-                        ax_y.set_title("Y profile (fit failed)")
-                        ax_y.set_axis_off()
-                except Exception:
-                    # If scipy/fit isn't available, just keep the image.
-                    ax_x.set_title("profiles unavailable")
-                    ax_x.set_axis_off()
-                    ax_y.set_axis_off()
-
-                self.sw_fig.tight_layout()
-                self.sw_canvas.draw()
-            except Exception:
-                # Last-resort fallback: image only.
-                self.sw_fig.clear()
-                ax = self.sw_fig.add_subplot(111)
-                self.sw_ax = ax
-                vmin, vmax = robust_gray_limits(frame)
-                ax.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
-                ax.set_title("ROI check")
-                ax.set_axis_off()
-                self.sw_fig.tight_layout()
-                self.sw_canvas.draw()
 
             if roi is None:
                 self.sw_status.set("ROI: failed to detect ROI. Retry Step 1.")
@@ -2442,303 +2277,38 @@ class App(tk.Tk):
         if not (daq_cmd_q and daq_resp_q and cam_cmd_q and cam_resp_q):
             return
 
-        do_sequence = self._sw_session["do_sequence"]
-        # TTL sequence only (no AO, no frequency sweep)
-        cal_ao_width_ms = 0.0
-        cal_insert_index = -1
-        n = int(self._sw_session.get("n_target") or 50)
-        max_attempt = int(self._sw_session.get("max_attempt") or max(100, n))
-
-        # Frame acquisition timeout must cover the whole shot duration.
-        # If timeout is too short (e.g. fixed 1s) and the DO sequence is longer,
-        # the camera worker will repeatedly return timeouts and we collect 0 samples.
         try:
-            cam_exposure_s = float(self._sw_session.get("cam_exposure_s") or 0.001)
-        except Exception:
-            cam_exposure_s = 0.001
-        seq_s = 0.0
-        try:
-            for step in (do_sequence or []):
-                if isinstance(step, (list, tuple)) and len(step) >= 2:
-                    seq_s += float(step[1])
-        except Exception:
-            seq_s = 0.0
-        # generous margin for DAQ jitter / scheduling
-        shot_timeout_s = max(1.5, float(seq_s) + float(cam_exposure_s) + 0.8)
-
-        # Acquire frames using the selected sequence; then classify post-hoc.
-        # Classification scalar S: mean value in ROI (no exposure normalization, no background subtraction).
-        samples: list[float] = []
-        profiles: list[np.ndarray] = []  # per-shot 1D photon-count profile (integrated over y-axis)
-        last_cam_event: str | None = None
-        last_cam_error: str | None = None
-        cam_timeout_count = 0
-        try:
-            self.sw_status.set("Threshold: acquiring frames...")
-            self._ui_pump()
-
-            for attempt_idx in range(max_attempt):
-                if not self._sw_running:
-                    raise RuntimeError("Stopped")
-                if len(samples) >= n:
-                    break
-
-                # Get a frame for this shot and compute S from the Step-1 ROI.
-                cam_cmd_q.put({"cmd": "get_frame", "timeout_s": float(shot_timeout_s)})
-                daq_cmd_q.put(
-                    {
-                        "cmd": "run_sequence_once",
-                        "do_sequence": do_sequence,
-                        "insert_index": int(cal_insert_index),
-                        "ao_width_ms": float(cal_ao_width_ms),
-                        "ao_rate_hz": AO_RATE_HZ,
-                        "ao_v_high": 5.0,
-                        "ao_v_low": 0.0,
-                    }
-                )
-
-                daq_resp = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ response")
-                if not daq_resp.get("ok"):
-                    raise RuntimeError(f"DAQ error: {daq_resp}")
-                cam_resp = self._mpq_get_with_ui(cam_resp_q, timeout=15, label="Camera frame")
-                if not cam_resp.get("ok"):
-                    last_cam_event = str(cam_resp.get("event") or "") or None
-                    last_cam_error = str(cam_resp.get("error") or "") or None
-                    if (cam_resp.get("event") == "timeout"):
-                        cam_timeout_count += 1
-                    continue
-
-                frame = np.asarray(cam_resp.get("frame"))
-                from src.camera.lib.image_ops import crop_roi
-
-                crop = crop_roi(np.asarray(frame), roi)
-                if crop.size == 0:
-                    continue
-
-                try:
-                    s = float(np.mean(np.asarray(crop, dtype=float)))
-                    samples.append(s)
-                    profiles.append(np.asarray(np.sum(np.asarray(crop, dtype=float), axis=0), dtype=float))
-                except Exception:
-                    continue
-
-                if len(samples) % 10 == 0:
-                    self.sw_status.set(f"Threshold: {len(samples)}/{n} frames")
-                    self._ui_pump()
-
-            if len(samples) < max(5, min(10, n)):
-                detail = f"Too few samples: {len(samples)}"
-                if len(samples) == 0:
-                    detail += f" | seq_s~{seq_s:.3f}s exposure_s~{cam_exposure_s:.3f}s get_frame_timeout_s~{shot_timeout_s:.3f}s"
-                    if cam_timeout_count:
-                        detail += f" | camera_timeouts={cam_timeout_count}"
-                    if last_cam_event:
-                        detail += f" | last_cam_event={last_cam_event}"
-                    if last_cam_error:
-                        detail += f" | last_cam_error={last_cam_error}"
-                raise RuntimeError(detail)
-
-            from src.camera.lib.thresholding import quick_threshold_from_samples
-
-            th = quick_threshold_from_samples(list(samples))
-            tau = float(th["tau"])
-            # Disable hysteresis: use a single threshold.
-            tau_on = float(tau)
-            tau_off = float(tau)
-
-            # Post-hoc classification using tau
-            bright_samples = [float(v) for v in samples if float(v) > tau]
-            dark_samples = [float(v) for v in samples if float(v) <= tau]
-
-            bright_profiles = [profiles[i] for i, v in enumerate(samples) if float(v) > tau]
-            dark_profiles = [profiles[i] for i, v in enumerate(samples) if float(v) <= tau]
-
-            # "Agreement": self-consistency metric. With hysteresis disabled, this should be ~100%.
+            do_sequence = self._sw_session["do_sequence"]
+            n = int(self._sw_session.get("n_target") or 50)
+            max_attempt = int(self._sw_session.get("max_attempt") or max(100, n))
             try:
-                from src.camera.lib.thresholding import classify_hysteresis
-
-                prev: bool | None = None
-                agree = 0
-                total = 0
-                for v in samples:
-                    v_f = float(v)
-                    simple = bool(v_f > tau)
-                    hys = bool(classify_hysteresis(v_f, prev_state_bright=prev, tau_on=tau_on, tau_off=tau_off))
-                    prev = hys
-                    agree += int(simple == hys)
-                    total += 1
-                acc = (float(agree) / float(total)) if total > 0 else 0.0
+                cam_exposure_s = float(self._sw_session.get("cam_exposure_s") or 0.001)
             except Exception:
-                acc = 0.0
+                cam_exposure_s = 0.001
 
-            # Plot:
-            #  (top) photon-count distributions (integrated over y-axis), per-column samples
-            #  (bottom) roi_mean distribution (the scalar used for tau)
-            self.sw_fig.clear()
-            ax_ph = self.sw_fig.add_subplot(211)
-            ax_s = self.sw_fig.add_subplot(212)
-            # Keep the persistent axis reference in sync after figure.clear().
-            # Use the bottom axis as the "current" one.
-            self.sw_ax = ax_s
-
-            def _concat_profiles(ps: list[np.ndarray]) -> np.ndarray:
-                arrs = []
-                for p in ps:
-                    a = np.asarray(p, dtype=float)
-                    a = a[np.isfinite(a)]
-                    if a.size:
-                        arrs.append(a)
-                return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
-
-            light_counts = _concat_profiles(bright_profiles)
-            dark_counts = _concat_profiles(dark_profiles)
-            combined = np.concatenate([c for c in (light_counts, dark_counts) if c.size > 0])
-            if combined.size == 0:
-                raise RuntimeError("No valid photon-count samples")
-
-            # NOTE: The histogram below is for 1D profiles integrated over y-axis
-            # (i.e., per-column sums). The threshold tau is computed on roi_mean
-            # (mean over all ROI pixels), so convert tau to this axis by scaling
-            # with ROI height (yw): tau_plot ~= tau * yw.
-            try:
-                tau_plot = float(tau) * float(roi[1])
-            except Exception:
-                tau_plot = float(tau)
-
-            start = int(np.floor(float(np.nanmin(combined))))
-            end = int(np.ceil(float(np.nanmax(combined))))
-            # Ensure the threshold line is within the plotted range.
-            try:
-                start = int(min(start, np.floor(float(tau_plot))))
-                end = int(max(end, np.ceil(float(tau_plot))))
-            except Exception:
-                pass
-            bin_edges = np.arange(start - 0.5, end + 1.5, 1)
-
-            if light_counts.size > 0:
-                mean_light = float(np.mean(light_counts))
-                ax_ph.hist(
-                    light_counts,
-                    bins=bin_edges,
-                    density=True,
-                    alpha=0.6,
-                    color="tab:orange",
-                    edgecolor="none",
-                    label=f"Light (mean={mean_light:.2f})",
-                )
-                ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
-            if dark_counts.size > 0:
-                mean_dark = float(np.mean(dark_counts))
-                ax_ph.hist(
-                    dark_counts,
-                    bins=bin_edges,
-                    density=True,
-                    alpha=0.6,
-                    color="navy",
-                    edgecolor="none",
-                    label=f"Dark (mean={mean_dark:.2f})",
-                )
-                ax_ph.axvline(mean_dark, color="navy", linestyle="--")
-
-            # Plot threshold in the same axis unit as this histogram (per-column sum).
-            try:
-                ax_ph.axvline(
-                    float(tau_plot),
-                    color="tab:red",
-                    linestyle="-",
-                    linewidth=2,
-                    label=f"Threshold (tau*yw={float(tau_plot):.2f})",
-                )
-            except Exception:
-                pass
-
-            ax_ph.set_xlabel("Photon Count (per-column sum; integer bins)")
-            ax_ph.set_ylabel("Probability density")
-            ax_ph.set_title(f"Photon Distribution (integrated over y-axis) | agree={acc*100:.1f}%")
-            # loc="best" can be slow; use a fixed location for snappy UI.
-            ax_ph.legend(loc="upper right")
-            ax_ph.grid(True, alpha=0.3)
-
-            # Bottom: roi_mean distribution used for tau
-            try:
-                s_all = np.asarray(samples, dtype=float)
-                s_all = s_all[np.isfinite(s_all)]
-            except Exception:
-                s_all = np.asarray([], dtype=float)
-
-            if s_all.size > 0:
-                try:
-                    s_bright = np.asarray(bright_samples, dtype=float)
-                    s_dark = np.asarray(dark_samples, dtype=float)
-                except Exception:
-                    s_bright = np.asarray([], dtype=float)
-                    s_dark = np.asarray([], dtype=float)
-
-                try:
-                    s_min = float(np.nanmin(s_all))
-                    s_max = float(np.nanmax(s_all))
-                    s_min = min(s_min, float(tau))
-                    s_max = max(s_max, float(tau))
-                    bins_s = max(10, min(80, int(np.sqrt(s_all.size)) * 4))
-                    edges_s = np.linspace(s_min, s_max, bins_s + 1)
-                except Exception:
-                    edges_s = 50
-
-                if s_bright.size > 0:
-                    ax_s.hist(
-                        s_bright,
-                        bins=edges_s,
-                        density=True,
-                        alpha=0.6,
-                        color="tab:orange",
-                        edgecolor="none",
-                        label=f"roi_mean bright (n={int(s_bright.size)})",
-                    )
-                    ax_s.axvline(float(np.mean(s_bright)), color="tab:orange", linestyle="--")
-                if s_dark.size > 0:
-                    ax_s.hist(
-                        s_dark,
-                        bins=edges_s,
-                        density=True,
-                        alpha=0.6,
-                        color="navy",
-                        edgecolor="none",
-                        label=f"roi_mean dark (n={int(s_dark.size)})",
-                    )
-                    ax_s.axvline(float(np.mean(s_dark)), color="navy", linestyle="--")
-
-                ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
-
-            ax_s.set_xlabel("roi_mean (used for tau)")
-            ax_s.set_ylabel("Probability density")
-            ax_s.set_title("ROI-mean distribution")
-            ax_s.legend(loc="upper right")
-            ax_s.grid(True, alpha=0.3)
-
-            self.sw_fig.tight_layout()
-            self.sw_canvas.draw()
-
-            # Save threshold info
-            if self._sw_out_dir is not None:
-                try:
-                    (self._sw_out_dir / "threshold.json").write_text(
-                        json.dumps(
-                            {
-                                "bright_samples_n": len(bright_samples),
-                                "dark_samples_n": len(dark_samples),
-                                "samples_n": int(len(samples)),
-                                "roi": list(roi) if isinstance(roi, (list, tuple)) else None,
-                                "sample_metric": "roi_mean",
-                                "threshold": th,
-                                "agreement": acc,
-                            },
-                            ensure_ascii=False,
-                            indent=2,
-                        ),
-                        encoding="utf-8",
-                    )
-                except Exception:
-                    pass
+            r: ThresholdStageResult = run_threshold_stage(
+                daq_cmd_q=daq_cmd_q,
+                daq_resp_q=daq_resp_q,
+                cam_cmd_q=cam_cmd_q,
+                cam_resp_q=cam_resp_q,
+                do_sequence=do_sequence,
+                roi=[int(v) for v in roi],
+                n_target=int(n),
+                max_attempt=int(max_attempt),
+                cam_exposure_s=float(cam_exposure_s),
+                ao_rate_hz=AO_RATE_HZ,
+                mpq_get_with_ui=lambda q, timeout, label: self._mpq_get_with_ui(q, timeout=timeout, label=label),
+                ui_pump=self._ui_pump,
+                status_cb=self.sw_status.set,
+                fig=self.sw_fig,
+                canvas=self.sw_canvas,
+                out_dir=self._sw_out_dir,
+            )
+            tau = float(r.tau)
+            tau_on = float(r.tau_on)
+            tau_off = float(r.tau_off)
+            acc = float(r.agreement)
+            th = dict(r.threshold or {})
 
             # Apply to camera worker
             apply_ok = bool(
@@ -2823,15 +2393,11 @@ class App(tk.Tk):
                     messagebox.showwarning("FG", f"FG init failed, continuing without FG: {e}")
                     rig = None
 
-        # open CSVs
         out_dir = self._sw_out_dir or Path("data/output/spectrum") / datetime.now().strftime("%Y%m%d_%H%M%S")
         out_dir.mkdir(parents=True, exist_ok=True)
         self._sw_out_dir = out_dir
-        shots_path = out_dir / "shots.csv"
-        spec_path = out_dir / "spectrum.csv"
         self._sw_freqs = freqs
         self._sw_results = []
-        self._sw_next_update = time.time() + update_interval
 
         # Reset plot area for Step 3 (single axis), so it doesn't inherit Step 2 subplots.
         try:
@@ -2844,119 +2410,33 @@ class App(tk.Tk):
             pass
 
         try:
-            with shots_path.open("w", newline="", encoding="utf-8") as f_shots, spec_path.open(
-                "w", newline="", encoding="utf-8"
-            ) as f_spec:
-                shots_writer = csv.DictWriter(
-                    f_shots,
-                    fieldnames=[
-                        "t_iso",
-                        "step_idx",
-                        "freq_hz",
-                        "attempt_idx",
-                        "processed_idx",
-                        "bright",
-                        "label_bright",
-                        "S_norm",
-                        "tau_on",
-                        "tau_off",
-                        "cam_event",
-                        "cam_sample",
-                    ],
-                )
-                shots_writer.writeheader()
-
-                spec_writer = csv.DictWriter(f_spec, fieldnames=["step_idx", "freq_hz", "n_processed", "n_bright", "p_bright"])
-                spec_writer.writeheader()
-
-                for step_idx, freq in enumerate(freqs):
-                    processed = 0
-                    n_bright = 0
-
-                    if rig is not None:
-                        try:
-                            rig.set_frequency_hz(freq)
-                            time.sleep(max(0.0, settle_s))
-                        except Exception:
-                            pass
-
-                    for attempt_idx in range(max_attempt):
-                        if not self._sw_running:
-                            break
-                        if processed >= n_target:
-                            break
-
-                        cam_cmd_q.put({"cmd": "get_state", "timeout_s": 1.0})
-                        daq_cmd_q.put(
-                            {
-                                "cmd": "run_sequence_once",
-                                "do_sequence": do_sequence,
-                                "insert_index": int(insert_index),
-                                "ao_width_ms": float(ao_width_ms),
-                                "ao_rate_hz": AO_RATE_HZ,
-                                "ao_v_high": 5.0,
-                                "ao_v_low": 0.0,
-                            }
-                        )
-
-                        daq_resp = self._mpq_get_with_ui(daq_resp_q, timeout=5, label="DAQ response")
-                        if not daq_resp.get("ok"):
-                            raise RuntimeError(f"DAQ error: {daq_resp}")
-                        cam_resp = self._mpq_get_with_ui(cam_resp_q, timeout=5, label="Camera response")
-                        if not cam_resp.get("ok"):
-                            continue
-
-                        bright = bool(cam_resp.get("bright"))
-                        label_bright = cam_resp.get("label_bright")
-                        s_norm = cam_resp.get("S_norm")
-                        tau_on = cam_resp.get("tau_on")
-                        tau_off = cam_resp.get("tau_off")
-
-                        processed += 1
-                        if bright:
-                            n_bright += 1
-
-                        shots_writer.writerow(
-                            {
-                                "t_iso": datetime.now().isoformat(timespec="milliseconds"),
-                                "step_idx": step_idx,
-                                "freq_hz": float(freq),
-                                "attempt_idx": attempt_idx,
-                                "processed_idx": processed,
-                                "bright": int(bright),
-                                "label_bright": "" if label_bright is None else int(bool(label_bright)),
-                                "S_norm": "" if s_norm is None else float(s_norm),
-                                "tau_on": "" if tau_on is None else float(tau_on),
-                                "tau_off": "" if tau_off is None else float(tau_off),
-                                "cam_event": str(cam_resp.get("event")),
-                                "cam_sample": str(cam_resp.get("sample")) if cam_resp.get("sample") is not None else "",
-                            }
-                        )
-
-                        # periodic UI update (lightweight)
-                        now = time.time()
-                        if now >= self._sw_next_update:
-                            self._sw_next_update = now + update_interval
-                            self._update_sw_plot(step_idx, freq, processed, n_bright)
-                            self.sw_status.set(
-                                f"Running: step {step_idx+1}/{len(freqs)} freq={freq:.3e} Hz proc={processed}/{n_target}"
-                            )
-                            self._ui_pump()
-
-                    p_bright = (n_bright / processed) if processed > 0 else 0.0
-                    spec_writer.writerow(
-                        {
-                            "step_idx": step_idx,
-                            "freq_hz": float(freq),
-                            "n_processed": processed,
-                            "n_bright": n_bright,
-                            "p_bright": float(p_bright),
-                        }
-                    )
-                    self._sw_results.append((float(freq), processed, n_bright))
-                    self._update_sw_plot(step_idx, freq, processed, n_bright)
-                    self.sw_status.set(f"Done step {step_idx+1}/{len(freqs)}")
-                    self._ui_pump()
+            _: SpectrumRunResult = run_spectrum_stage(
+                freqs=freqs,
+                do_sequence=do_sequence,
+                insert_index=int(insert_index),
+                ao_width_ms=float(ao_width_ms),
+                n_target=int(n_target),
+                max_attempt=int(max_attempt),
+                settle_s=float(settle_s),
+                update_interval_s=float(update_interval),
+                daq_cmd_q=daq_cmd_q,
+                daq_resp_q=daq_resp_q,
+                cam_cmd_q=cam_cmd_q,
+                cam_resp_q=cam_resp_q,
+                ao_rate_hz=AO_RATE_HZ,
+                mpq_get_with_ui=lambda q, timeout, label: self._mpq_get_with_ui(q, timeout=timeout, label=label),
+                should_stop=lambda: (not bool(self._sw_running)),
+                ui_pump=self._ui_pump,
+                status_cb=self.sw_status.set,
+                update_point_cb=lambda step_idx, freq, processed, n_bright: self._update_sw_plot(
+                    int(step_idx),
+                    float(freq),
+                    int(processed),
+                    int(n_bright),
+                ),
+                out_dir=out_dir,
+                rig=rig,
+            )
 
         except Exception as e:
             messagebox.showerror("Sweep", str(e))
