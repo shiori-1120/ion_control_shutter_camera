@@ -8,14 +8,40 @@ from tkinter import ttk
 from ..sequence.controller import start_sequence, stop_sequence
 
 
-def _load_sequence_text(default_seq_path: Path) -> str:
+def _load_sequence_text(path: Path) -> str:
     try:
         from ..sweep.session_parse import read_sequence_json_params
 
-        params = read_sequence_json_params(seq_path=default_seq_path)
+        params = read_sequence_json_params(seq_path=path)
         return str(params.sequence_text or "")
     except Exception:
         return ""
+
+
+def _resolve_sequence_path(app: Any, default_seq_path: Path) -> Path:
+    try:
+        candidate = getattr(app, "sw_seq_path", None)
+        if candidate is not None:
+            raw = str(candidate.get() or "").strip()
+            if raw:
+                return Path(raw)
+    except Exception:
+        pass
+    return default_seq_path
+
+
+def _refresh_sequence_text(app: Any, *, default_seq_path: Path) -> None:
+    if getattr(app, "seq_text", None) is None:
+        return
+    path = _resolve_sequence_path(app, default_seq_path)
+    text = _load_sequence_text(path)
+    try:
+        app.seq_text.configure(state=tk.NORMAL)
+        app.seq_text.delete("1.0", tk.END)
+        app.seq_text.insert("1.0", text)
+        app.seq_text.configure(state=tk.DISABLED)
+    except Exception:
+        pass
 
 
 def build_sequence_tab(
@@ -68,12 +94,20 @@ def build_sequence_tab(
         state=tk.DISABLED,
     )
     app.stop_btn.pack(side=tk.LEFT, padx=4)
+    ttk.Button(
+        btn_row,
+        text="Reload JSON",
+        command=lambda: _refresh_sequence_text(app, default_seq_path=default_seq_path),
+    ).pack(side=tk.LEFT, padx=4)
 
     text_row = ttk.Frame(app.seq_tab)
     text_row.pack(fill=tk.BOTH, expand=True)
 
+    ttk.Label(app.seq_tab, text="Sequence JSON (read-only view)").pack(anchor=tk.W, pady=(6, 4))
+
     app.seq_text = tk.Text(text_row, height=14, wrap=tk.NONE)
     app.seq_text.insert("1.0", _load_sequence_text(default_seq_path))
+    app.seq_text.configure(state=tk.DISABLED)
     app.seq_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     yscroll = ttk.Scrollbar(text_row, orient=tk.VERTICAL, command=app.seq_text.yview)

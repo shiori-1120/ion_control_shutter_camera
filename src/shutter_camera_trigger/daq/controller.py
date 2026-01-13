@@ -3,6 +3,8 @@
 from typing import Any
 
 from .workers import start_daq_worker, stop_daq_worker
+from ..gui_support.diagnostics import resolve_log_path, set_last_error
+from ..hardware import DaqClientDevice
 
 
 def connect_daq(app: Any, *, default_daq_device: str, nm_397: int) -> None:
@@ -14,7 +16,7 @@ def connect_daq(app: Any, *, default_daq_device: str, nm_397: int) -> None:
         app._daq_mode = mode
 
         try:
-            app._daq.request({"cmd": "set_do", "value": int(nm_397)}, timeout=2.0)
+            DaqClientDevice(app._daq).set_do(int(nm_397))
         except Exception:
             pass
 
@@ -26,6 +28,12 @@ def connect_daq(app: Any, *, default_daq_device: str, nm_397: int) -> None:
         from tkinter import messagebox
 
         messagebox.showerror("Connect failed", str(e))
+        set_last_error(
+            app,
+            label="DAQ connect",
+            message=str(e),
+            log_path=resolve_log_path(app, filename="app.log"),
+        )
 
 
 def disconnect_daq(app: Any, *, all_off: int) -> None:
@@ -37,7 +45,7 @@ def disconnect_daq(app: Any, *, all_off: int) -> None:
     try:
         if app._daq.connected:
             try:
-                app._daq.request({"cmd": "set_do", "value": int(all_off)}, timeout=2.0)
+                DaqClientDevice(app._daq).set_do(int(all_off))
             except Exception:
                 pass
         stop_daq_worker(app)

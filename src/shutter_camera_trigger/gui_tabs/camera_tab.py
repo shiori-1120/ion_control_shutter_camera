@@ -14,6 +14,7 @@ from tkinter import ttk
 import numpy as np
 
 from ..gui_support.image_utils import robust_gray_limits
+from ..gui_support.diagnostics import set_last_error
 from ..gui_support.validators import (
     apply_subarray_to_cam_cfg,
     parse_camera_trigger_cfg,
@@ -21,18 +22,19 @@ from ..gui_support.validators import (
 )
 from ..gui_support.worker_cleanup import cleanup_stale_workers, write_last_worker_pids
 from ..gui_support.worker_messages import format_worker_failure
+from ..hardware import CameraWorkerDevice, DaqClientDevice, DaqQueueDevice, DaqSequenceCommand
 from ..workers.camera_worker_process import start_camera_worker_process, stop_worker_process
 from ..workers.daq_worker_process import start_daq_worker_process
 
 
-def build_camera_tab(app: Any, *, camera_snap_cb: Callable[[], None]) -> None:
+def build_camera_tab(app: Any) -> None:
     if app.camera_tab is None:
         return
 
     top = ttk.Frame(app.camera_tab)
     top.pack(fill=tk.X, pady=(0, 8))
 
-    ttk.Button(top, text="Snap", command=camera_snap_cb).pack(side=tk.LEFT, padx=4)
+    ttk.Label(top, text="Use Diagnostics > Diagnostics tools to run camera actions.").pack(side=tk.LEFT, padx=4)
     ttk.Label(top, textvariable=app._cam_status).pack(side=tk.LEFT, padx=12)
 
     try:
@@ -62,10 +64,12 @@ def camera_snap(
     """Send TTL -> acquire one frame -> save .npy -> plot (no sweep)."""
     if app._cam_ax is None or app._cam_canvas is None:
         messagebox.showerror("Camera", "matplotlib is required for plotting")
+        set_last_error(app, label="Camera", message="matplotlib is required for plotting")
         return
 
     if not app._daq.connected:
         messagebox.showerror("Camera", "DAQ is not connected. Please Connect first.")
+        set_last_error(app, label="Camera", message="DAQ is not connected")
         return
 
     mode = (app.camera_mode_top_var.get().strip() or "dry").lower()
@@ -121,6 +125,7 @@ def camera_snap(
         apply_subarray_to_cam_cfg(app, cfg)
     except Exception as e:
         messagebox.showerror("Subarray", str(e))
+        set_last_error(app, label="Subarray", message=str(e))
         return
     if dry_image_dir:
         cfg["dry_image_dir"] = dry_image_dir
@@ -138,6 +143,8 @@ def camera_snap(
 
     def _worker() -> None:
         cam_p, cam_cmd_q, cam_resp_q = start_camera_worker_process(cfg=cfg)
+        cam_device = CameraWorkerDevice(cmd_q=cam_cmd_q, resp_q=cam_resp_q)
+        daq_device = DaqClientDevice(app._daq)
 
         try:
             app.after(0, lambda: app._cam_status.set("Snap: starting camera..."))
@@ -152,17 +159,15 @@ def camera_snap(
                     except Exception:
                         pass
                     try:
-                        app._daq.request(
-                            {
-                                "cmd": "run_sequence_once",
-                                "do_sequence": pulse_seq,
-                                "insert_index": -1,
-                                "ao_width_ms": 0.0,
-                                "ao_rate_hz": float(ao_rate_hz),
-                                "ao_v_high": 5.0,
-                                "ao_v_low": 0.0,
-                            },
-                            timeout=3.0,
+                        daq_device.run_sequence_once(
+                            DaqSequenceCommand(
+                                do_sequence=pulse_seq,
+                                ao_insert_index=-1,
+                                ao_width_ms=0.0,
+                                ao_rate_hz=float(ao_rate_hz),
+                                ao_v_high=5.0,
+                                ao_v_low=0.0,
+                            )
                         )
                     except Exception:
                         time.sleep(0.05)
@@ -178,29 +183,23 @@ def camera_snap(
                 raise RuntimeError(f"Camera ready failed: {cam_ready}")
 
             app.after(0, lambda: app._cam_status.set("Snap: ready, pulsing..."))
-            app._daq.request(
-                {
-                    "cmd": "run_sequence_once",
-                    "do_sequence": pulse_seq,
-                    "insert_index": -1,
-                    "ao_width_ms": 0.0,
-                    "ao_rate_hz": float(ao_rate_hz),
-                    "ao_v_high": 5.0,
-                    "ao_v_low": 0.0,
-                },
-                timeout=5.0,
+            daq_device.run_sequence_once(
+                DaqSequenceCommand(
+                    do_sequence=pulse_seq,
+                    ao_insert_index=-1,
+                    ao_width_ms=0.0,
+                    ao_rate_hz=float(ao_rate_hz),
+                    ao_v_high=5.0,
+                    ao_v_low=0.0,
+                )
             )
 
-            cam_cmd_q.put({"cmd": "get_frame", "timeout_s": max(2.0, float(exposure_s) * 5.0)})
-            cam_resp = cam_resp_q.get(timeout=20)
-            if not cam_resp.get("ok"):
-                raise RuntimeError(f"Camera frame failed: {cam_resp}")
-
-            frame = np.asarray(cam_resp.get("frame"))
+            frame_result = cam_device.capture(timeout_s=max(2.0, float(exposure_s) * 5.0))
+            frame = np.asarray(frame_result.frame)
             npy_path = out_dir / "snap.npy"
             np.save(npy_path, frame)
 
-            roi = cam_resp.get("roi")
+            roi = frame_result.roi
             if roi is None:
                 try:
                     from src.camera.lib.analysis_profiles import generate_rois_from_image
@@ -242,8 +241,14 @@ def camera_snap(
                     app._logger.info("camera_snap_done saved=%s", str(npy_path))
             except Exception:
                 pass
-        except Exception:
+        except Exception as e:
             app.after(0, lambda: app._cam_status.set("Snap: failed"))
+            set_last_error(
+                app,
+                label="Camera snap",
+                message=str(e),
+                log_path=str(cfg.get("log_path") or "") or None,
+            )
             try:
                 if getattr(app, "_logger", None):
                     app._logger.error("camera_snap_failed")
@@ -251,7 +256,7 @@ def camera_snap(
                 pass
         finally:
             try:
-                cam_cmd_q.put({"cmd": "close"})
+                cam_device.close()
             except Exception:
                 pass
             try:
@@ -307,6 +312,7 @@ def camera_check(
         apply_subarray_to_cam_cfg(app, cfg)
     except Exception as e:
         messagebox.showerror("Subarray", str(e))
+        set_last_error(app, label="Subarray", message=str(e))
         return
     log_ctx = getattr(app, "_log_ctx", None)
     try:
@@ -322,6 +328,7 @@ def camera_check(
 
     def _worker() -> None:
         p, cmd_q, resp_q = start_camera_worker_process(cfg=cfg)
+        cam_device = CameraWorkerDevice(cmd_q=cmd_q, resp_q=resp_q)
 
         prime_stop = threading.Event()
         prime_thread: threading.Thread | None = None
@@ -347,6 +354,7 @@ def camera_check(
             return dq, rq, proc
 
         def _prime_loop_using_existing() -> None:
+            daq_device = DaqClientDevice(app._daq)
             roi_sequence = [
                 (nm_397, roi_idle_s),
                 (nm_397 | camera_trigger, roi_pulse_s),
@@ -354,23 +362,22 @@ def camera_check(
             ]
             while not prime_stop.is_set():
                 try:
-                    app._daq.request(
-                        {
-                            "cmd": "run_sequence_once",
-                            "do_sequence": roi_sequence,
-                            "insert_index": -1,
-                            "ao_width_ms": 0.0,
-                            "ao_rate_hz": float(ao_rate_hz),
-                            "ao_v_high": 5.0,
-                            "ao_v_low": 0.0,
-                        },
-                        timeout=2.0,
+                    daq_device.run_sequence_once(
+                        DaqSequenceCommand(
+                            do_sequence=roi_sequence,
+                            ao_insert_index=-1,
+                            ao_width_ms=0.0,
+                            ao_rate_hz=float(ao_rate_hz),
+                            ao_v_high=5.0,
+                            ao_v_low=0.0,
+                        )
                     )
                 except Exception:
                     pass
                 time.sleep(0.01)
 
         def _prime_loop_using_tmp(dq: Queue, rq: Queue) -> None:
+            daq_device = DaqQueueDevice(cmd_q=dq, resp_q=rq)
             roi_sequence = [
                 (nm_397, roi_idle_s),
                 (nm_397 | camera_trigger, roi_pulse_s),
@@ -378,24 +385,16 @@ def camera_check(
             ]
             while not prime_stop.is_set():
                 try:
-                    dq.put(
-                        {
-                            "cmd": "run_sequence_once",
-                            "do_sequence": roi_sequence,
-                            "insert_index": -1,
-                            "ao_width_ms": 0.0,
-                            "ao_rate_hz": float(ao_rate_hz),
-                            "ao_v_high": 5.0,
-                            "ao_v_low": 0.0,
-                        }
+                    daq_device.run_sequence_once(
+                        DaqSequenceCommand(
+                            do_sequence=roi_sequence,
+                            ao_insert_index=-1,
+                            ao_width_ms=0.0,
+                            ao_rate_hz=float(ao_rate_hz),
+                            ao_v_high=5.0,
+                            ao_v_low=0.0,
+                        )
                     )
-                except Exception:
-                    pass
-
-                try:
-                    rq.get(timeout=0.1)
-                except queue.Empty:
-                    pass
                 except Exception:
                     pass
                 time.sleep(0.01)
@@ -418,6 +417,7 @@ def camera_check(
             except Exception as e:
                 def _ui_fail(msg=str(e)) -> None:
                     messagebox.showerror("Camera", f"Failed to start DAQ priming for EXTERNAL trigger.\n{msg}")
+                    set_last_error(app, label="Camera", message=msg)
 
                 app.after(0, _ui_fail)
                 return
@@ -455,13 +455,20 @@ def camera_check(
                             prefer = str((Path(dry_dir) / "roi_test.npy"))
                         except Exception:
                             prefer = ""
-                    cmd = {"cmd": "get_frame", "timeout_s": max(2.0, float(exposure_s) * 4.0 + 0.5)}
                     if prefer:
-                        cmd["prefer_sample"] = prefer
-                    cmd_q.put(cmd)
-                    fr = resp_q.get(timeout=10.0)
-                    if isinstance(fr, dict) and fr.get("ok") and fr.get("event") == "frame":
-                        frame_np = fr.get("frame")
+                        cmd_q.put(
+                            {
+                                "cmd": "get_frame",
+                                "timeout_s": max(2.0, float(exposure_s) * 4.0 + 0.5),
+                                "prefer_sample": prefer,
+                            }
+                        )
+                        fr = resp_q.get(timeout=10.0)
+                        if isinstance(fr, dict) and fr.get("ok") and fr.get("event") == "frame":
+                            frame_np = fr.get("frame")
+                    else:
+                        frame_result = cam_device.capture(timeout_s=max(2.0, float(exposure_s) * 4.0 + 0.5))
+                        frame_np = frame_result.frame
                         try:
                             import numpy as _np
 
@@ -495,6 +502,10 @@ def camera_check(
             ui_kind = "error"
         finally:
             prime_stop.set()
+            try:
+                cam_device.close()
+            except Exception:
+                pass
             stop_worker_process(proc=p, cmd_q=cmd_q)
 
             try:
@@ -531,6 +542,7 @@ def camera_check(
                     pass
             else:
                 messagebox.showerror(ui_title, ui_msg)
+                set_last_error(app, label=ui_title, message=ui_msg, log_path=str(cfg.get("log_path") or "") or None)
                 try:
                     if getattr(app, "_logger", None):
                         app._logger.error("camera_check_failed %s", ui_msg.replace("\n", " "))

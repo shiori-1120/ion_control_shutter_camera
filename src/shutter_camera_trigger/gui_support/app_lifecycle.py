@@ -39,12 +39,18 @@ def on_close(
     app: Any,
     *,
     prefs_path: Path,
+    before_close_cb: Callable[[], None] | None = None,
     stop_sweep_cb: Callable[[], None],
     disconnect_daq_cb: Callable[[], None],
     disconnect_fg_cb: Callable[[], None],
 ) -> None:
     try:
         save_camera_prefs(app, prefs_path=prefs_path)
+    except Exception:
+        pass
+    try:
+        if before_close_cb is not None:
+            before_close_cb()
     except Exception:
         pass
     try:

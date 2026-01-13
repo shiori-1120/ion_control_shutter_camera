@@ -8,112 +8,119 @@ from tkinter import ttk
 def build_top_bar(
     app: Any,
     *,
+    parent: tk.Misc | None = None,
     connect_cb: Callable[[], None],
     disconnect_cb: Callable[[], None],
     fg_connect_cb: Callable[[], None],
     fg_disconnect_cb: Callable[[], None],
-    cam_check_cb: Callable[[], None],
     browse_dry_images_cb: Callable[[], None],
+    pick_seq_json_cb: Callable[[], None],
 ) -> None:
-    top = ttk.Frame(app, padding=10)
+    top = ttk.Frame(parent or app, padding=10)
     top.pack(side=tk.TOP, fill=tk.X)
 
-    ttk.Label(top, text="Device").grid(row=0, column=0, sticky=tk.W)
-    ttk.Entry(top, textvariable=app.device_var, width=10).grid(row=0, column=1, sticky=tk.W, padx=5)
+    daq = ttk.LabelFrame(top, text="DAQ")
+    daq.grid(row=0, column=0, sticky=tk.W + tk.E, pady=(0, 6))
 
-    ttk.Label(top, text="DAQ mode").grid(row=0, column=2, sticky=tk.W)
-    ttk.Combobox(top, textvariable=app.device_mode_var, values=["real", "dry"], width=6, state="readonly").grid(
+    ttk.Label(daq, text="Device").grid(row=0, column=0, sticky=tk.W)
+    ttk.Entry(daq, textvariable=app.device_var, width=10).grid(row=0, column=1, sticky=tk.W, padx=5)
+
+    ttk.Label(daq, text="Mode").grid(row=0, column=2, sticky=tk.W)
+    ttk.Combobox(daq, textvariable=app.device_mode_var, values=["real", "dry"], width=6, state="readonly").grid(
         row=0, column=3, sticky=tk.W, padx=5
     )
 
-    ttk.Label(top, text="AO width (ms)").grid(row=0, column=4, sticky=tk.W)
-    ttk.Entry(top, textvariable=app.width_var, width=10).grid(row=0, column=5, sticky=tk.W, padx=5)
+    ttk.Label(daq, text="AO width").grid(row=0, column=4, sticky=tk.W)
+    ttk.Entry(daq, textvariable=app.width_var, width=10).grid(row=0, column=5, sticky=tk.W, padx=5)
+    ttk.Label(daq, text="ms").grid(row=0, column=6, sticky=tk.W)
 
-    app.connect_btn = ttk.Button(top, text="Connect", command=connect_cb)
-    app.connect_btn.grid(row=0, column=6, padx=5)
-    app.disconnect_btn = ttk.Button(top, text="Disconnect", command=disconnect_cb, state=tk.DISABLED)
-    app.disconnect_btn.grid(row=0, column=7)
+    app.connect_btn = ttk.Button(daq, text="Connect", command=connect_cb)
+    app.connect_btn.grid(row=0, column=7, padx=5)
+    app.disconnect_btn = ttk.Button(daq, text="Disconnect", command=disconnect_cb, state=tk.DISABLED)
+    app.disconnect_btn.grid(row=0, column=8)
 
-    ttk.Label(top, text="FG VISA").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
-    ttk.Entry(top, textvariable=app.fg_resource_var, width=32).grid(
-        row=1, column=1, columnspan=3, sticky=tk.W, padx=5, pady=(6, 0)
+    fg = ttk.LabelFrame(top, text="FG")
+    fg.grid(row=1, column=0, sticky=tk.W + tk.E, pady=(0, 6))
+
+    ttk.Label(fg, text="VISA").grid(row=0, column=0, sticky=tk.W)
+    ttk.Entry(fg, textvariable=app.fg_resource_var, width=32).grid(row=0, column=1, sticky=tk.W, padx=5)
+    app.fg_connect_btn = ttk.Button(fg, text="Connect", command=fg_connect_cb)
+    app.fg_connect_btn.grid(row=0, column=2, padx=5)
+    app.fg_disconnect_btn = ttk.Button(fg, text="Disconnect", command=fg_disconnect_cb, state=tk.DISABLED)
+    app.fg_disconnect_btn.grid(row=0, column=3, padx=5)
+    ttk.Label(fg, text="Amp").grid(row=0, column=4, sticky=tk.W)
+    ttk.Entry(fg, textvariable=app.fg_amp_mvpp_var, width=10).grid(row=0, column=5, sticky=tk.W, padx=5)
+    ttk.Label(fg, text="mVpp").grid(row=0, column=6, sticky=tk.W)
+    ttk.Checkbutton(fg, text="No FG", variable=app.sw_no_fg).grid(row=0, column=7, sticky=tk.W, padx=(8, 0))
+
+    seq = ttk.LabelFrame(top, text="Sequence")
+    seq.grid(row=2, column=0, sticky=tk.W + tk.E, pady=(0, 6))
+    ttk.Label(seq, text="JSON path").grid(row=0, column=0, sticky=tk.W)
+    ttk.Entry(seq, textvariable=app.sw_seq_path, width=48).grid(row=0, column=1, sticky=tk.W, padx=5)
+    ttk.Button(seq, text="...", width=3, command=pick_seq_json_cb).grid(row=0, column=2)
+
+    cam = ttk.LabelFrame(top, text="Camera")
+    cam.grid(row=3, column=0, sticky=tk.W + tk.E, pady=(0, 6))
+    ttk.Label(cam, text="Mode").grid(row=0, column=0, sticky=tk.W)
+    ttk.Combobox(cam, textvariable=app.camera_mode_top_var, values=["dry", "real"], width=6, state="readonly").grid(
+        row=0, column=1, sticky=tk.W, padx=5
     )
-    app.fg_connect_btn = ttk.Button(top, text="FG Connect", command=fg_connect_cb)
-    app.fg_connect_btn.grid(row=1, column=4, padx=5, pady=(6, 0))
-    app.fg_disconnect_btn = ttk.Button(top, text="FG Disconnect", command=fg_disconnect_cb, state=tk.DISABLED)
-    app.fg_disconnect_btn.grid(row=1, column=5, padx=5, pady=(6, 0))
+    ttk.Label(cam, text="Exposure").grid(row=0, column=2, sticky=tk.W)
+    ttk.Entry(cam, textvariable=app.camera_exposure_ms_var, width=10).grid(row=0, column=3, sticky=tk.W, padx=5)
+    ttk.Label(cam, text="ms").grid(row=0, column=4, sticky=tk.W)
+    ttk.Label(cam, text="Dry images").grid(row=0, column=5, sticky=tk.W)
+    ttk.Entry(cam, textvariable=app.dry_image_dir_var, width=30).grid(row=0, column=6, sticky=tk.W, padx=5)
+    ttk.Button(cam, text="...", width=3, command=browse_dry_images_cb).grid(row=0, column=7)
 
-    ttk.Label(top, text="FG amp (mVpp)").grid(row=1, column=6, sticky=tk.W, pady=(6, 0))
-    ttk.Entry(top, textvariable=app.fg_amp_mvpp_var, width=10).grid(row=1, column=7, sticky=tk.W, padx=5, pady=(6, 0))
-
-    ttk.Label(top, text="Camera mode").grid(row=2, column=0, sticky=tk.W, pady=(6, 0))
-    ttk.Combobox(top, textvariable=app.camera_mode_top_var, values=["dry", "real"], width=6, state="readonly").grid(
-        row=2, column=1, sticky=tk.W, padx=5, pady=(6, 0)
-    )
-
-    ttk.Label(top, text="Exposure (ms)").grid(row=2, column=2, sticky=tk.W, pady=(6, 0))
-    ttk.Entry(top, textvariable=app.camera_exposure_ms_var, width=10).grid(row=2, column=3, sticky=tk.W, padx=5, pady=(6, 0))
-
-    app.cam_check_btn = ttk.Button(top, text="Camera check", command=cam_check_cb)
-    app.cam_check_btn.grid(row=2, column=4, padx=5, pady=(6, 0))
-
-    ttk.Label(top, text="Dry images (dry cam)").grid(row=2, column=5, sticky=tk.W, pady=(6, 0))
-    ttk.Entry(top, textvariable=app.dry_image_dir_var, width=30).grid(
-        row=2, column=6, columnspan=2, sticky=tk.W, padx=5, pady=(6, 0)
-    )
-    ttk.Button(top, text="...", width=3, command=browse_dry_images_cb).grid(row=2, column=8, pady=(6, 0))
-
-    ttk.Label(top, text="Cam trig").grid(row=3, column=0, sticky=tk.W, pady=(6, 0))
+    trig = ttk.LabelFrame(top, text="Trigger")
+    trig.grid(row=4, column=0, sticky=tk.W + tk.E, pady=(0, 6))
+    ttk.Label(trig, text="Source").grid(row=0, column=0, sticky=tk.W)
     ttk.Combobox(
-        top,
+        trig,
         textvariable=app.camera_trigger_source_var,
         values=["EXTERNAL", "INTERNAL"],
         width=9,
-        state="readonly",
-    ).grid(row=3, column=1, sticky=tk.W, padx=5, pady=(6, 0))
-    ttk.Label(top, text="Conn").grid(row=3, column=2, sticky=tk.W, pady=(6, 0))
+        state="disabled",
+    ).grid(row=0, column=1, sticky=tk.W, padx=5)
+    ttk.Label(trig, text="Conn").grid(row=0, column=2, sticky=tk.W)
     ttk.Combobox(
-        top,
+        trig,
         textvariable=app.camera_trigger_connector_var,
         values=["BNC", "MULTI", "INTERFACE"],
         width=9,
-        state="readonly",
-    ).grid(row=3, column=3, sticky=tk.W, padx=5, pady=(6, 0))
-    ttk.Label(top, text="Pol").grid(row=3, column=4, sticky=tk.W, pady=(6, 0))
+        state="disabled",
+    ).grid(row=0, column=3, sticky=tk.W, padx=5)
+    ttk.Label(trig, text="Pol").grid(row=0, column=4, sticky=tk.W)
     ttk.Combobox(
-        top,
+        trig,
         textvariable=app.camera_trigger_polarity_var,
         values=["POSITIVE", "NEGATIVE"],
         width=9,
-        state="readonly",
-    ).grid(row=3, column=5, sticky=tk.W, padx=5, pady=(6, 0))
-    ttk.Label(top, text="Act").grid(row=3, column=6, sticky=tk.W, pady=(6, 0))
+        state="disabled",
+    ).grid(row=0, column=5, sticky=tk.W, padx=5)
+    ttk.Label(trig, text="Act").grid(row=0, column=6, sticky=tk.W)
     ttk.Combobox(
-        top,
+        trig,
         textvariable=app.camera_trigger_active_var,
         values=["EDGE", "LEVEL"],
         width=7,
-        state="readonly",
-    ).grid(row=3, column=7, sticky=tk.W, padx=5, pady=(6, 0))
-
-    ttk.Label(top, text="Mode").grid(row=4, column=0, sticky=tk.W, pady=(6, 0))
+        state="disabled",
+    ).grid(row=0, column=7, sticky=tk.W, padx=5)
+    ttk.Label(trig, text="Mode").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
     ttk.Combobox(
-        top,
+        trig,
         textvariable=app.camera_trigger_mode_var,
         values=["NORMAL", "START"],
         width=9,
-        state="readonly",
-    ).grid(row=4, column=1, sticky=tk.W, padx=5, pady=(6, 0))
-    ttk.Label(top, text="Delay (s)").grid(row=4, column=2, sticky=tk.W, pady=(6, 0))
-    ttk.Entry(top, textvariable=app.camera_trigger_delay_s_var, width=10).grid(
-        row=4, column=3, sticky=tk.W, padx=5, pady=(6, 0)
-    )
-    ttk.Checkbutton(top, text="Cam verbose", variable=app.camera_verbose_var).grid(
-        row=4, column=4, sticky=tk.W, padx=5, pady=(6, 0)
+        state="disabled",
+    ).grid(row=1, column=1, sticky=tk.W, padx=5, pady=(6, 0))
+    verbose_label = "Verbose (extra)" if getattr(app, "camera_verbose_additional_only", False) else "Verbose"
+    ttk.Checkbutton(trig, text=verbose_label, variable=app.camera_verbose_var).grid(
+        row=1, column=2, sticky=tk.W, padx=5, pady=(6, 0)
     )
 
     sub = ttk.LabelFrame(top, text="Subarray")
-    sub.grid(row=5, column=0, columnspan=9, sticky=tk.W + tk.E, pady=(8, 0))
+    sub.grid(row=5, column=0, sticky=tk.W + tk.E, pady=(0, 6))
 
     ttk.Checkbutton(sub, text="Enable", variable=app.camera_subarray_enable_var).grid(
         row=0, column=0, sticky=tk.W, padx=6, pady=4
@@ -133,6 +140,6 @@ def build_top_bar(
         pass
 
     app.status_var = tk.StringVar(value="Disconnected")
-    ttk.Label(top, textvariable=app.status_var).grid(row=6, column=0, columnspan=9, sticky=tk.W, pady=(8, 0))
+    ttk.Label(top, textvariable=app.status_var).grid(row=6, column=0, sticky=tk.W, pady=(4, 0))
 
-    top.grid_columnconfigure(9, weight=1)
+    top.grid_columnconfigure(0, weight=1)

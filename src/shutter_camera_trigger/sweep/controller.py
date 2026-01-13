@@ -83,6 +83,7 @@ class SweepUi:
     reset_plot_cb: Callable[[], None]
     update_plot_cb: Callable[[int, float, int, int], None]
     join_with_ui: Callable[[Any, float], None]
+    set_last_error_cb: Callable[[str, str, str | None], None]
 
 
 class SweepController:
@@ -100,6 +101,11 @@ class SweepController:
         if inputs.cam_mode == "real" and inputs.daq_mode != "real":
             self._ui.messagebox.showerror(
                 "Sweep", "Camera mode is real but DAQ mode is not real. Set DAQ mode to real."
+            )
+            self._ui.set_last_error_cb(
+                "Sweep",
+                "Camera mode is real but DAQ mode is not real.",
+                None,
             )
             return False
 
@@ -158,6 +164,7 @@ class SweepController:
             format_worker_failure=self._ui.format_worker_failure,
         )
         if not result.ok or result.session is None or result.workers is None:
+            self._ui.set_last_error_cb("Sweep", "Prepare session failed", None)
             return False
 
         state.session = result.session
@@ -231,15 +238,18 @@ class SweepController:
             self._ui.refresh_buttons()
         except Exception as e:
             self._ui.messagebox.showerror("Sweep", str(e))
+            self._ui.set_last_error_cb("Sweep", str(e), cam_log_path)
 
     def threshold_check(self, state: SweepState, *, fig: Any, canvas: Any) -> None:
         if not state.prepared or not state.running or not state.session:
             self._ui.messagebox.showerror("Sweep", "Run '1) ROI check' first.")
+            self._ui.set_last_error_cb("Sweep", "Run '1) ROI check' first.", None)
             return
 
         roi = state.session.get("roi")
         if not (isinstance(roi, (list, tuple)) and len(roi) == 4):
             self._ui.messagebox.showerror("Sweep", "ROI is not set. Run '1) ROI check' first.")
+            self._ui.set_last_error_cb("Sweep", "ROI is not set. Run '1) ROI check' first.", None)
             return
 
         if fig is None or canvas is None:
@@ -290,6 +300,7 @@ class SweepController:
 
         except Exception as e:
             self._ui.messagebox.showerror("Sweep", str(e))
+            self._ui.set_last_error_cb("Sweep", str(e), None)
 
     def start_sweep(
         self,
@@ -303,6 +314,7 @@ class SweepController:
     ) -> None:
         if not state.prepared or not state.threshold_done or not state.session:
             self._ui.messagebox.showerror("Sweep", "Run '1) ROI check' and '2) Threshold' first.")
+            self._ui.set_last_error_cb("Sweep", "Run ROI check and Threshold first.", None)
             return
 
         if not state.running:
@@ -371,6 +383,7 @@ class SweepController:
 
         except Exception as e:
             self._ui.messagebox.showerror("Sweep", str(e))
+            self._ui.set_last_error_cb("Sweep", str(e), None)
 
         finally:
             self.stop_sweep(state, clean_only=True, fig=fig)

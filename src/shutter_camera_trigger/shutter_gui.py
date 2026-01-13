@@ -29,6 +29,7 @@ from .clients.daq_client import DaqClient
 from .gui_support.prefs import resolve_repo_relative_path
 from .gui_support.app_lifecycle import apply_default_fonts, load_camera_prefs, on_close
 from .gui_support.dialogs import browse_dry_images, pick_seq_json
+from .gui_support.device_registry_ui import load_device_registry_ui, save_device_registry_ui
 from .gui_support.logging_setup import init_app_logging
 from .gui_support.log_panel import build_log_panel
 from .gui_support.ui_state import init_ui_state
@@ -37,6 +38,7 @@ from .gui_support.docs import open_usage_doc
 from .sweep.ui_tab import build_sweep_tab
 from .sweep.ui_actions import roi_check, start_sweep, stop_sweep, threshold_check
 from .gui_tabs.camera_tab import build_camera_tab, camera_check, camera_snap
+from .gui_tabs.diagnostics_tab import build_diagnostics_tab
 from .gui_tabs.sequence_tab import build_sequence_tab
 from .gui_tabs.manual_tab import build_manual_tab
 from .gui_tabs.top_bar import build_top_bar
@@ -88,6 +90,7 @@ DEFAULT_DAQ_DEVICE = "Dev1"
 
 # Persist GUI camera-trigger preferences (no manual re-entry on next launch)
 GUI_PREFS_PATH = Path("config") / "shutter_gui_prefs.json"
+DEVICE_REGISTRY_PATH = Path("config") / "device_registry.json"
 
 # Persist last worker PIDs so we can clean up after crashes (best-effort).
 WORKER_PIDS_PATH = Path("config") / "last_worker_pids.json"
@@ -123,6 +126,10 @@ class App(tk.Tk):
 
         # Camera tab plot state
         self.camera_tab: ttk.Frame | None = None
+        self.diag_tab: ttk.Frame | None = None
+        self.diag_info_tab: ttk.Frame | None = None
+        self.setup_tab: ttk.Frame | None = None
+        self.run_tab: ttk.Frame | None = None
         self._cam_fig = None
         self._cam_ax = None
         self._cam_canvas = None
@@ -134,6 +141,7 @@ class App(tk.Tk):
 
         self.worker_pids_path = resolve_repo_relative_path(__file__, WORKER_PIDS_PATH)
         self._prefs_path = resolve_repo_relative_path(__file__, GUI_PREFS_PATH)
+        self._device_registry_path = resolve_repo_relative_path(__file__, DEVICE_REGISTRY_PATH)
 
         self._build_ui()
 
@@ -147,6 +155,7 @@ class App(tk.Tk):
             lambda: on_close(
                 self,
                 prefs_path=self._prefs_path,
+                before_close_cb=lambda: save_device_registry_ui(self, self._device_registry_path),
                 stop_sweep_cb=lambda: stop_sweep(self, clean_only=True),
                 disconnect_daq_cb=lambda: disconnect_daq(self, all_off=ALL_OFF),
                 disconnect_fg_cb=lambda: disconnect_fg(self),
@@ -167,9 +176,26 @@ class App(tk.Tk):
             default_daq_device=DEFAULT_DAQ_DEVICE,
             default_fg_resource=DEFAULT_FG_RESOURCE,
             default_fg_amp_mvpp=str(int(DEFAULT_FG_AMP_VPP * 1000)),
+            default_seq_path="src/shutter_camera_trigger/sequence_examples/minimal_sequence.json",
         )
+        load_device_registry_ui(self, self._device_registry_path)
+        nb = ttk.Notebook(self)
+        nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.setup_tab = ttk.Frame(nb, padding=10)
+        self.run_tab = ttk.Frame(nb, padding=10)
+        self.diag_tab = ttk.Frame(nb, padding=10)
+        nb.add(self.setup_tab, text="Setup")
+        nb.add(self.run_tab, text="Run")
+        nb.add(self.diag_tab, text="Diagnostics")
+
+        ttk.Label(self.setup_tab, text="Setup & configuration", font=("", 11, "bold")).pack(
+            anchor=tk.W, pady=(0, 6)
+        )
+
         build_top_bar(
             self,
+            parent=self.setup_tab,
             connect_cb=lambda: connect_daq(self, default_daq_device=DEFAULT_DAQ_DEVICE, nm_397=NM_397),
             disconnect_cb=lambda: disconnect_daq(self, all_off=ALL_OFF),
             fg_connect_cb=lambda: connect_fg(
@@ -181,47 +207,43 @@ class App(tk.Tk):
                 ),
             ),
             fg_disconnect_cb=lambda: disconnect_fg(self),
-            cam_check_cb=lambda: camera_check(
-                self,
-                default_daq_device=DEFAULT_DAQ_DEVICE,
-                nm_397=NM_397,
-                camera_trigger=CAMERA_TRIGGER,
-                roi_pulse_s=ROI_PULSE_S,
-                roi_idle_s=ROI_IDLE_S,
-                ao_rate_hz=AO_RATE_HZ,
-            ),
             browse_dry_images_cb=lambda: browse_dry_images(self),
+            pick_seq_json_cb=lambda: pick_seq_json(self),
         )
 
-        nb = ttk.Notebook(self)
-        nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        ttk.Label(self.run_tab, text="Run controls", font=("", 11, "bold")).pack(anchor=tk.W, pady=(0, 2))
+        ttk.Label(self.run_tab, text="Settings are configured in Setup.").pack(anchor=tk.W, pady=(0, 6))
 
-        self.seq_tab = ttk.Frame(nb, padding=10)
-        self.manual_tab = ttk.Frame(nb, padding=10)
-        self.sweep_tab = ttk.Frame(nb, padding=10)
-        self.camera_tab = ttk.Frame(nb, padding=10)
-        nb.add(self.seq_tab, text="Sequence")
-        nb.add(self.manual_tab, text="Manual")
-        nb.add(self.sweep_tab, text="Sweep")
-        nb.add(self.camera_tab, text="Camera")
+        run_nb = ttk.Notebook(self.run_tab)
+        run_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.seq_tab = ttk.Frame(run_nb, padding=10)
+        self.sweep_tab = ttk.Frame(run_nb, padding=10)
+        self.camera_tab = ttk.Frame(run_nb, padding=10)
+        run_nb.add(self.sweep_tab, text="Sweep")
+        run_nb.add(self.seq_tab, text="Sequence")
+        run_nb.add(self.camera_tab, text="Camera")
+
+        diag_nb = ttk.Notebook(self.diag_tab)
+        diag_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.diag_info_tab = ttk.Frame(diag_nb, padding=10)
+        self.manual_tab = ttk.Frame(diag_nb, padding=10)
+        diag_nb.add(self.diag_info_tab, text="Diagnostics")
+        diag_nb.add(self.manual_tab, text="Manual")
+
+        ttk.Label(self.diag_info_tab, text="Diagnostics & logs", font=("", 11, "bold")).pack(
+            anchor=tk.W, pady=(0, 6)
+        )
 
         self._build_sequence_tab()
         self._build_manual_tab()
         self._build_sweep_tab()
         self._build_camera_tab()
+        self._build_diagnostics_tab()
 
     def _build_camera_tab(self) -> None:
-        build_camera_tab(
-            self,
-            camera_snap_cb=lambda: camera_snap(
-                self,
-                nm_397=NM_397,
-                camera_trigger=CAMERA_TRIGGER,
-                roi_pulse_s=ROI_PULSE_S,
-                roi_idle_s=ROI_IDLE_S,
-                ao_rate_hz=AO_RATE_HZ,
-            ),
-        )
+        build_camera_tab(self)
 
     def _build_sequence_tab(self) -> None:
         build_sequence_tab(
@@ -257,7 +279,6 @@ class App(tk.Tk):
             roi_pulse_s=ROI_PULSE_S,
             roi_idle_s=ROI_IDLE_S,
             roi_max_attempt=ROI_MAX_ATTEMPT,
-            pick_seq_json_cb=lambda: pick_seq_json(self),
             roi_check_cb=lambda: roi_check(self, default_daq_device=DEFAULT_DAQ_DEVICE),
             threshold_check_cb=lambda: threshold_check(self),
             start_sweep_cb=lambda: start_sweep(
@@ -267,6 +288,28 @@ class App(tk.Tk):
                 default_fg_amp_vpp=DEFAULT_FG_AMP_VPP,
             ),
             stop_sweep_cb=lambda: stop_sweep(self),
+        )
+
+    def _build_diagnostics_tab(self) -> None:
+        build_diagnostics_tab(
+            self,
+            camera_check_cb=lambda: camera_check(
+                self,
+                default_daq_device=DEFAULT_DAQ_DEVICE,
+                nm_397=NM_397,
+                camera_trigger=CAMERA_TRIGGER,
+                roi_pulse_s=ROI_PULSE_S,
+                roi_idle_s=ROI_IDLE_S,
+                ao_rate_hz=AO_RATE_HZ,
+            ),
+            camera_snap_cb=lambda: camera_snap(
+                self,
+                nm_397=NM_397,
+                camera_trigger=CAMERA_TRIGGER,
+                roi_pulse_s=ROI_PULSE_S,
+                roi_idle_s=ROI_IDLE_S,
+                ao_rate_hz=AO_RATE_HZ,
+            ),
         )
 
 def main() -> None:

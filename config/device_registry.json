@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "daq": {
+    "device": "Dev1",
+    "mode": "dry"
+  },
+  "camera": {
+    "mode": "dry",
+    "exposure_ms": 100.0,
+    "subarray": {
+      "enabled": false,
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0
+    },
+    "verbose": false,
+    "trigger": {
+      "source": "EXTERNAL",
+      "connector": "BNC",
+      "polarity": "POSITIVE",
+      "active": "EDGE",
+      "mode": "NORMAL"
+    }
+  },
+  "fg": {
+    "visa_resource": "",
+    "amp_mvpp": 790.0,
+    "wave": "SIN",
+    "offset_v": 0.0,
+    "start_hz": 1000.0,
+    "stop_hz": 10000.0,
+    "time_s": 1.0,
+    "no_fg": true
+  },
+  "sweep_defaults": {
+    "n_target": 50,
+    "max_attempt": 100,
+    "settle_s": 0.02,
+    "update_interval": 1.0
+  },
+  "sequence_json_path": "src/shutter_camera_trigger/sequence_examples/minimal_sequence.json",
+  "io_paths": {
+    "logs_root": "logs",
+    "output_root": "data/output"
+  },
+  "ui": {
+    "show_debug_fields": false,
+    "camera_verbose_additional_only": true
+  }
+}

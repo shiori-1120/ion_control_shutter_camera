@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ..gui_support.validators import parse_camera_trigger_cfg, parse_exposure_s_safe, parse_fg_amp_vpp_safe
+from ..gui_support.diagnostics import resolve_log_path, set_last_error
 from .controller import SweepInput
 from .session_parse import parse_freqs_from_expressions, read_sequence_json_params
 from ..sequence.parser import parse_sequence_text as parse_sequence_text_raw
@@ -40,6 +41,12 @@ def collect_sweep_input(app: Any, *, default_daq_device: str) -> SweepInput | No
         from tkinter import messagebox
 
         messagebox.showerror("Sweep", str(e))
+        set_last_error(
+            app,
+            label="Sweep input",
+            message=str(e),
+            log_path=resolve_log_path(app, filename="sweep.log"),
+        )
         return None
     return SweepInput(
         freqs=freqs,

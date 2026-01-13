@@ -8,6 +8,7 @@ import numpy as np
 
 from ..gui_support.image_utils import robust_gray_limits
 from ..gui_support.worker_messages import format_worker_failure
+from ..hardware import DaqQueueDevice, DaqSequenceCommand
 from .roi_bootstrap import run_roi_bootstrap
 
 
@@ -103,18 +104,16 @@ def run_roi_check_stage(
     if prefer_sample_path:
         cam_cmd["prefer_sample"] = str(prefer_sample_path)
     cam_cmd_q.put(cam_cmd)
-    daq_cmd_q.put(
-        {
-            "cmd": "run_sequence_once",
-            "do_sequence": pulse_seq,
-            "insert_index": -1,
-            "ao_width_ms": 0.0,
-            "ao_rate_hz": float(ao_rate_hz),
-            "ao_v_high": 5.0,
-            "ao_v_low": 0.0,
-        }
+    DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
+        DaqSequenceCommand(
+            do_sequence=pulse_seq,
+            ao_insert_index=-1,
+            ao_width_ms=0.0,
+            ao_rate_hz=float(ao_rate_hz),
+            ao_v_high=5.0,
+            ao_v_low=0.0,
+        )
     )
-    _ = mpq_get_with_ui(daq_resp_q, 5, "DAQ ROI response")
     cam_resp = mpq_get_with_ui(cam_resp_q, 15, "Camera ROI frame")
     if not cam_resp.get("ok"):
         raise RuntimeError(
@@ -337,21 +336,19 @@ def run_threshold_stage(
             break
 
         cam_cmd_q.put({"cmd": "get_frame", "timeout_s": float(shot_timeout_s)})
-        daq_cmd_q.put(
-            {
-                "cmd": "run_sequence_once",
-                "do_sequence": do_sequence,
-                "insert_index": -1,
-                "ao_width_ms": 0.0,
-                "ao_rate_hz": float(ao_rate_hz),
-                "ao_v_high": 5.0,
-                "ao_v_low": 0.0,
-            }
-        )
-
-        daq_resp = mpq_get_with_ui(daq_resp_q, 5, "DAQ response")
-        if not daq_resp.get("ok"):
-            raise RuntimeError(f"DAQ error: {daq_resp}")
+        try:
+            DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
+            DaqSequenceCommand(
+                do_sequence=do_sequence,
+                ao_insert_index=-1,
+                ao_width_ms=0.0,
+                ao_rate_hz=float(ao_rate_hz),
+                ao_v_high=5.0,
+                ao_v_low=0.0,
+            )
+            )
+        except Exception as e:
+            raise RuntimeError(f"DAQ error: {e}")
         cam_resp = mpq_get_with_ui(cam_resp_q, 15, "Camera frame")
         if not cam_resp.get("ok"):
             last_cam_event = str(cam_resp.get("event") or "") or None

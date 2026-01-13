@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from ..hardware import DaqQueueDevice
+
 
 def stop_sweep_workers(
     *,
@@ -13,8 +15,8 @@ def stop_sweep_workers(
 ) -> list[Any]:
     # Best-effort: keep 397 ON when leaving sweep.
     try:
-        if queues.get("daq_cmd"):
-            queues["daq_cmd"].put({"cmd": "set_do", "value": int(nm_397)})
+        if queues.get("daq_cmd") and queues.get("daq_resp"):
+            DaqQueueDevice(cmd_q=queues["daq_cmd"], resp_q=queues["daq_resp"]).set_do(int(nm_397))
     except Exception:
         pass
     # Tell workers to close.

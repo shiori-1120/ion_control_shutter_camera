@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from ..hardware import DaqQueueDevice, DaqSequenceCommand
+
 
 @dataclass(frozen=True)
 class SweepSessionReady:
@@ -125,6 +127,15 @@ def prepare_sweep_session(
             (NM_397, ROI_IDLE_S),
         ]
         cam_log_path = str(Path(log_dir) / "camera_worker.log") if log_dir is not None else str(out_dir / "camera_worker.log")
+        daq_device = DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q)
+        prime_cmd = DaqSequenceCommand(
+            do_sequence=prime_seq_one,
+            ao_insert_index=-1,
+            ao_width_ms=0.0,
+            ao_rate_hz=AO_RATE_HZ,
+            ao_v_high=5.0,
+            ao_v_low=0.0,
+        )
         _ = bootstrap_workers_for_sweep(
             daq_resp_q=daq_resp_q,
             cam_proc=cam_p,
@@ -134,17 +145,10 @@ def prepare_sweep_session(
             cam_log_path=cam_log_path,
             cam_mode=cam_mode,
             trig_src=trig_src,
-            prime_cmd={
-                "cmd": "run_sequence_once",
-                "do_sequence": prime_seq_one,
-                "insert_index": -1,
-                "ao_width_ms": 0.0,
-                "ao_rate_hz": AO_RATE_HZ,
-                "ao_v_high": 5.0,
-                "ao_v_low": 0.0,
-            },
+            prime_cmd=prime_cmd,
             daq_send=daq_cmd_q.put,
             daq_recv=lambda timeout, label: mpq_get_with_ui(daq_resp_q, timeout=timeout, label=label),
+            daq_device=daq_device,
             ui_pump=ui_pump,
             status_cb=status_cb,
             daq_ready_timeout_s=5.0,

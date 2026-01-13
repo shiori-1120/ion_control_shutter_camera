@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from ..hardware import DaqQueueDevice, DaqSequenceCommand
+
 
 @dataclass(frozen=True)
 class SpectrumRunResult:
@@ -110,21 +112,19 @@ def run_spectrum_stage(
                     break
 
                 cam_cmd_q.put({"cmd": "get_state", "timeout_s": 1.0})
-                daq_cmd_q.put(
-                    {
-                        "cmd": "run_sequence_once",
-                        "do_sequence": do_sequence,
-                        "insert_index": int(insert_index),
-                        "ao_width_ms": float(ao_width_ms),
-                        "ao_rate_hz": float(ao_rate_hz),
-                        "ao_v_high": 5.0,
-                        "ao_v_low": 0.0,
-                    }
-                )
-
-                daq_resp = mpq_get_with_ui(daq_resp_q, 5, "DAQ response")
-                if not daq_resp.get("ok"):
-                    raise RuntimeError(f"DAQ error: {daq_resp}")
+                try:
+                    DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
+                        DaqSequenceCommand(
+                            do_sequence=do_sequence,
+                            ao_insert_index=int(insert_index),
+                            ao_width_ms=float(ao_width_ms),
+                            ao_rate_hz=float(ao_rate_hz),
+                            ao_v_high=5.0,
+                            ao_v_low=0.0,
+                        )
+                    )
+                except Exception as e:
+                    raise RuntimeError(f"DAQ error: {e}")
                 cam_resp = mpq_get_with_ui(cam_resp_q, 5, "Camera response")
                 if not cam_resp.get("ok"):
                     continue

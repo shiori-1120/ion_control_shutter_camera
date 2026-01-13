@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from ..hardware import DaqQueueDevice, DaqSequenceCommand
+
 
 def run_roi_bootstrap(
     *,
@@ -31,26 +33,26 @@ def run_roi_bootstrap(
         (nm_397 | camera_trigger, roi_pulse_s),
         (nm_397, roi_idle_s),
     ]
+    daq_device = DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q)
 
     success = 0
     last_err: str | None = None
 
     for _attempt in range(int(max_attempt)):
         try:
-            daq_cmd_q.put(
-                {
-                    "cmd": "run_sequence_once",
-                    "do_sequence": roi_sequence,
-                    "insert_index": -1,
-                    "ao_width_ms": 0.0,
-                    "ao_rate_hz": 5000.0,
-                    "ao_v_high": 5.0,
-                    "ao_v_low": 0.0,
-                }
-            )
-            daq_resp = daq_resp_q.get(timeout=5)
-            if not isinstance(daq_resp, dict) or not daq_resp.get("ok"):
-                last_err = f"DAQ: {daq_resp}"
+            try:
+                daq_device.run_sequence_once(
+                    DaqSequenceCommand(
+                        do_sequence=roi_sequence,
+                        ao_insert_index=-1,
+                        ao_width_ms=0.0,
+                        ao_rate_hz=5000.0,
+                        ao_v_high=5.0,
+                        ao_v_low=0.0,
+                    )
+                )
+            except Exception as e:
+                last_err = f"DAQ: {e}"
                 continue
 
             cam_cmd_q.put({"cmd": "get_state", "timeout_s": 1.0})

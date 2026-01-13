@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
@@ -9,6 +9,7 @@ from ..gui_support.perf import limit_blas_threads
 from ..gui_support.validators import apply_subarray_to_cam_cfg
 from ..gui_support.worker_cleanup import cleanup_stale_workers, write_last_worker_pids
 from ..gui_support.worker_messages import format_worker_failure
+from ..gui_support.diagnostics import set_last_error
 from .controller import SweepController, SweepDeps, SweepState, SweepUi
 from .roi_threshold_flow import format_threshold_prompt
 from .session_config import SweepPersistedConfig, build_sweep_session_dict, write_sweep_config_json
@@ -37,7 +38,6 @@ def build_sweep_tab(
     roi_pulse_s: float,
     roi_idle_s: float,
     roi_max_attempt: int,
-    pick_seq_json_cb: Callable[[], None],
     roi_check_cb: Callable[[], None],
     threshold_check_cb: Callable[[], None],
     start_sweep_cb: Callable[[], None],
@@ -48,70 +48,83 @@ def build_sweep_tab(
     row = ttk.Frame(app.sweep_tab)
     row.pack(fill=tk.X, pady=(0, 8))
 
-    ttk.Label(row, text="Freq start (Hz)").grid(row=0, column=0, sticky=tk.W)
+    freq = ttk.LabelFrame(row, text="Frequencies")
+    freq.grid(row=0, column=0, sticky=tk.W + tk.E, padx=(0, 12))
+
+    ttk.Label(freq, text="Start").grid(row=0, column=0, sticky=tk.W)
     app.sw_freq_start = tk.StringVar(value="199e6")
-    ttk.Entry(row, textvariable=app.sw_freq_start, width=12).grid(row=0, column=1, padx=4)
+    ttk.Entry(freq, textvariable=app.sw_freq_start, width=12).grid(row=0, column=1, padx=4)
+    ttk.Label(freq, text="Hz").grid(row=0, column=2, sticky=tk.W)
 
-    ttk.Label(row, text="Freq stop (Hz)").grid(row=0, column=2, sticky=tk.W)
+    ttk.Label(freq, text="Stop").grid(row=0, column=3, sticky=tk.W)
     app.sw_freq_stop = tk.StringVar(value="201e6")
-    ttk.Entry(row, textvariable=app.sw_freq_stop, width=12).grid(row=0, column=3, padx=4)
+    ttk.Entry(freq, textvariable=app.sw_freq_stop, width=12).grid(row=0, column=4, padx=4)
+    ttk.Label(freq, text="Hz").grid(row=0, column=5, sticky=tk.W)
 
-    ttk.Label(row, text="Freq step (Hz)").grid(row=0, column=4, sticky=tk.W)
+    ttk.Label(freq, text="Step").grid(row=0, column=6, sticky=tk.W)
     app.sw_freq_step = tk.StringVar(value="0.5e6")
-    ttk.Entry(row, textvariable=app.sw_freq_step, width=12).grid(row=0, column=5, padx=4)
+    ttk.Entry(freq, textvariable=app.sw_freq_step, width=12).grid(row=0, column=7, padx=4)
+    ttk.Label(freq, text="Hz").grid(row=0, column=8, sticky=tk.W)
 
-    ttk.Label(row, text="n_target").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
-    app.sw_n_target = tk.StringVar(value="50")
-    ttk.Entry(row, textvariable=app.sw_n_target, width=8).grid(row=1, column=1, padx=4, pady=(6, 0))
+    targets = ttk.LabelFrame(row, text="Targets")
+    targets.grid(row=1, column=0, sticky=tk.W + tk.E, padx=(0, 12), pady=(8, 0))
 
-    ttk.Label(row, text="max_attempt").grid(row=1, column=2, sticky=tk.W, pady=(6, 0))
-    app.sw_max_attempt = tk.StringVar(value="100")
-    ttk.Entry(row, textvariable=app.sw_max_attempt, width=8).grid(row=1, column=3, padx=4, pady=(6, 0))
+    show_debug = bool(getattr(app, "show_debug_fields", True))
 
-    ttk.Label(row, text="settle_s").grid(row=1, column=4, sticky=tk.W, pady=(6, 0))
-    app.sw_settle_s = tk.StringVar(value="0.02")
-    ttk.Entry(row, textvariable=app.sw_settle_s, width=8).grid(row=1, column=5, padx=4, pady=(6, 0))
+    ttk.Label(targets, text="n_target").grid(row=0, column=0, sticky=tk.W)
+    if getattr(app, "sw_n_target", None) is None:
+        app.sw_n_target = tk.StringVar(value="50")
+    ttk.Entry(targets, textvariable=app.sw_n_target, width=8).grid(row=0, column=1, padx=4)
 
-    ttk.Label(row, text="Sequence JSON").grid(row=2, column=0, sticky=tk.W, pady=(6, 0))
-    app.sw_seq_path = tk.StringVar(value="src/shutter_camera_trigger/sequence_examples/minimal_sequence.json")
-    ttk.Entry(row, textvariable=app.sw_seq_path, width=48).grid(
-        row=2, column=1, columnspan=4, sticky=tk.W, padx=4, pady=(6, 0)
-    )
-    ttk.Button(row, text="...", width=3, command=pick_seq_json_cb).grid(row=2, column=5, pady=(6, 0))
+    if show_debug:
+        ttk.Label(targets, text="max_attempt").grid(row=0, column=2, sticky=tk.W)
+        if getattr(app, "sw_max_attempt", None) is None:
+            app.sw_max_attempt = tk.StringVar(value="100")
+        ttk.Entry(targets, textvariable=app.sw_max_attempt, width=8).grid(row=0, column=3, padx=4)
 
-    ttk.Label(row, text="DAQ mode").grid(row=3, column=0, sticky=tk.W, pady=(6, 0))
-    app.sw_daq_mode = tk.StringVar(value="dry")
-    ttk.Combobox(row, textvariable=app.sw_daq_mode, values=["dry", "real"], width=6, state="readonly").grid(
-        row=3, column=1, padx=4, pady=(6, 0)
-    )
+    ttk.Label(targets, text="settle").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+    if getattr(app, "sw_settle_s", None) is None:
+        app.sw_settle_s = tk.StringVar(value="0.02")
+    ttk.Entry(targets, textvariable=app.sw_settle_s, width=8).grid(row=1, column=1, padx=4, pady=(6, 0))
+    ttk.Label(targets, text="s").grid(row=1, column=2, sticky=tk.W, pady=(6, 0))
 
-    ttk.Label(row, text="Camera mode").grid(row=3, column=2, sticky=tk.W, pady=(6, 0))
+    if show_debug:
+        ttk.Label(targets, text="update interval").grid(row=1, column=3, sticky=tk.W, pady=(6, 0))
+        if getattr(app, "sw_update_interval", None) is None:
+            app.sw_update_interval = tk.StringVar(value="1.0")
+        ttk.Entry(targets, textvariable=app.sw_update_interval, width=8).grid(row=1, column=4, padx=4, pady=(6, 0))
+        ttk.Label(targets, text="s").grid(row=1, column=5, sticky=tk.W, pady=(6, 0))
+
+    seq = ttk.LabelFrame(row, text="Sequence (from Setup)")
+    seq.grid(row=2, column=0, sticky=tk.W + tk.E, padx=(0, 12), pady=(8, 0))
+    ttk.Label(seq, text="JSON").grid(row=0, column=0, sticky=tk.W)
+    ttk.Label(seq, textvariable=app.sw_seq_path).grid(row=0, column=1, sticky=tk.W, padx=4)
+
+    snapshot = ttk.LabelFrame(row, text="Setup snapshot")
+    snapshot.grid(row=3, column=0, sticky=tk.W + tk.E, padx=(0, 12), pady=(8, 0))
+
+    ttk.Label(snapshot, text="DAQ mode").grid(row=0, column=0, sticky=tk.W)
+    app.sw_daq_mode = app.device_mode_var
+    ttk.Label(snapshot, textvariable=app.sw_daq_mode).grid(row=0, column=1, sticky=tk.W, padx=4)
+
+    ttk.Label(snapshot, text="Camera mode").grid(row=0, column=2, sticky=tk.W)
     app.sw_cam_mode = app.camera_mode_top_var
-    ttk.Combobox(row, textvariable=app.sw_cam_mode, values=["dry", "real"], width=6, state="readonly").grid(
-        row=3, column=3, padx=4, pady=(6, 0)
-    )
+    ttk.Label(snapshot, textvariable=app.sw_cam_mode).grid(row=0, column=3, sticky=tk.W, padx=4)
 
-    ttk.Label(row, text="DAQ device").grid(row=3, column=4, sticky=tk.W, pady=(6, 0))
-    app.sw_device = tk.StringVar(value=default_daq_device)
-    ttk.Entry(row, textvariable=app.sw_device, width=10).grid(row=3, column=5, padx=4, pady=(6, 0))
+    ttk.Label(snapshot, text="DAQ device").grid(row=0, column=4, sticky=tk.W)
+    app.sw_device = app.device_var
+    ttk.Label(snapshot, textvariable=app.sw_device).grid(row=0, column=5, sticky=tk.W, padx=4)
 
-    ttk.Label(row, text="FG VISA").grid(row=4, column=0, sticky=tk.W, pady=(6, 0))
+    ttk.Label(snapshot, text="FG VISA").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
     app.sw_visa = app.fg_resource_var
-    ttk.Entry(row, textvariable=app.sw_visa, width=32).grid(
-        row=4, column=1, columnspan=3, sticky=tk.W, padx=4, pady=(6, 0)
-    )
-    app.sw_no_fg = tk.BooleanVar(value=True)
-    ttk.Checkbutton(row, text="No FG", variable=app.sw_no_fg).grid(
-        row=4, column=4, columnspan=2, sticky=tk.W, pady=(6, 0)
+    ttk.Label(snapshot, textvariable=app.sw_visa).grid(row=1, column=1, columnspan=3, sticky=tk.W, padx=4, pady=(6, 0))
+    ttk.Checkbutton(snapshot, text="No FG", variable=app.sw_no_fg, state="disabled").grid(
+        row=1, column=4, columnspan=2, sticky=tk.W, pady=(6, 0)
     )
 
-    ttk.Label(row, text="FG amp (mVpp)").grid(row=5, column=0, sticky=tk.W, pady=(6, 0))
+    ttk.Label(snapshot, text="FG amp (mVpp)").grid(row=1, column=6, sticky=tk.W, pady=(6, 0))
     app.sw_fg_amp_mvpp = app.fg_amp_mvpp_var
-    ttk.Entry(row, textvariable=app.sw_fg_amp_mvpp, width=10).grid(row=5, column=1, padx=4, pady=(6, 0))
-
-    ttk.Label(row, text="Update interval (s)").grid(row=6, column=0, sticky=tk.W, pady=(6, 0))
-    app.sw_update_interval = tk.StringVar(value="1.0")
-    ttk.Entry(row, textvariable=app.sw_update_interval, width=8).grid(row=6, column=1, padx=4, pady=(6, 0))
+    ttk.Label(snapshot, textvariable=app.sw_fg_amp_mvpp).grid(row=1, column=7, sticky=tk.W, padx=4, pady=(6, 0))
 
     btn_row = ttk.Frame(app.sweep_tab)
     btn_row.pack(fill=tk.X, pady=(8, 8))
@@ -170,6 +183,12 @@ def build_sweep_tab(
                 n_bright,
             ),
             join_with_ui=lambda proc, timeout: join_with_ui(app, proc, timeout=timeout),
+            set_last_error_cb=lambda label, message, log_path: set_last_error(
+                app,
+                label=label,
+                message=message,
+                log_path=log_path,
+            ),
         ),
         deps=SweepDeps(
             write_sweep_config_json=write_sweep_config_json,

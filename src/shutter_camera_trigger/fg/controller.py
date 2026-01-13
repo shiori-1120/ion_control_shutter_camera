@@ -3,6 +3,7 @@
 from typing import Any
 
 from ..gui_support.logging_setup import get_file_logger
+from ..gui_support.diagnostics import resolve_log_path, set_last_error
 
 
 def connect_fg(app: Any, *, get_amp_vpp) -> None:
@@ -27,19 +28,21 @@ def connect_fg(app: Any, *, get_amp_vpp) -> None:
         from tkinter import messagebox
 
         messagebox.showerror("FG", "VISA resource is empty")
+        set_last_error(
+            app,
+            label="FG",
+            message="VISA resource is empty",
+            log_path=resolve_log_path(app, filename="app.log"),
+        )
         return
 
     try:
-        from src.lib.instruments.rigol_dg import RigolDG, RigolDgConfig
+        from ..hardware import RigolFgDevice
 
-        rig = RigolDG(RigolDgConfig(visa_resource=resource, channel=1, timeout_ms=5000))
-        rig.open()
+        rig = RigolFgDevice(channel=1, timeout_ms=5000)
+        rig.open(resource)
         try:
-            rig.set_amplitude_vpp(get_amp_vpp())
-        except Exception:
-            pass
-        try:
-            _ = rig.idn()
+            rig.apply({"amp_vpp": get_amp_vpp()})
         except Exception:
             pass
 
@@ -70,6 +73,12 @@ def connect_fg(app: Any, *, get_amp_vpp) -> None:
         except Exception:
             pass
         messagebox.showerror("FG", str(e))
+        set_last_error(
+            app,
+            label="FG",
+            message=str(e),
+            log_path=resolve_log_path(app, filename="fg.log"),
+        )
 
 
 def disconnect_fg(app: Any) -> None:
@@ -88,10 +97,6 @@ def disconnect_fg(app: Any) -> None:
 
     try:
         if app._fg_handle is not None:
-            try:
-                app._fg_handle.output(False)
-            except Exception:
-                pass
             try:
                 app._fg_handle.close()
             except Exception:

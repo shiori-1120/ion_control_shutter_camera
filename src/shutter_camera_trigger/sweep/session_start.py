@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from ..hardware import DaqQueueDevice, DaqSequenceCommand
+
 from .priming import prime_until_camera_ready
 
 
@@ -15,9 +17,10 @@ def bootstrap_workers_for_sweep(
     cam_log_path: str | None,
     cam_mode: str,
     trig_src: str,
-    prime_cmd: dict,
+    prime_cmd: DaqSequenceCommand | dict,
     daq_send: Callable[[dict], None],
     daq_recv: Callable[[float, str], dict],
+    daq_device: DaqQueueDevice | None = None,
     ui_pump: Callable[[], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
     daq_ready_timeout_s: float = 5.0,
@@ -60,6 +63,7 @@ def bootstrap_workers_for_sweep(
             daq_send=daq_send,
             daq_recv=daq_recv,
             prime_cmd=prime_cmd,
+            daq_device=daq_device,
             deadline_s=float(prime_deadline_s),
             ui_pump=ui_pump,
             status_cb=status_cb,

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..hardware import DaqClientDevice
+
 from ..daq.guards import require_connected
+from ..gui_support.diagnostics import resolve_log_path, set_last_error
 from tkinter import messagebox
 
 
@@ -20,9 +23,15 @@ def all_off(app: Any, *, all_off: int, nm_397: int) -> None:
             )
         except Exception:
             do_all_off = False
-        app._daq.request({"cmd": "set_do", "value": int(all_off if do_all_off else nm_397)})
+    DaqClientDevice(app._daq).set_do(int(all_off if do_all_off else nm_397))
     except Exception as e:
         messagebox.showerror("DO error", str(e))
+        set_last_error(
+            app,
+            label="Manual DO",
+            message=str(e),
+            log_path=resolve_log_path(app, filename="app.log"),
+        )
 
 
 def apply_manual(
@@ -44,6 +53,12 @@ def apply_manual(
             value |= nm_729
         if app.v_854.get():
             value |= nm_854
-        app._daq.request({"cmd": "set_do", "value": int(value)})
+    DaqClientDevice(app._daq).set_do(int(value))
     except Exception as e:
         messagebox.showerror("Manual apply error", str(e))
+        set_last_error(
+            app,
+            label="Manual apply",
+            message=str(e),
+            log_path=resolve_log_path(app, filename="app.log"),
+        )

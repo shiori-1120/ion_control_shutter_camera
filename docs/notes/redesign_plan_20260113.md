@@ -250,7 +250,7 @@
 - デバッグ中はUI表示
 - 安定後はconfigの定数に移動し、UIからは非表示
 - 変更が必要ならconfigを編集
-## 段階的プラン（実装はまだしない）
+## 段階的プラン
 フェーズ1: 設計とドキュメント
 - device registryのスキーマを決める
 - SequenceSpecとアクション型の仕様を書く
@@ -654,3 +654,73 @@
 - 2026-01-13: `gui_support/log_panel.py` を追加し、GUI下部にログパネル（Queue->Text）を実装。
 - 2026-01-13: run_id/log_pathをcamera/daq/fgへ伝搬し、`logs/YYYY-MM-DD/`配下に保存する方針へ寄せた。
 - 2026-01-13: camera/GUI/sweepの主要操作ログを追加し、カメラ接続デバッグを強化。
+- 2026-01-13: Diagnosticsタブを追加し、最後のエラー表示をGUIで確認できるようにした。
+- 2026-01-13: Diagnosticsのコピー/クリア機能とログフィルタ拡張を追加。
+- 2026-01-13: Diagnosticsのログパス解決ヘルパーを追加し、エラー時の参照ログを統一。
+- 2026-01-13: ログパネルにDiagnosticsフィルタを追加。
+- 2026-01-13: Diagnosticsの更新時にapp.logへ統一フォーマットで記録するようにした。
+- 2026-01-13: Diagnosticsに直近エラー履歴（最大20件）を表示するリストを追加。
+- 2026-01-13: ログパネルにPause/Followボタンと選択コピーを追加。
+- 2026-01-13: GUIをSetup/Run/Diagnosticsのトップ構成に移し、ManualをDiagnostics配下へ移動。
+- 2026-01-13: DiagnosticsにCamera check/snapの導線を追加し、実行系タブの役割を整理。
+- 2026-01-13: Top BarからCamera checkボタンを外し、Diagnosticsに集約。
+- 2026-01-13: CameraタブのSnap操作を削除し、Diagnostics側の導線に統一。
+- 2026-01-13: SequenceタブをJSON参照専用にし、ReloadでSweepのJSONパスを読めるようにした。
+- 2026-01-13: SweepタブのDAQ/FG入力を参照表示に切り替え、Setupの値を唯一の入力元にした。
+- 2026-01-13: SweepタブのCamera modeも参照表示に切り替え、Setupを唯一の入力元に統一。
+- 2026-01-13: Sequence JSONの入力をSetupに移し、Sweepタブでは参照表示のみとした。
+- 2026-01-13: SetupのTop BarをDAQ/FG/Sequence/Camera/Trigger/Subarrayのセクションに整理。
+- 2026-01-13: Trigger設定を固定値の表示に切り替え、Delay入力をSetupから外した。
+- 2026-01-13: SweepタブをFrequencies/Targets/Sequence/Setup snapshotに分けて視認性を改善。
+- 2026-01-13: Diagnosticsを2カラム構成にし、左に詳細/履歴、右にQuick summaryを配置。
+- 2026-01-13: Manualタブに見出しと注意文を追加して意図を明確化。
+- 2026-01-13: Runタブ内の順序をSweep→Sequence→Cameraに調整。
+- 2026-01-13: Sequenceタブに「read-only」ラベルを追加し、参照専用を明示。
+- 2026-01-13: Cameraタブの案内文を調整し、Diagnostics経由の操作を明確化。
+- 2026-01-13: Runタブに見出しラベルを追加して意図を明示。
+- 2026-01-13: SetupとDiagnosticsに見出しラベルを追加してセクション意図を明確化。
+- 2026-01-13: Setup内ラベルの文言を短縮して視認性を改善。
+- 2026-01-13: RunタブにSetup参照の補足ラベルを追加。
+- 2026-01-13: Setup内の入力に単位ラベル（ms/mVpp）を追加して明確化。
+- 2026-01-13: SweepタブのFrequency/Targets入力に単位ラベルを追加し、レイアウトを整理。
+- 2026-01-13: No FG設定をSetupに移し、Sweep側は参照表示のみへ変更。
+- 2026-01-13: device_registryのdataclass/読み書き/バリデーションの骨格を追加。
+- 2026-01-13: device_registryをGUI起動時に読み込み、終了時に保存する最小配線を追加。
+- 2026-01-13: Sweep defaultsをUI初期値として保持し、device_registry反映が上書きできるようにした。
+- 2026-01-13: `config/device_registry.json` の初期テンプレートを追加。
+- 2026-01-13: device_registry保存時にio_paths/uiを既存設定から引き継ぐようにした。
+- 2026-01-13: device_registryのUIフラグを反映し、Verbose表記とSweepのdebug項目表示に反映。
+- 2026-01-13: device_registryテンプレートの`show_debug_fields`をfalseに設定。
+- 2026-01-13: hardware/pipelineのディレクトリ骨格とProtocol/placeholderを追加。
+- 2026-01-13: 既存DAQキューを使う`DaqClientDevice`アダプタを追加。
+- 2026-01-13: 既存RigolDG/カメラワーカを使うFG/Cameraアダプタを追加。
+- 2026-01-13: FG connect/disconnectをRigolFgDeviceアダプタ経由に切替。
+- 2026-01-13: camera_check/snapでCameraWorkerDeviceアダプタを使用するようにした。
+- 2026-01-13: camera_tabのTTL発行をDaqClientDevice経由に置換。
+- 2026-01-13: sequence実行をDaqClientDevice経由に置換。
+- 2026-01-13: sweepのROI bootstrap/stopでDaqQueueDeviceアダプタを導入。
+- 2026-01-13: sweepのROI/thresholdステージでDaqQueueDevice経由に置換。
+- 2026-01-13: sweepのspectrumステージもDaqQueueDevice経由に置換。
+- 2026-01-13: sweep priming（camera bootstrap）でもDaqQueueDevice経由でTTLを送るようにした。
+- 2026-01-13: session_readyのprime_cmdを変数化してDaqQueueDevice配線に合わせた。
+- 2026-01-13: sweep primingのprime_cmdをDaqSequenceCommandで渡すようにし、dict依存を低減。
+- 2026-01-13: manual actions/DAQ connect/disconnectのset_doをDaqClientDevice経由に置換。
+- 2026-01-13: camera_checkの一時DAQ primingもDaqQueueDevice経由に置換。
+
+## Adapter移行状況（暫定）
+### DaqClientDevice（GUI側）
+- camera_tab（snap/TTL/priming）
+- sequence/controller（run_sequence_once, set_do）
+- manual_actions（set_do）
+- daq/controller（connect/disconnect時のset_do）
+
+### DaqQueueDevice（worker/queue側）
+- sweep: roi_bootstrap/roi_check/threshold/spectrum/stop/priming
+- camera_checkの一時DAQ priming
+
+### CameraWorkerDevice
+- camera_check/camera_snap のフレーム取得
+
+### RigolFgDevice
+- FG connect/disconnect
+- 2026-01-13: GUIのトップレベルタブをSetup/Run/Diagnosticsに再構成し、Setup内にTop Barを移設。

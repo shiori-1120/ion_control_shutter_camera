@@ -24,6 +24,9 @@ def build_manual_tab(
     app.v_729 = tk.BooleanVar(value=False)
     app.v_854 = tk.BooleanVar(value=False)
 
+    ttk.Label(app.manual_tab, text="Manual shutter control", font=("", 11, "bold")).grid(
+        row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 8)
+    )
     ttk.Checkbutton(app.manual_tab, text="397 (line0)", variable=app.v_397).grid(row=1, column=0, sticky=tk.W)
     ttk.Checkbutton(app.manual_tab, text="397 SIG (line1)", variable=app.v_397s).grid(row=2, column=0, sticky=tk.W)
     ttk.Checkbutton(app.manual_tab, text="Camera trigger (line2)", variable=app.v_729).grid(row=3, column=0, sticky=tk.W)
@@ -45,5 +48,9 @@ def build_manual_tab(
         text="All Off",
         command=lambda: all_off(app, all_off=all_off_value, nm_397=nm_397),
     ).grid(row=2, column=1, padx=10)
+
+    ttk.Label(app.manual_tab, text="Use with care; respects current DAQ connection.").grid(
+        row=5, column=0, columnspan=2, sticky=tk.W, pady=(8, 0)
+    )
 
     app.manual_tab.grid_columnconfigure(2, weight=1)

@@ -44,8 +44,8 @@ def build_log_panel(app: Any) -> None:
     ttk.Combobox(
         controls,
         textvariable=filter_var,
-        values=["all", "camera"],
-        width=10,
+        values=["all", "camera", "daq", "sweep", "fg", "diagnostics"],
+        width=14,
         state="readonly",
     ).pack(side=tk.LEFT, padx=6)
 
@@ -71,11 +71,30 @@ def build_log_panel(app: Any) -> None:
     text.bind("<Button-5>", lambda _e: _set_follow_tail(state, False))
     text.bind("<Key>", lambda _e: _set_follow_tail(state, False))
 
+    btn_row = ttk.Frame(controls)
+    btn_row.pack(side=tk.RIGHT)
+    ttk.Button(btn_row, text="Pause", command=lambda: _set_follow_tail(state, False)).pack(side=tk.LEFT, padx=4)
+    ttk.Button(btn_row, text="Follow", command=lambda: _set_follow_tail(state, True)).pack(side=tk.LEFT)
+
+    text.bind("<Control-c>", lambda _e: _copy_selected(text))
+
     _drain_log_queue(app, state)
 
 
 def _set_follow_tail(state: LogPanelState, enabled: bool) -> None:
     state.follow_tail = enabled
+
+
+def _copy_selected(text: tk.Text) -> None:
+    try:
+        selection = text.get("sel.first", "sel.last")
+    except Exception:
+        return
+    try:
+        text.clipboard_clear()
+        text.clipboard_append(selection)
+    except Exception:
+        pass
 
 
 def _drain_log_queue(app: Any, state: LogPanelState) -> None:
@@ -105,10 +124,15 @@ def _format_record(record: logging.LogRecord) -> Optional[str]:
         run_id = getattr(record, "run_id", "")
         ts = getattr(record, "created", None)
         if ts is None:
-            ts = ""
+            ts_str = ""
         else:
-            ts = f"{ts:.3f}"
-        return f"{ts} {run_id} {record.levelname} {record.name} {record.getMessage()}\n"
+            try:
+                from datetime import datetime
+
+                ts_str = datetime.fromtimestamp(float(ts)).strftime("%H:%M:%S")
+            except Exception:
+                ts_str = f"{float(ts):.3f}"
+        return f"{ts_str} {run_id} {record.levelname} {record.name} {record.getMessage()}\n"
     except Exception:
         return None
 
@@ -121,8 +145,9 @@ def _passes_filters(state: LogPanelState, record: logging.LogRecord, line: str) 
         return False
 
     filt = state.filter_var.get()
-    if filt == "camera":
-        return "camera" in record.name.lower() or "camera" in line.lower()
+    if filt in ("camera", "daq", "sweep", "fg", "diagnostics"):
+        name = record.name.lower()
+        return filt in name or filt in line.lower()
     return True
 
 
