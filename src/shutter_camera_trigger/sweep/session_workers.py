@@ -18,7 +18,14 @@ class SweepWorkers:
     cam_resp_q: Any
 
 
-def create_sweep_workers(*, device: str, daq_mode: str, cam_cfg: dict) -> SweepWorkers:
+def create_sweep_workers(
+    *,
+    device: str,
+    daq_mode: str,
+    cam_cfg: dict,
+    daq_log_path: str | None = None,
+    run_id: str | None = None,
+) -> SweepWorkers:
     """Create DAQ+Camera workers and queues for a sweep session.
 
     This mirrors the GUI's startup ordering expectations:
@@ -33,6 +40,8 @@ def create_sweep_workers(*, device: str, daq_mode: str, cam_cfg: dict) -> SweepW
         mode=daq_mode,
         start=False,
         wait_ready=False,
+        log_path=daq_log_path,
+        run_id=run_id,
     )
 
     cam_cmd_q: Queue = Queue()

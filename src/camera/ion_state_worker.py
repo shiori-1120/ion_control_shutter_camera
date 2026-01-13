@@ -40,6 +40,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     _limit_blas_threads()
 
     log_path = cfg.get("log_path")
+    run_id = str(cfg.get("run_id") or "")
     _log_file: Any | None = None
 
     def log(msg: str) -> None:
@@ -52,10 +53,19 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 p.parent.mkdir(parents=True, exist_ok=True)
                 _log_file = open(p, "a", encoding="utf-8")
             ts = time.strftime("%Y-%m-%d %H:%M:%S")
-            _log_file.write(f"[{ts}] {msg}\n")
+            prefix = f"[{ts}]"
+            if run_id:
+                prefix = f"{prefix} {run_id}"
+            _log_file.write(f"{prefix} {msg}\n")
             _log_file.flush()
         except Exception:
             pass
+
+    cam_verbose = bool(cfg.get("verbose") or cfg.get("camera_verbose") or False)
+
+    def log_debug(msg: str) -> None:
+        if cam_verbose:
+            log(msg)
 
     # The legacy camera stack expects `import lib.*` to resolve to src/camera/lib.
     # When running as a module from repo root, we need to prepend src/camera to sys.path.
@@ -66,7 +76,11 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     if str(camera_dir) not in sys.path:
         sys.path.insert(0, str(camera_dir))
 
-    log(f"worker start | pid={os.getpid()} | mode={cfg.get('mode')} | exposure_s={cfg.get('exposure_s')} | frame_timeout_s={cfg.get('frame_timeout_s')} | bootstrap_n={cfg.get('bootstrap_n')}")
+    log(
+        f"worker start | pid={os.getpid()} | mode={cfg.get('mode')} | "
+        f"exposure_s={cfg.get('exposure_s')} | frame_timeout_s={cfg.get('frame_timeout_s')} | "
+        f"bootstrap_n={cfg.get('bootstrap_n')}"
+    )
 
     mode = str(cfg.get("mode") or "dry")  # 'dry' | 'real'
 
@@ -80,8 +94,6 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     tau_off = cfg.get("tau_off")
 
     trigger_cfg = cfg.get("trigger")
-    cam_verbose = bool(cfg.get("verbose") or cfg.get("camera_verbose") or False)
-
     log(f"trigger_cfg={trigger_cfg} | cam_verbose={cam_verbose}")
 
     prev_state: bool | None = None
@@ -229,7 +241,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             # Bootstrap ROI + thresholds if missing
             frames: list[np.ndarray] = []
             for i in range(max(1, bootstrap_n)):
-                log(f"bootstrap wait_for_frame_ready {i+1}/{max(1, bootstrap_n)}")
+                log_debug(f"bootstrap wait_for_frame_ready {i+1}/{max(1, bootstrap_n)}")
                 ok, err = cam.wait_for_frame_ready(frame_timeout_s)
                 if not ok:
                     raise RuntimeError(f"Camera timeout during bootstrap: {err}")
@@ -299,7 +311,9 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 continue
 
             name = cmd.get("cmd")
+            log_debug(f"cmd={name}")
             if name in ("quit", "close"):
+                log("closing")
                 send({"ok": True, "event": "closing"})
                 break
 
@@ -311,7 +325,9 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     roi_t = roi_new
                     prev_state = None
                     send({"ok": True, "event": "roi", "roi": list(roi_t)})
+                    log(f"set_roi {roi_t}")
                 except Exception as e:
+                    log(f"set_roi error {type(e).__name__}: {e}")
                     send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
                 continue
 
@@ -321,7 +337,9 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     bg_roi_t = bg_new
                     prev_state = None
                     send({"ok": True, "event": "bg_roi", "bg_roi": (list(bg_roi_t) if bg_roi_t else None)})
+                    log(f"set_bg_roi {bg_roi_t}")
                 except Exception as e:
+                    log(f"set_bg_roi error {type(e).__name__}: {e}")
                     send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
                 continue
 
@@ -345,7 +363,9 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     prev_state = None
 
                     send({"ok": True, "event": "threshold", "tau_on": float(tau_on), "tau_off": float(tau_off)})
+                    log(f"set_threshold tau_on={tau_on} tau_off={tau_off}")
                 except Exception as e:
+                    log(f"set_threshold error {type(e).__name__}: {e}")
                     send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
                 continue
 
@@ -354,6 +374,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 continue
 
             timeout_s = float(cmd.get("timeout_s") or frame_timeout_s)
+            log_debug(f"{name} timeout_s={timeout_s}")
 
             try:
                 if mode == "dry":
@@ -527,8 +548,10 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     raise RuntimeError("Camera worker is not configured")
 
                 # Wait for next frame
+                log_debug("wait_for_frame_ready")
                 ok, err = cam.wait_for_frame_ready(timeout_s)
                 if not ok:
+                    log(f"frame_timeout err={err}")
                     send({"ok": False, "event": "timeout", "error": str(err)})
                     continue
 

@@ -13,6 +13,8 @@ def start_daq_worker_process(
     mode: str,
     start: bool = True,
     wait_ready: bool = True,
+    log_path: str | None = None,
+    run_id: str | None = None,
 ) -> tuple[Process, Queue, Queue]:
     """Start DAQ worker process and return (process, cmd_q, resp_q).
 
@@ -29,7 +31,15 @@ def start_daq_worker_process(
     worker: Callable
     worker = daq_worker_dry_main if mode == "dry" else daq_worker_mpq_main
 
-    proc = Process(target=worker, args=(cmd_q, resp_q, {"device": device, "mode": mode}), daemon=True)
+    proc = Process(
+        target=worker,
+        args=(
+            cmd_q,
+            resp_q,
+            {"device": device, "mode": mode, "log_path": log_path, "run_id": run_id},
+        ),
+        daemon=True,
+    )
     if start:
         proc.start()
 
