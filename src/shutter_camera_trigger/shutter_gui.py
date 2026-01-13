@@ -158,7 +158,6 @@ class App(tk.Tk):
         self._plot_container: ttk.Frame | None = None
         self._plot_placeholder: ttk.Label | None = None
         self._plot_fig = None
-        self._plot_canvas = None
 
         self._build_ui()
 
@@ -182,21 +181,10 @@ class App(tk.Tk):
 
         if mvpp <= 0:
             raise ValueError("FG amplitude (mVpp) must be > 0")
+        if mvpp > float(FG_AMP_MAX_MVPP):
+            raise ValueError(f"FG amplitude too large: {mvpp:.1f} mVpp (max {float(FG_AMP_MAX_MVPP):.1f} mVpp)")
 
-        if mvpp > FG_AMP_MAX_MVPP:
-            try:
-                messagebox.showwarning(
-                    "FG",
-                    f"FG amp is limited to {FG_AMP_MAX_MVPP:.0f} mVpp. Setting to max.",
-                )
-            except Exception:
-                pass
-            try:
-                self.fg_amp_mvpp_var.set(str(int(FG_AMP_MAX_MVPP)))
-            except Exception:
-                pass
-            mvpp = float(FG_AMP_MAX_MVPP)
-        return mvpp / 1000.0
+        return float(mvpp) / 1000.0
 
     def _get_camera_exposure_s(self) -> float:
         """Return camera exposure in seconds parsed from UI (ms input)."""
@@ -204,14 +192,15 @@ class App(tk.Tk):
         try:
             s = (self.camera_exposure_ms_var.get() or "").strip()
             if not s:
-                return 0.001
-            ms = float(s)
+                ms = 100.0
+            else:
+                ms = float(s)
         except Exception as e:
             raise ValueError(f"Invalid exposure (ms): {s!r}") from e
 
         if ms <= 0:
             raise ValueError("Exposure (ms) must be > 0")
-        return ms / 1000.0
+        return float(ms) / 1000.0
 
     def _camera_subarray_from_ui(self) -> tuple[int, int, int, int] | None:
         """Return subarray as ROI tuple (xw,yw,xs,ys) or None if disabled."""
@@ -2410,7 +2399,7 @@ class App(tk.Tk):
             pass
 
         try:
-            _: SpectrumRunResult = run_spectrum_stage(
+            r: SpectrumRunResult = run_spectrum_stage(
                 freqs=freqs,
                 do_sequence=do_sequence,
                 insert_index=int(insert_index),
@@ -2437,6 +2426,7 @@ class App(tk.Tk):
                 out_dir=out_dir,
                 rig=rig,
             )
+            self._sw_results = list(r.results)
 
         except Exception as e:
             messagebox.showerror("Sweep", str(e))

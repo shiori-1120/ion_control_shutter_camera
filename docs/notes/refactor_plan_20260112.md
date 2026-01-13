@@ -15,6 +15,8 @@
 ## 0.1 進捗メモ（2026-01-13 時点）
 「巨大な `shutter_gui.py` を壊さずに理解できる形へ」進めるために、まず **起動/停止・IPC・Sweep開始手順** の境界を先に切りました。
 
+（補足）この一連のリファクタは PR #5 として `main` にマージ済みで、`origin/main` の先頭は `a0fec59` です。
+
 ### 直近でできたこと（成果物）
 - worker 起動/停止の境界化
    - [src/shutter_camera_trigger/workers/daq_worker_process.py](../../src/shutter_camera_trigger/workers/daq_worker_process.py)
@@ -37,6 +39,30 @@
 ---
 
 ## 0.2 別チャット引き継ぎメモ（そのまま貼れる）
+
+### 2026-01-13 引き継ぎ（Gitの状態）
+- PR #5 を `main` にマージ済み（`origin/main` = `a0fec59`）
+- 現在の作業ブランチ: `resume/fd0984e`（`fd0984e docs: copilot手順の追記`）
+- 作業ツリー: `src/shutter_camera_trigger/shutter_gui.py` が未コミット変更あり（続きの作業はここから）
+- stash が残っている（必要なら適用/整理）:
+   - `stash@{0}`: `wip: before restoring fd0984e`（復元直前に退避した `.gitignore` 変更）
+   - `stash@{1}`: `backup: before reset to origin (2026-01-13)`（このstashは apply 済みだが、popしていないので残っている）
+   - `stash@{2}`: `sequence: wip: debug label_bright logging + sweep analyzer`
+
+（再開の最短コマンド）
+```powershell
+cd C:\Users\shiori\Desktop\ion_control_shutter_camera
+git status -sb
+git checkout resume/fd0984e
+# もし .gitignore の退避も必要なら:
+# git stash apply "stash@{0}"
+```
+
+（ローカルの `main` は behind 表示になり得るので、必要なら更新する）
+```powershell
+git checkout main
+git pull
+```
 
 ### 作業の目的
 - 目的は「動作維持しつつ、理解できる境界（責務）で分割」すること
