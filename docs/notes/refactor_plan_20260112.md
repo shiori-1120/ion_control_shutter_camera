@@ -12,6 +12,71 @@
 
 ---
 
+## 0.1 進捗メモ（2026-01-13 時点）
+「巨大な `shutter_gui.py` を壊さずに理解できる形へ」進めるために、まず **起動/停止・IPC・Sweep開始手順** の境界を先に切りました。
+
+### 直近でできたこと（成果物）
+- worker 起動/停止の境界化
+   - [src/shutter_camera_trigger/workers/daq_worker_process.py](../../src/shutter_camera_trigger/workers/daq_worker_process.py)
+   - [src/shutter_camera_trigger/workers/camera_worker_process.py](../../src/shutter_camera_trigger/workers/camera_worker_process.py)
+- Queue IPC のクライアント化（request/response をロックで直列化）
+   - [src/shutter_camera_trigger/clients/daq_client.py](../../src/shutter_camera_trigger/clients/daq_client.py)
+   - [src/shutter_camera_trigger/clients/camera_client.py](../../src/shutter_camera_trigger/clients/camera_client.py)
+- Sweep の「開始準備」周りを段階的に外出し（GUI 側を“目次”に寄せる）
+   - [src/shutter_camera_trigger/sweep/session_workers.py](../../src/shutter_camera_trigger/sweep/session_workers.py)（worker/queue 生成）
+   - [src/shutter_camera_trigger/sweep/session_config.py](../../src/shutter_camera_trigger/sweep/session_config.py)（config.json 生成、session dict 構築）
+   - [src/shutter_camera_trigger/sweep/session_parse.py](../../src/shutter_camera_trigger/sweep/session_parse.py)（周波数式パース、sequence_json 読み出し）
+   - [src/shutter_camera_trigger/sweep/session_start.py](../../src/shutter_camera_trigger/sweep/session_start.py)（DAQ ready→camera start→priming→camera ready）
+   - [src/shutter_camera_trigger/sweep/roi_bootstrap.py](../../src/shutter_camera_trigger/sweep/roi_bootstrap.py)（TTL でカメラ応答確認）
+   - [src/shutter_camera_trigger/sweep/stages.py](../../src/shutter_camera_trigger/sweep/stages.py)（GUI 依存の薄い“ステージ”ラッパ）
+
+### いま残っている（次に切り出す候補）
+- Sweep の本体（ROI check / Threshold / Spectrum 実行）の状態機械と保存・描画が、まだ [src/shutter_camera_trigger/shutter_gui.py](../../src/shutter_camera_trigger/shutter_gui.py) に残っている
+- 「ROI bootstrap 成功後〜Session ready」の UI 更新/フラグ更新/失敗時 cleanup も、まだ GUI 側に残る（次に薄くする価値が高い）
+
+---
+
+## 0.2 別チャット引き継ぎメモ（そのまま貼れる）
+
+### 作業の目的
+- 目的は「動作維持しつつ、理解できる境界（責務）で分割」すること
+- Big-bang を避けて、毎回 import/py_compile と dry スモークで壊していないことを確認する
+
+### 現在地（何がどこにあるか）
+- 入口（GUI）: [src/shutter_camera_trigger/shutter_gui.py](../../src/shutter_camera_trigger/shutter_gui.py)
+- Sweep の開始準備（外出し済み）: [src/shutter_camera_trigger/sweep/](../../src/shutter_camera_trigger/sweep/)
+   - workers/queue 生成: [src/shutter_camera_trigger/sweep/session_workers.py](../../src/shutter_camera_trigger/sweep/session_workers.py)
+   - config.json と session dict: [src/shutter_camera_trigger/sweep/session_config.py](../../src/shutter_camera_trigger/sweep/session_config.py)
+   - 周波数式/sequence_json 読み: [src/shutter_camera_trigger/sweep/session_parse.py](../../src/shutter_camera_trigger/sweep/session_parse.py)
+   - ready待ち/priming/起動: [src/shutter_camera_trigger/sweep/session_start.py](../../src/shutter_camera_trigger/sweep/session_start.py)
+   - ROI bootstrap（TTLでカメラ応答確認）: [src/shutter_camera_trigger/sweep/roi_bootstrap.py](../../src/shutter_camera_trigger/sweep/roi_bootstrap.py)
+   - GUI側の薄いステージラッパ: [src/shutter_camera_trigger/sweep/stages.py](../../src/shutter_camera_trigger/sweep/stages.py)
+- worker 起動/停止（境界化済み）: [src/shutter_camera_trigger/workers/](../../src/shutter_camera_trigger/workers/)
+- IPC クライアント（lock付き）: [src/shutter_camera_trigger/clients/](../../src/shutter_camera_trigger/clients/)
+
+### 直近の変更点（2026-01-13）
+- ROI bootstrap の GUI ラッパを消して、sweep 側のステージ関数に寄せた
+   - GUI は `run_roi_bootstrap_stage(...)` を呼ぶだけになっている
+
+### 次にやると効果が高いこと（推奨順）
+1) 「ROI bootstrap 成功後〜Session ready」の UI/フラグ/cleanup を `sweep/` 側へ寄せて、GUIを薄くする
+    - 例: `sweep/session_ready.py` や `sweep/stages.py` にまとめて、GUI側は bool/例外で分岐だけにする
+2) ROI check / Threshold / Spectrum 実行の“状態機械”を `sweep/controller.py` 的なモジュールへ寄せる
+    - GUI側は「ボタン→controller呼び出し」「描画の呼び出し」「messagebox」だけに近づける
+3) sweep 実行中の Queue 直叩きを `DaqClient` / `CameraClient` 経由に置き換える（必要箇所だけ）
+
+### すぐ使える検証（myenv 前提）
+- import/py_compile:
+   - `C:\Users\shiori\Desktop\ion_control_shutter_camera\myenv\Scripts\python.exe -c "import py_compile; import src.shutter_camera_trigger.shutter_gui as g; py_compile.compile(g.__file__, doraise=True); import src.shutter_camera_trigger.sweep.stages as s; py_compile.compile(s.__file__, doraise=True); print('OK')"`
+- GUI 起動:
+   - `C:\Users\shiori\Desktop\ion_control_shutter_camera\myenv\Scripts\python.exe -m src.shutter_camera_trigger.shutter_gui`
+
+### 注意点（ハマりどころ）
+- GUI（Tk）側から Queue get を直に待つと固まりやすいので、UIポンプ/timeout を常に意識する
+- Sweep の「開始準備」は分離が進んだが、ROI/Threshold/Spectrum の本体がまだ GUI に残るので、ここを触るときは小さく切って都度動作確認する
+
+---
+
 ## 1. 現状の把握（入口と責務）
 
 ### 1.1 主要な入口（まずここだけ覚える）
@@ -65,6 +130,10 @@
 ### フェーズ1: shutter_gui を「UI」と「アプリ制御」に分割
 目的: `App(tk.Tk)` を“薄く”して読みやすくする。
 
+**現状（2026-01-13）**
+- まだ `App` は巨大だが、worker 起動/停止と IPC の一部は外部モジュールへ移動済み
+- 次の狙いは「GUIの状態更新（ボタン/ラベル/フラグ）」と「Sweep手順」をさらに分離して、`_sw_prepare_session` を“目次”へ近づける
+
 **やること**
 1) `App` の責務を2層に分ける
    - UI層: Tk/ttk widget, messagebox, after, layout
@@ -92,6 +161,10 @@
   に分解
 - GUIは `SweepController` のAPIだけ呼ぶ
 
+**現状（2026-01-13）**
+- Sweep開始準備（workers/config/入力パース/ready待ち/priming/roi_bootstrap）は `sweep/` に移動済み
+- ROI check / Threshold / Spectrum 実行（ループ・保存・描画）は GUI 側に残っている（次の分割対象）
+
 **理解チェック**
 - Q2-1: Threshold（tau）は「何から」推定して「何に」使う？
 - Q2-2: ROI checkは “なぜ” 分布プロットをしない？
@@ -103,6 +176,10 @@
 - `DaqClient.request(cmd)->resp` のみで触れるようにする（timeout/エラー整形も集約）
 - `CameraClient` も同様
 - “プロセス掃除” も `ProcessManager` 的にまとめる（PID記録/cleanup）
+
+**現状（2026-01-13）**
+- `DaqClient` / `CameraClient` は導入済み
+- Sweep準備以外（ROI/Threshold/Spectrum実行中）の Queue 直叩きが残っているので、必要箇所だけ段階的に置き換える
 
 **理解チェック**
 - Q3-1: DAQ worker へのコマンドは大きく何種類？（set_do / run_sequence_once …）
@@ -129,6 +206,10 @@
 **やること**
 - READMEの dry bring-up コマンドを“この計画に紐づく”形で整備
 - `python -m ...` の動作確認手順を固定化（GUI起動/runner起動/ログの場所）
+
+**現状（2026-01-13）**
+- `myenv` で import と py_compile を通す確認は継続して実施
+- dry のスモーク（camera trigger / runner）も実行して、出力生成まで到達することを確認
 
 **理解チェック**
 - Q5-1: dryで「DAQだけ」「cameraだけ」「sweep一周」をどう切り分けて確認する？
