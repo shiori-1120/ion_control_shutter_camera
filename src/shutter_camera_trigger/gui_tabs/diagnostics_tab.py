@@ -74,6 +74,15 @@ def build_diagnostics_tab(
     )
     ttk.Label(right, text="Log").pack(anchor=tk.W, padx=8, pady=(0, 0))
     ttk.Label(right, textvariable=app.diag_log_var, wraplength=260, justify=tk.LEFT).pack(anchor=tk.W, padx=8, pady=(0, 8))
+    ttk.Label(right, text="Paths").pack(anchor=tk.W, padx=8, pady=(4, 0))
+    app.diag_logs_root_var = tk.StringVar(value=_resolve_logs_path(app))
+    app.diag_output_root_var = tk.StringVar(value=_resolve_output_path(app))
+    ttk.Label(right, textvariable=app.diag_logs_root_var, wraplength=260, justify=tk.LEFT).pack(
+        anchor=tk.W, padx=8, pady=(0, 2)
+    )
+    ttk.Label(right, textvariable=app.diag_output_root_var, wraplength=260, justify=tk.LEFT).pack(
+        anchor=tk.W, padx=8, pady=(0, 8)
+    )
 
 
 def _copy_log_path(app: Any) -> None:
@@ -125,3 +134,13 @@ def _select_history(app: Any) -> None:
         app._last_error_log = log_path
     except Exception:
         pass
+
+
+def _resolve_logs_path(app: Any) -> str:
+    log_dir = getattr(getattr(app, "_log_ctx", None), "log_dir", None)
+    return f"Logs: {log_dir}" if log_dir else "Logs: (unknown)"
+
+
+def _resolve_output_path(app: Any) -> str:
+    output_root = getattr(app, "output_root", None)
+    return f"Output: {output_root}" if output_root else "Output: (unknown)"
