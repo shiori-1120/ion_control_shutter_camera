@@ -28,6 +28,7 @@ from multiprocessing import Process
 from .clients.daq_client import DaqClient
 from .gui_support.prefs import resolve_repo_relative_path
 from .gui_support.app_lifecycle import apply_default_fonts, load_camera_prefs, on_close
+from .gui_support.camera_worker_manager import stop_camera_worker
 from .gui_support.dialogs import pick_seq_json
 from .config.device_registry import load_device_registry
 from .gui_support.device_registry_ui import load_device_registry_ui, save_device_registry_ui
@@ -158,12 +159,17 @@ class App(tk.Tk):
             load_camera_prefs(self, prefs_path=self._prefs_path)
         except Exception:
             pass
+        def _before_close() -> None:
+            try:
+                save_device_registry_ui(self, self._device_registry_path)
+            finally:
+                stop_camera_worker(self)
         self.protocol(
             "WM_DELETE_WINDOW",
             lambda: on_close(
                 self,
                 prefs_path=self._prefs_path,
-                before_close_cb=lambda: save_device_registry_ui(self, self._device_registry_path),
+                before_close_cb=_before_close,
                 stop_sweep_cb=lambda: stop_sweep(self, clean_only=True),
                 disconnect_daq_cb=lambda: disconnect_daq(self, all_off=ALL_OFF),
                 disconnect_fg_cb=lambda: disconnect_fg(self),

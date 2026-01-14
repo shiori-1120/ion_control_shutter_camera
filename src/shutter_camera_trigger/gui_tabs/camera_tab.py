@@ -1,10 +1,8 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime
-from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any, Callable
-import queue
 import threading
 import time
 import tkinter as tk
@@ -13,20 +11,12 @@ from tkinter import ttk
 
 import numpy as np
 
-from ..gui_support.image_utils import robust_gray_limits
 from ..gui_support.diagnostics import set_last_error
-from ..gui_support.validators import (
-    apply_subarray_to_cam_cfg,
-    parse_camera_trigger_cfg,
-    parse_exposure_s_safe,
-)
-from ..gui_support.worker_cleanup import cleanup_stale_workers, write_last_worker_pids
-from ..gui_support.worker_messages import format_worker_failure
-from ..hardware import CameraWorkerDevice, DaqClientDevice, DaqQueueDevice, DaqSequenceCommand
+from ..gui_support.camera_worker_manager import build_cam_cfg, ensure_camera_worker
+from ..gui_support.camera_capture import acquire_frame_with_ttl
+from ..gui_support.validators import parse_exposure_s_safe
+from ..hardware import DaqClientDevice, DaqSequenceCommand
 from ..config.device_registry import resolve_output_root
-from ..sweep.session_config import write_manifest_json
-from ..workers.camera_worker_process import start_camera_worker_process, stop_worker_process
-from ..workers.daq_worker_process import start_daq_worker_process
 
 
 def _resolve_output_root(app: Any) -> Path:
@@ -64,35 +54,46 @@ def build_camera_tab(app: Any) -> None:
         ttk.Label(app.camera_tab, text="matplotlib not available; camera plot disabled").pack()
 
 
-def get_camera_instance(app):
-    """app._qCMOSにカメラインスタンスを保持し、なければ生成・openする。"""
-    from src.camera.lib.ControlDevice import Control_qCMOScamera
-    if getattr(app, '_qCMOS', None) is None:
-        cam = Control_qCMOScamera(verbose=True)
-        cam.OpenCamera_GetHandle()
-        app._qCMOS = cam
-    return app._qCMOS
+def _is_external_trigger(trigger_cfg: dict[str, Any]) -> bool:
+    src = str(trigger_cfg.get("source") or "EXTERNAL").strip().upper()
+    return src in ("EXTERNAL", "EXT", "2", "")
 
 
-def release_camera_instance(app):
-    """アプリ終了時にカメラを解放する。"""
-    cam = getattr(app, '_qCMOS', None)
-    if cam is not None:
-        try:
-            cam.StopCapture()
-        except Exception:
-            pass
-        try:
-            cam.ReleaseBuf()
-        except Exception:
-            pass
-        try:
-            import time as _time
-            _time.sleep(0.1)
-            cam.CloseUninitCamera()
-        except Exception:
-            pass
-        app._qCMOS = None
+def _build_prime_cb(
+    app: Any,
+    *,
+    nm_397: int,
+    camera_trigger: int,
+    roi_pulse_s: float,
+    roi_idle_s: float,
+    ao_rate_hz: float,
+) -> Callable[[], None]:
+    last_fire = {"t": 0.0}
+
+    def _prime() -> None:
+        now = time.time()
+        if now - last_fire["t"] < 0.05:
+            return
+        last_fire["t"] = now
+        daq = DaqClientDevice(app._daq)
+        daq.open(str(getattr(app, "_daq_device", "") or ""))
+        seq_cmd = DaqSequenceCommand(
+            do_sequence=[
+                (nm_397, float(roi_idle_s)),
+                (nm_397 | camera_trigger, float(roi_pulse_s)),
+                (nm_397, float(roi_idle_s)),
+            ],
+            ao_insert_index=-1,
+            ao_width_ms=0.0,
+        )
+        daq.run_sequence_once(seq_cmd)
+
+    return _prime
+
+
+def _require_external_trigger(trig_cfg: dict[str, Any]) -> None:
+    if not _is_external_trigger(trig_cfg):
+        raise RuntimeError("Internal trigger is not supported. Set trigger source to EXTERNAL.")
 
 
 def camera_check(
@@ -106,19 +107,33 @@ def camera_check(
     ao_rate_hz: float,
 ) -> None:
     """カメラ接続確認だけを行うシンプルなチェック"""
+
     def _worker() -> None:
         import traceback
         ui_msg = ""
         try:
-            cam = get_camera_instance(app)
+            cam_cfg = build_cam_cfg(app)
+            trig_cfg = cam_cfg.get("trigger") or {}
+            _require_external_trigger(trig_cfg)
+            ready_timeout_s = 30.0
+            prime_cb = None
+            if cam_cfg.get("mode") == "real" and _is_external_trigger(trig_cfg):
+                if not app._daq.connected:
+                    raise RuntimeError("DAQ not connected (external trigger)")
+                ready_timeout_s = 180.0
+                prime_cb = _build_prime_cb(
+                    app,
+                    nm_397=nm_397,
+                    camera_trigger=camera_trigger,
+                    roi_pulse_s=roi_pulse_s,
+                    roi_idle_s=roi_idle_s,
+                    ao_rate_hz=ao_rate_hz,
+                )
+            ensure_camera_worker(app, cam_cfg=cam_cfg, ready_timeout_s=ready_timeout_s, prime_cb=prime_cb)
+            app._cam_status.set("Camera: ready")
             ui_msg = "カメラ接続OK"
         except Exception as e:
             ui_msg = f"カメラ接続エラー: {e}\n{traceback.format_exc(limit=2)}"
-        finally:
-            try:
-                release_camera_instance(app)
-            except Exception:
-                pass
         app.after(0, lambda: messagebox.showinfo("Camera", ui_msg))
         set_last_error(app, label="Camera", message=ui_msg)
 
@@ -143,31 +158,78 @@ def camera_snap(
         from datetime import datetime
         import time as _time
 
-
         try:
-            exposure_s = float(parse_exposure_s_safe(app))
-            cam = get_camera_instance(app)
-            cam.SetParameters(exposure_s)
-            cam.StartCapture()
-
-            from ..hardware import DaqClientDevice
-            daq = DaqClientDevice(app._daq)
-            pulse_width = max(roi_pulse_s, 0.01)  # 10ms以上
+            cam_cfg = build_cam_cfg(app)
+            exposure_s = float(cam_cfg.get("exposure_s") or parse_exposure_s_safe(app))
+            frame_timeout_s = float(cam_cfg.get("frame_timeout_s") or max(1.0, exposure_s * 4.0 + 0.5))
+            trig_cfg = cam_cfg.get("trigger") or {}
+            _require_external_trigger(trig_cfg)
+            ready_timeout_s = 30.0
+            prime_cb = None
+            if cam_cfg.get("mode") == "real" and _is_external_trigger(trig_cfg):
+                if not app._daq.connected:
+                    raise RuntimeError("DAQ not connected (external trigger)")
+                ready_timeout_s = 180.0
+                prime_cb = _build_prime_cb(
+                    app,
+                    nm_397=nm_397,
+                    camera_trigger=camera_trigger,
+                    roi_pulse_s=roi_pulse_s,
+                    roi_idle_s=roi_idle_s,
+                    ao_rate_hz=ao_rate_hz,
+                )
+            _, cmd_q, _ = ensure_camera_worker(app, cam_cfg=cam_cfg, ready_timeout_s=ready_timeout_s, prime_cb=prime_cb)
+            resp_q = getattr(app, "_cam_worker_resp_q", None)
+            if resp_q is None:
+                raise RuntimeError("Camera worker response queue missing")
+            need_ttl = cam_cfg.get("mode") == "real" and _is_external_trigger(trig_cfg)
+            daq = None
+            pulse_width = max(float(roi_pulse_s), 0.01)
+            if need_ttl:
+                daq = DaqClientDevice(app._daq)
+                daq.open(str(getattr(app, "_daq_device", "") or ""))
             max_attempt = 5
-            ok = False
-            err = None
-            for attempt in range(max_attempt):
-                daq.set_do(camera_trigger)
-                _time.sleep(pulse_width)
-                daq.set_do(0)
-                ok, err = cam.wait_for_frame_ready(0.5)
-                if ok:
-                    break
-                _time.sleep(0.05)  # 50ms待機
-            if not ok:
-                raise RuntimeError(f"frame not ready after {max_attempt} TTLs: {err}")
-            _, frame = cam.GetLastFrame()
-            arr = np.asarray(frame)
+
+            def _send_get_frame(timeout_s: float, prefer_sample: str | None) -> None:
+                cmd_q.put({"cmd": "get_frame", "timeout_s": float(timeout_s), "tag": f"snap-{_send_get_frame.attempt}"})
+
+            _send_get_frame.attempt = -1  # type: ignore[attr-defined]
+
+            def _run_ttl() -> None:
+                if need_ttl and daq is not None:
+                    seq_cmd = DaqSequenceCommand(
+                        do_sequence=[
+                            (nm_397, float(roi_idle_s)),
+                            (nm_397 | camera_trigger, float(pulse_width)),
+                            (nm_397, float(roi_idle_s)),
+                        ],
+                        ao_insert_index=-1,
+                        ao_width_ms=0.0,
+                    )
+                    daq.run_sequence_once(seq_cmd)
+
+            def _wait_resp(timeout_s: float, _label: str) -> dict:
+                return resp_q.get(timeout=float(timeout_s))
+
+            def _send_get_frame_with_count(timeout_s: float, prefer_sample: str | None) -> None:
+                _send_get_frame.attempt += 1  # type: ignore[attr-defined]
+                _send_get_frame(timeout_s, prefer_sample)
+
+            resp_pack = acquire_frame_with_ttl(
+                send_get_frame=_send_get_frame_with_count,
+                run_ttl=_run_ttl,
+                wait_resp=_wait_resp,
+                max_attempt=max_attempt,
+                frame_timeout_s=frame_timeout_s,
+                resp_timeout_s=frame_timeout_s + 2.0,
+                prefer_sample_path=None,
+                sleep_s=0.05,
+                log_cb=None,
+            )
+            if not resp_pack.get("ok"):
+                raise RuntimeError(f"frame not ready after {max_attempt} TTLs: {resp_pack.get('error')}")
+            resp = resp_pack.get("resp") or {}
+            arr = np.asarray(resp.get("frame"))
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_dir = _resolve_output_root(app) / "camera_snap" / ts
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -181,11 +243,6 @@ def camera_snap(
             ui_msg = f"カメラスナップエラー: {e}\n{traceback.format_exc(limit=2)}"
             app._cam_status.set(f"Snap: error {e}")
             set_last_error(app, label="Camera", message=str(e))
-        finally:
-            try:
-                release_camera_instance(app)
-            except Exception:
-                pass
         app.after(0, lambda: messagebox.showinfo("Camera", ui_msg))
 
     threading.Thread(target=_worker, daemon=True).start()
