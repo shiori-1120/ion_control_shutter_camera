@@ -91,6 +91,16 @@ def camera_snap(
     try:
         if getattr(app, "_logger", None):
             app._logger.info(
+                "camera_snap_start mode=%s exposure_s=%.4f trig_src=%s",
+                mode,
+                float(exposure_s),
+                trig_src,
+            )
+    except Exception:
+        pass
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info(
                 "camera_check_start mode=%s exposure_s=%.4f trig_src=%s",
                 mode,
                 float(exposure_s),
