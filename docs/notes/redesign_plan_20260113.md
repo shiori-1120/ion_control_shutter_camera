@@ -674,6 +674,7 @@
 - 2026-01-14: camera_actions応答選択を共通ヘルパーへ集約。
 - 2026-01-14: camera_actionsのtagをカメラ応答に通してshots.csvへ記録。
 - 2026-01-14: camera_actionsのデフォルトtagをkind@t_s形式に調整。
+- 2026-01-14: SequenceSpecのCameraCommandにtagのデフォルトを付与。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

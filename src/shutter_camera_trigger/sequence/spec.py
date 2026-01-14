@@ -82,6 +82,8 @@ def compile_sequence_spec(
     for action in spec.camera_actions:
         meta = dict(action.meta)
         meta.setdefault("t_s", float(action.t_s))
+        if "tag" not in meta or str(meta.get("tag") or "") == "":
+            meta["tag"] = f"{action.kind}@{float(action.t_s):.6f}"
         timeout_s = float(meta.get("timeout_s") or default_camera_timeout_s)
         cam_cmds.append(CameraCommand(kind=str(action.kind), timeout_s=timeout_s, meta=meta))
     return seq_cmd, cam_cmds
