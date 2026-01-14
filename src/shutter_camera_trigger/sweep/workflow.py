@@ -189,6 +189,7 @@ def roi_check(
             canvas=canvas,
             prefer_sample_path=prefer_sample,
             session=state.session,
+            max_attempt=deps.ROI_MAX_ATTEMPT,
         )
         roi = r.roi
 
