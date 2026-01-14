@@ -16,12 +16,16 @@ visualize_npy.py
 
 import os
 import sys
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List
-
-# initial_preparation のプロット関数を使用（同一ディレクトリ内）
-from initial_preparation import show_npy_2d
+# initial_preparation のプロット関数を絶対importで使用
+try:
+    from src.camera.initial_preparation import show_npy_2d
+except ImportError:
+    # 直接src/cameraから実行した場合のフォールバック
+    from initial_preparation import show_npy_2d
 
 
 def load_array(path: str):
@@ -36,9 +40,22 @@ def list_npy_files(raw_dir: str) -> List[str]:
     return [os.path.join(raw_dir, fn) for fn in sorted(os.listdir(raw_dir)) if fn.lower().endswith('.npy')]
 
 
-def save_all_npy_as_png(raw_dir: str) -> int:
-    if not os.path.isdir(raw_dir):
+def _resolve_raw_dir(raw_dir: str) -> str:
+    p = Path(raw_dir).expanduser()
+    if not p.is_dir():
         raise FileNotFoundError(f"raw-data directory not found: {raw_dir}")
+    if p.name.lower() == "raw-data":
+        return str(p)
+    candidate = p / "raw-data"
+    if candidate.is_dir():
+        return str(candidate)
+    if any(child.suffix.lower() == ".npy" for child in p.iterdir()):
+        return str(p)
+    raise FileNotFoundError(f"raw-data directory not found: {raw_dir}")
+
+
+def save_all_npy_as_png(raw_dir: str) -> int:
+    raw_dir = _resolve_raw_dir(raw_dir)
 
     # plots フォルダの決定（raw-data の親がセッションルート）
     session_root = os.path.dirname(os.path.abspath(raw_dir))
@@ -73,7 +90,8 @@ def save_all_npy_as_png(raw_dir: str) -> int:
 def main() -> int:
     # 引数は raw-data ディレクトリ（.npy が並んでいるフォルダ）
     if len(sys.argv) != 2:
-        print("Usage: python src\\camera\\visualize_npy.py <path-to-raw-data-folder>")
+        print("Usage: python src\\camera\\visualize_npy.py <path-to-session-or-raw-data>")
+        print("Example: python src\\camera\\visualize_npy.py data\\output\\spectrum\\YYYYMMDD_HHMMSS")
         return 2
     raw_dir = sys.argv[1]
     try:
