@@ -23,6 +23,11 @@ def connect_daq(app: Any, *, default_daq_device: str, nm_397: int) -> None:
         app.status_var.set(f"Connected: {device} ({mode})")
         app.connect_btn.configure(state="disabled")
         app.disconnect_btn.configure(state="normal")
+        try:
+            if getattr(app, "_logger", None):
+                app._logger.info("daq_connect_ok device=%s mode=%s", device, mode)
+        except Exception:
+            pass
     except Exception as e:
         app._daq_device = None
         from tkinter import messagebox
@@ -34,6 +39,11 @@ def connect_daq(app: Any, *, default_daq_device: str, nm_397: int) -> None:
             message=str(e),
             log_path=resolve_log_path(app, filename="app.log"),
         )
+        try:
+            if getattr(app, "_logger", None):
+                app._logger.error("daq_connect_failed error=%s", e)
+        except Exception:
+            pass
 
 
 def disconnect_daq(app: Any, *, all_off: int) -> None:
@@ -56,3 +66,8 @@ def disconnect_daq(app: Any, *, all_off: int) -> None:
     app.status_var.set("Disconnected")
     app.connect_btn.configure(state="normal")
     app.disconnect_btn.configure(state="disabled")
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info("daq_disconnect")
+    except Exception:
+        pass
