@@ -45,6 +45,14 @@ def connect_fg(app: Any, *, get_amp_vpp) -> None:
             rig.apply({"amp_vpp": get_amp_vpp()})
         except Exception:
             pass
+        try:
+            idn = rig.idn()
+            if fg_logger:
+                fg_logger.info("idn %s", idn)
+            if getattr(app, "_logger", None):
+                app._logger.info("fg_idn %s", idn)
+        except Exception:
+            pass
 
         app._fg_handle = rig
         app._fg_resource = resource
