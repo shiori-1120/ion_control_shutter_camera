@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import sys
+import traceback
 from typing import Any
 
 
@@ -96,6 +98,8 @@ def set_last_error(app: Any, *, label: str, message: str, log_path: str | None =
     try:
         if getattr(app, "_logger", None):
             app._logger.error("diagnostics_error label=%s message=%s log_path=%s", label, message, log_path or "")
+            if sys.exc_info()[0]:
+                app._logger.error("Traceback:\n%s", traceback.format_exc())
     except Exception:
         pass
 

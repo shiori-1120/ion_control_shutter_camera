@@ -37,7 +37,8 @@ def build_camera_schedule(
             t_s = 0.0
         tag = meta.get("tag")
         if tag is None or str(tag) == "":
-            tag = f"camera_action_{idx}"
+            base = kind.lower().strip() or "action"
+            tag = f"{base}@{t_s:.6f}"
 
         payload = {
             "cmd": "get_frame" if kind.lower() == "capture" else "get_state",
