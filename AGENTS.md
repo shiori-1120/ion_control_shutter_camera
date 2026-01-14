@@ -32,6 +32,6 @@
 ## 残タスク
 - フェーズ3: ハードI/Fの整理（adapter/legacyの棚卸しと置換方針の明文化）
 - フェーズ5: SequenceSpec分離の仕上げ（sync_markers活用範囲の最終確認）
-- camera_actions/sync_markersの出力確認と必要なエラー処理の追加
+- camera_actions/sync_markersの出力確認（警告ログは実装済）
 - 既存UIとDeviceRegistryの差分整理の最終確認
 

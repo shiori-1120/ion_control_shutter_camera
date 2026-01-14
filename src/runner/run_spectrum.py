@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
+import logging
 import os
 import queue
 import threading
@@ -27,7 +29,7 @@ from typing import Any
 
 from src.shutter_camera_trigger.config.device_registry import resolve_output_root
 from src.shutter_camera_trigger.sweep.session_config import write_manifest_json
-from src.shutter_camera_trigger.hardware import DaqQueueDevice, DaqSequenceCommand
+from src.shutter_camera_trigger.hardware import DaqQueueDevice, DaqSequenceCommand, RigolFgDevice
 from src.shutter_camera_trigger.sequence.spec import build_sequence_spec, compile_sequence_spec
 from src.shutter_camera_trigger.sequence.timing import (
     build_camera_schedule,
@@ -36,6 +38,7 @@ from src.shutter_camera_trigger.sequence.timing import (
 )
 from src.shutter_camera_trigger.sweep.session_parse import read_sequence_json_params
 
+logger = logging.getLogger("runner.run_spectrum")
 
 
 def _limit_blas_threads() -> None:
@@ -91,6 +94,7 @@ def _freq_list_from_args(args: argparse.Namespace) -> list[float]:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     _limit_blas_threads()
 
     # Import workers lazily to allow dry bring-up on machines without NI-DAQmx/pyvisa.
@@ -196,34 +200,43 @@ def main() -> None:
     )
     camera_actions_path = None
     if seq_params.camera_actions:
-        camera_actions_path = out_dir / "camera_actions.json"
-        camera_actions_path.write_text(
-            json.dumps(seq_params.camera_actions, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        try:
+            camera_actions_path = out_dir / "camera_actions.json"
+            camera_actions_path.write_text(
+                json.dumps(seq_params.camera_actions, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning("Failed to write camera_actions.json: %s", e)
     sync_markers_path = None
     if seq_params.sync_markers:
-        sync_markers_path = out_dir / "sync_markers.json"
-        sync_markers_path.write_text(
-            json.dumps(seq_params.sync_markers, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        try:
+            sync_markers_path = out_dir / "sync_markers.json"
+            sync_markers_path.write_text(
+                json.dumps(seq_params.sync_markers, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning("Failed to write sync_markers.json: %s", e)
     sync_markers_csv = None
     if seq_params.sync_markers:
-        sync_markers_csv = out_dir / "sync_markers.csv"
-        with sync_markers_csv.open("w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["t_s", "label"])
-            writer.writeheader()
-            for marker in seq_params.sync_markers:
-                try:
-                    writer.writerow(
-                        {
-                            "t_s": float(marker.get("t_s", 0.0)),
-                            "label": str(marker.get("label", "")),
-                        }
-                    )
-                except Exception:
-                    continue
+        try:
+            sync_markers_csv = out_dir / "sync_markers.csv"
+            with sync_markers_csv.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=["t_s", "label"])
+                writer.writeheader()
+                for marker in seq_params.sync_markers:
+                    try:
+                        writer.writerow(
+                            {
+                                "t_s": float(marker.get("t_s", 0.0)),
+                                "label": str(marker.get("label", "")),
+                            }
+                        )
+                    except Exception:
+                        continue
+        except Exception as e:
+            logger.warning("Failed to write sync_markers.csv: %s", e)
 
     shots_path = out_dir / "shots.csv"
     spec_path = out_dir / "spectrum.csv"
@@ -320,11 +333,8 @@ def main() -> None:
     rig = None
     idn_path = None
     if not args.no_fg:
-        # Rigol DG control
-        from src.lib.instruments.rigol_dg import RigolDG, RigolDgConfig
-
-        rig = RigolDG(RigolDgConfig(visa_resource=str(args.visa_resource), channel=1, timeout_ms=5000))
-        rig.open()
+        rig = RigolFgDevice(channel=1, timeout_ms=5000)
+        rig.open(str(args.visa_resource))
         try:
             idn = rig.idn()
         except Exception:

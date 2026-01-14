@@ -677,6 +677,8 @@
 - 2026-01-14: SequenceSpecのCameraCommandにtagのデフォルトを付与。
 - 2026-01-14: Sequenceタブにcamera_actions/sync_markers件数の表示とログ出力を追加。
 - 2026-01-14: sweep出力のcamera_actions/sync_markers保存失敗を警告表示するよう改善。
+- 2026-01-14: run_spectrumでもcamera_actions/sync_markers保存失敗を警告表示するよう改善。
+- 2026-01-14: FgDeviceプロトコルにidn()を追加しFGアダプタ統一を補強。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming
@@ -693,3 +695,14 @@
 
 ### RigolFgDevice
 - FG connect/disconnect
+
+### 置換方針メモ（フェーズ3）
+- DaqClientDeviceはGUI側の即時操作（set_do/run_sequence_once）に限定し、sweepはDaqQueueDeviceへ集約する。
+- CameraWorkerDeviceはcamera_check/snapのみ保持し、sweep側はQueueのみ利用する（Queue経由で統一）。
+- RigolFgDeviceはFG制御の単一エントリに固定し、直接RigolDGを触る箇所を削減する。
+
+### 対応表（legacy -> adapter）
+- DAQ: DaqClient/daq_controller -> DaqClientDevice
+- DAQ: mpq/queue worker -> DaqQueueDevice
+- Camera: ion_state_worker -> CameraWorkerDevice/CameraQueueDevice
+- FG: RigolDG -> RigolFgDevice（run_spectrumもRigolFgDeviceへ統一）

@@ -41,6 +41,11 @@ class RigolFgDevice(FgDevice):
             raise RuntimeError("FG not opened")
         self._handle.output(bool(enabled))
 
+    def idn(self) -> str:
+        if self._handle is None:
+            raise RuntimeError("FG not opened")
+        return str(self._handle.idn())
+
     def close(self) -> None:
         if self._handle is None:
             return
