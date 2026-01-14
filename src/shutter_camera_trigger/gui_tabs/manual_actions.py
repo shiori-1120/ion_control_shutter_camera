@@ -23,7 +23,7 @@ def all_off(app: Any, *, all_off: int, nm_397: int) -> None:
             )
         except Exception:
             do_all_off = False
-    DaqClientDevice(app._daq).set_do(int(all_off if do_all_off else nm_397))
+        DaqClientDevice(app._daq).set_do(int(all_off if do_all_off else nm_397))
     except Exception as e:
         messagebox.showerror("DO error", str(e))
         set_last_error(
@@ -53,7 +53,7 @@ def apply_manual(
             value |= nm_729
         if app.v_854.get():
             value |= nm_854
-    DaqClientDevice(app._daq).set_do(int(value))
+        DaqClientDevice(app._daq).set_do(int(value))
     except Exception as e:
         messagebox.showerror("Manual apply error", str(e))
         set_last_error(

@@ -16,11 +16,14 @@ class SweepPersistedConfig:
     n_target: int
     max_attempt: int
     settle_s: float
+    update_interval: float
     daq_mode: str
     device: str
     sequence_json: str
     insert_index: int
     ao_width_ms: float
+    camera_actions: list[dict[str, Any]]
+    sync_markers: list[dict[str, Any]]
     camera_mode: str
     camera_exposure_s: float
     fg_amp_mvpp: float
@@ -32,11 +35,14 @@ class SweepPersistedConfig:
             "n_target": int(self.n_target),
             "max_attempt": int(self.max_attempt),
             "settle_s": float(self.settle_s),
+            "update_interval": float(self.update_interval),
             "daq_mode": str(self.daq_mode),
             "device": str(self.device),
             "sequence_json": str(self.sequence_json),
             "insert_index": int(self.insert_index),
             "ao_width_ms": float(self.ao_width_ms),
+            "camera_actions": list(self.camera_actions),
+            "sync_markers": list(self.sync_markers),
             "camera_mode": str(self.camera_mode),
             "camera_exposure_s": float(self.camera_exposure_s),
             "fg_amp_mvpp": float(self.fg_amp_mvpp),

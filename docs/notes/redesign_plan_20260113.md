@@ -1,128 +1,128 @@
-ï»¿# å†è¨­è¨ˆãƒ—ãƒ©ãƒ³ï¼ˆsweep + GUIï¼‰2026-01-13
+# ÄİŒvƒvƒ‰ƒ“isweep + GUIj2026-01-13
 
-## ç›®æ¨™ï¼ˆæœ€å„ªå…ˆï¼‰
-- sweepã®å„ãƒ—ãƒ­ã‚»ã‚¹ã‚’ãƒ¢ã‚¸ãƒ¥ãƒ¼ãƒ«åŒ–ã—ã€dry/realã§åŒã˜å‡¦ç†ãƒ•ãƒ­ãƒ¼ã‚’é€šã™ã€‚
-- è£…ç½®I/Oã¨ãƒ‡ãƒ¼ã‚¿å‡¦ç†ã‚’åˆ†é›¢ã—ã€dryã§å‡¦ç†æ¤œè¨¼ã€realã§å–å¾—æ¤œè¨¼ãŒã§ãã‚‹ã‚ˆã†ã«ã™ã‚‹ã€‚
-- GUIã‚’UIãƒ¢ã‚¸ãƒ¥ãƒ¼ãƒ«ã¨ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ã«åˆ†é›¢ã—ã€è¨­å®šã¯ä¸Šéƒ¨ã‚¿ãƒ–ã«é›†ç´„ã™ã‚‹ã€‚
-- ãƒ­ã‚°ã‚’å¼·åŒ–ã—ã€ç‰¹ã«ã‚«ãƒ¡ãƒ©æ¥ç¶šã®ãƒ‡ãƒãƒƒã‚°ã‚’å®¹æ˜“ã«ã™ã‚‹ã€‚
-- ç„¡é™ãƒ«ãƒ¼ãƒ—ã‚„éè² è·ã‚’é¿ã‘ã€å®‰å…¨åœæ­¢ã‚’ä¿è¨¼ã™ã‚‹ã€‚
+## –Ú•WiÅ—Dæj
+- sweep‚ÌŠeƒvƒƒZƒX‚ğƒ‚ƒWƒ…[ƒ‹‰»‚µAdry/real‚Å“¯‚¶ˆ—ƒtƒ[‚ğ’Ê‚·B
+- ‘•’uI/O‚Æƒf[ƒ^ˆ—‚ğ•ª—£‚µAdry‚Åˆ—ŒŸØAreal‚Åæ“¾ŒŸØ‚ª‚Å‚«‚é‚æ‚¤‚É‚·‚éB
+- GUI‚ğUIƒ‚ƒWƒ…[ƒ‹‚ÆƒRƒ“ƒgƒ[ƒ‰‚É•ª—£‚µAİ’è‚Íã•”ƒ^ƒu‚ÉW–ñ‚·‚éB
+- ƒƒO‚ğ‹­‰»‚µA“Á‚ÉƒJƒƒ‰Ú‘±‚ÌƒfƒoƒbƒO‚ğ—eˆÕ‚É‚·‚éB
+- –³ŒÀƒ‹[ƒv‚â‰ß•‰‰×‚ğ”ğ‚¯AˆÀ‘S’â~‚ğ•ÛØ‚·‚éB
 
-## ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ãƒ¼ãƒ¢ã‚¸ãƒ¥ãƒ¼ãƒ«ã¨ã¯
-ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ãƒ¼ã¯ãƒ¯ãƒ¼ã‚¯ãƒ•ãƒ­ãƒ¼ã®å¸ä»¤å¡”ã€‚çŠ¶æ…‹é·ç§»ã‚’ç®¡ç†ã—ã€ãƒãƒ¼ãƒ‰ã‚¦ã‚§ã‚¢ã¨å‡¦ç†ãƒ‘ã‚¤ãƒ—ãƒ©ã‚¤ãƒ³ã‚’å‘¼ã³å‡ºã™ãŒã€UIã‚„ãƒ‡ãƒã‚¤ã‚¹ãƒ‰ãƒ©ã‚¤ãƒã‚’ç›´æ¥æŒãŸãªã„ã€‚
+## ƒRƒ“ƒgƒ[ƒ‰[ƒ‚ƒWƒ…[ƒ‹‚Æ‚Í
+ƒRƒ“ƒgƒ[ƒ‰[‚Íƒ[ƒNƒtƒ[‚Ìi—ß“ƒBó‘Ô‘JˆÚ‚ğŠÇ—‚µAƒn[ƒhƒEƒFƒA‚Æˆ—ƒpƒCƒvƒ‰ƒCƒ“‚ğŒÄ‚Ño‚·‚ªAUI‚âƒfƒoƒCƒXƒhƒ‰ƒCƒo‚ğ’¼Ú‚½‚È‚¢B
 
-è²¬å‹™:
-- sweepçŠ¶æ…‹æ©Ÿæ¢°ï¼ˆidle -> prepared -> roi -> threshold -> running -> stoppingï¼‰ã‚’ç®¡ç†
-- å…¥åŠ›æ¤œè¨¼ã¨å®Ÿè¡Œã‚³ãƒ³ãƒ†ã‚­ã‚¹ãƒˆã®æ§‹ç¯‰ï¼ˆè£…ç½®è¨­å®šã€ã‚·ãƒ¼ã‚±ãƒ³ã‚¹ä»•æ§˜ã€å‡ºåŠ›å…ˆï¼‰
-- ãƒãƒ¼ãƒ‰ã‚¦ã‚§ã‚¢I/Fï¼ˆDAQ/Camera/FGï¼‰ã¨å‡¦ç†ãƒ‘ã‚¤ãƒ—ãƒ©ã‚¤ãƒ³ã®å‘¼ã³å‡ºã—
-- UIå‘ã‘ã‚¤ãƒ™ãƒ³ãƒˆã¨ãƒ­ã‚°ã®ç™ºè¡Œ
-- ä¾‹å¤–æ™‚ã®å®‰å…¨åœæ­¢ã¨ã‚¯ãƒªãƒ¼ãƒ³ã‚¢ãƒƒãƒ—
+Ó–±:
+- sweepó‘Ô‹@ŠBiidle -> prepared -> roi -> threshold -> running -> stoppingj‚ğŠÇ—
+- “ü—ÍŒŸØ‚ÆÀsƒRƒ“ƒeƒLƒXƒg‚Ì\’zi‘•’uİ’èAƒV[ƒPƒ“ƒXd—lAo—Íæj
+- ƒn[ƒhƒEƒFƒAI/FiDAQ/Camera/FGj‚Æˆ—ƒpƒCƒvƒ‰ƒCƒ“‚ÌŒÄ‚Ño‚µ
+- UIŒü‚¯ƒCƒxƒ“ƒg‚ÆƒƒO‚Ì”­s
+- —áŠO‚ÌˆÀ‘S’â~‚ÆƒNƒŠ[ƒ“ƒAƒbƒv
 
-éè²¬å‹™:
-- Tkã‚¦ã‚£ã‚¸ã‚§ãƒƒãƒˆã®ç”Ÿæˆã‚„ç›´æ¥æ“ä½œ
-- nidaqmxã‚„ã‚«ãƒ¡ãƒ©SDKã®ç›´æ¥å‘¼ã³å‡ºã—
-- UIã‚¹ãƒ¬ãƒƒãƒ‰ä¸Šã®é•·æ™‚é–“ãƒ–ãƒ­ãƒƒã‚­ãƒ³ã‚°å‡¦ç†
+”ñÓ–±:
+- TkƒEƒBƒWƒFƒbƒg‚Ì¶¬‚â’¼Ú‘€ì
+- nidaqmx‚âƒJƒƒ‰SDK‚Ì’¼ÚŒÄ‚Ño‚µ
+- UIƒXƒŒƒbƒhã‚Ì’·ŠÔƒuƒƒbƒLƒ“ƒOˆ—
 
-## GUIãƒ­ã‚°è¡¨ç¤ºï¼ˆä¸‹éƒ¨ãƒ‘ãƒãƒ«ï¼‰
-æ–¹é‡:
-- GUIä¸‹éƒ¨ã«ãƒ­ã‚°è¡¨ç¤ºãƒ‘ãƒãƒ«ï¼ˆText + Scrollbarï¼‰ã‚’é…ç½®
-- logging.Handlerã§ãƒ­ã‚°ã‚’ã‚­ãƒ¥ãƒ¼ã«ç©ã¿ã€UIãŒafter()ã§å–ã‚Šå‡ºã—ã¦è¿½è¨˜
-- GUIä¸Šã§ãƒ­ã‚°ãƒ¬ãƒ™ãƒ«åˆ‡æ›¿ï¼ˆINFO/DEBUGï¼‰ã¨cameraãƒ­ã‚°ã®ãƒ•ã‚£ãƒ«ã‚¿ã‚’æä¾›
-- ãƒ­ã‚°ã¯å¿…ãšãƒ•ã‚¡ã‚¤ãƒ«ã«ã‚‚ä¿å­˜ã—ã€é‡è¦ã‚¤ãƒ™ãƒ³ãƒˆã¯GUIã«ã‚‚è¡¨ç¤º
-- ã‚«ãƒ¡ãƒ©ã®é‡è¦ãƒ­ã‚°ã¯å¸¸æ™‚å‡ºåŠ›ã—ã€verboseã¯è©³ç´°ãƒ­ã‚°ã®è¿½åŠ ã«ã ã‘ä½¿ã†ï¼ˆæŠ‘åˆ¶ã—ãªã„ï¼‰
+## GUIƒƒO•\¦i‰º•”ƒpƒlƒ‹j
+•ûj:
+- GUI‰º•”‚ÉƒƒO•\¦ƒpƒlƒ‹iText + Scrollbarj‚ğ”z’u
+- logging.Handler‚ÅƒƒO‚ğƒLƒ…[‚ÉÏ‚İAUI‚ªafter()‚Åæ‚èo‚µ‚Ä’Ç‹L
+- GUIã‚ÅƒƒOƒŒƒxƒ‹Ø‘ÖiINFO/DEBUGj‚ÆcameraƒƒO‚ÌƒtƒBƒ‹ƒ^‚ğ’ñ‹Ÿ
+- ƒƒO‚Í•K‚¸ƒtƒ@ƒCƒ‹‚É‚à•Û‘¶‚µAd—vƒCƒxƒ“ƒg‚ÍGUI‚É‚à•\¦
+- ƒJƒƒ‰‚Ìd—vƒƒO‚Íío—Í‚µAverbose‚ÍÚ×ƒƒO‚Ì’Ç‰Á‚É‚¾‚¯g‚¤i—}§‚µ‚È‚¢j
 
-ã‚«ãƒ¡ãƒ©ãƒ­ã‚°ã®é‡ç‚¹é …ç›®:
-- æ¥ç¶šè©¦è¡Œã€ãƒ‡ãƒã‚¤ã‚¹åˆ—æŒ™ã€é¸æŠIDã€open/closeæˆåŠŸã€ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆ
-- éœ²å…‰/ãƒˆãƒªã‚¬è¨­å®šã€ROI/subarrayè¨­å®šã€å–å¾—é–‹å§‹/åœæ­¢
-- å¤±æ•—æ™‚ã¯ä¾‹å¤–ç¨®åˆ¥ã€ã‚¹ã‚¿ãƒƒã‚¯ãƒˆãƒ¬ãƒ¼ã‚¹ã€ç›´å‰ã‚³ãƒãƒ³ãƒ‰
+ƒJƒƒ‰ƒƒO‚Ìd“_€–Ú:
+- Ú‘±sAƒfƒoƒCƒX—ñ‹“A‘I‘ğIDAopen/close¬Œ÷Aƒ^ƒCƒ€ƒAƒEƒg
+- ˜IŒõ/ƒgƒŠƒKİ’èAROI/subarrayİ’èAæ“¾ŠJn/’â~
+- ¸”s‚Í—áŠOí•ÊAƒXƒ^ƒbƒNƒgƒŒ[ƒXA’¼‘OƒRƒ}ƒ“ƒh
 
-## SequenceSpecã®ç²’åº¦ï¼ˆæ¡ˆA: ç²—ã„åŒæœŸï¼‰
-- DOã‚·ãƒ¼ã‚±ãƒ³ã‚¹ï¼ˆé †åºä¿è¨¼ï¼‰ + AOæŒ¿å…¥ä½ç½®ï¼ˆ1å›ï¼‰ + ã‚«ãƒ¡ãƒ©TTLã¯DOã«å«ã‚ã‚‹
-- 729ã‚·ãƒ£ãƒƒã‚¿ãƒ¼ã¯AOã§å¹…ã‚’ä¿è¨¼ã€DOã¯é †åºã‚’çµ¶å¯¾ä¿è¨¼
-- ã‚½ãƒ•ãƒˆã‚¿ã‚¤ãƒŸãƒ³ã‚°ã®æºã‚‰ãã¯æ•°msä»¥å†…ã‚’ç›®æ¨™ã€å®Ÿæ¸¬ãƒ­ã‚°ã§æºã‚‰ãã‚’å¯è¦–åŒ–
-## ã‚·ãƒ¼ã‚±ãƒ³ã‚¹åˆ†é›¢ï¼ˆæ„å›³ã¨é…å»¶ã®æ‡¸å¿µï¼‰
-ç¾çŠ¶ã®ç—›ç‚¹:
-- ã‚«ãƒ¡ãƒ©/DO/AOãŒæ··åœ¨ã—ãŸ1ã¤ã®ã‚·ãƒ¼ã‚±ãƒ³ã‚¹ãŒdry/realã®æ¤œè¨¼ã‚’é›£ã—ãã™ã‚‹
+## SequenceSpec‚Ì—±“xiˆÄA: ‘e‚¢“¯Šúj
+- DOƒV[ƒPƒ“ƒXi‡˜•ÛØj + AO‘}“üˆÊ’ui1‰ñj + ƒJƒƒ‰TTL‚ÍDO‚ÉŠÜ‚ß‚é
+- 729ƒVƒƒƒbƒ^[‚ÍAO‚Å•‚ğ•ÛØADO‚Í‡˜‚ğâ‘Î•ÛØ
+- ƒ\ƒtƒgƒ^ƒCƒ~ƒ“ƒO‚Ì—h‚ç‚¬‚Í”msˆÈ“à‚ğ–Ú•WAÀ‘ªƒƒO‚Å—h‚ç‚¬‚ğ‰Â‹‰»
+## ƒV[ƒPƒ“ƒX•ª—£iˆÓ}‚Æ’x‰„‚ÌŒœ”Oj
+Œ»ó‚Ì’É“_:
+- ƒJƒƒ‰/DO/AO‚ª¬İ‚µ‚½1‚Â‚ÌƒV[ƒPƒ“ƒX‚ªdry/real‚ÌŒŸØ‚ğ“ï‚µ‚­‚·‚é
 
-åˆ†é›¢ã®è€ƒãˆæ–¹:
-- ä¸Šä½ã®SequenceSpecï¼ˆæ„å›³ï¼‰ã‚’å®šç¾©
-  - DaqAction: DO/AOã®ãƒ‘ãƒ«ã‚¹ã¨ã‚¿ã‚¤ãƒŸãƒ³ã‚°
-  - CameraAction: éœ²å…‰/å–å¾—ã‚¤ãƒ™ãƒ³ãƒˆã¨ã‚¿ã‚¤ãƒŸãƒ³ã‚°
-  - Sync marker: ã‚«ãƒ¡ãƒ©ã¨DAQã®åŒæœŸç‚¹
+•ª—£‚Ìl‚¦•û:
+- ãˆÊ‚ÌSequenceSpeciˆÓ}j‚ğ’è‹`
+  - DaqAction: DO/AO‚Ìƒpƒ‹ƒX‚Æƒ^ƒCƒ~ƒ“ƒO
+  - CameraAction: ˜IŒõ/æ“¾ƒCƒxƒ“ƒg‚Æƒ^ƒCƒ~ƒ“ƒO
+  - Sync marker: ƒJƒƒ‰‚ÆDAQ‚Ì“¯Šú“_
 
-å®Ÿè¡Œãƒ¢ãƒ‡ãƒ«:
-- å®Ÿè¡Œå‰ã«SequenceSpecã‚’ãƒãƒ¼ãƒ‰ã‚¦ã‚§ã‚¢å‘ã‘ã‚³ãƒãƒ³ãƒ‰ã«ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«
-- å®Ÿè¡Œä¸­ã¯ãƒ‘ãƒ¼ã‚¹ã‚’ã—ãªã„ï¼ˆã‚¿ã‚¤ãƒŸãƒ³ã‚°å½±éŸ¿ã‚’é¿ã‘ã‚‹ï¼‰
-- è§£æå‡¦ç†ã¯å–å¾—å¾Œã«åˆ¥ãƒ‘ã‚¤ãƒ—ãƒ©ã‚¤ãƒ³ã§è¡Œã†
+Àsƒ‚ƒfƒ‹:
+- Às‘O‚ÉSequenceSpec‚ğƒn[ƒhƒEƒFƒAŒü‚¯ƒRƒ}ƒ“ƒh‚ÉƒRƒ“ƒpƒCƒ‹
+- Às’†‚Íƒp[ƒX‚ğ‚µ‚È‚¢iƒ^ƒCƒ~ƒ“ƒO‰e‹¿‚ğ”ğ‚¯‚éj
+- ‰ğÍˆ—‚Íæ“¾Œã‚É•ÊƒpƒCƒvƒ‰ƒCƒ“‚Ås‚¤
 
-é…å»¶ã¸ã®å›ç­”:
-- åˆ†é›¢ã¯è¨­è¨ˆä¸Šã®æ•´ç†ã§ã‚ã‚Šã€å®Ÿè¡Œæ™‚ã¯äº‹å‰ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã§é…å»¶ã‚’å¢—ã‚„ã•ãªã„
-- DO/AOã®ãƒãƒ¼ãƒ‰ã‚¦ã‚§ã‚¢ã‚¿ã‚¤ãƒŸãƒ³ã‚°ã¯ç¶­æŒã§ãã‚‹
-- ã‚«ãƒ¡ãƒ©ãƒˆãƒªã‚¬ã¯TTLã§åŒæœŸã—ã€åˆ¶å¾¡çµŒè·¯ã¯å¤‰ãˆãªã„
+’x‰„‚Ö‚Ì‰ñ“š:
+- •ª—£‚ÍİŒvã‚Ì®—‚Å‚ ‚èAÀs‚Í–‘OƒRƒ“ƒpƒCƒ‹‚Å’x‰„‚ğ‘‚â‚³‚È‚¢
+- DO/AO‚Ìƒn[ƒhƒEƒFƒAƒ^ƒCƒ~ƒ“ƒO‚ÍˆÛ‚Å‚«‚é
+- ƒJƒƒ‰ƒgƒŠƒK‚ÍTTL‚Å“¯Šú‚µA§ŒäŒo˜H‚Í•Ï‚¦‚È‚¢
 
-## è£…ç½®è¨­å®šã®ä¸€æ‹¬ç®¡ç†
-æ–¹é‡:
-- device registryã§DAQ/Camera/FG/ROIè¨­å®šã‚’ä¸€å…ƒç®¡ç†
-- GUIä¸Šéƒ¨ã‚¿ãƒ–ãŒå”¯ä¸€ã®å…¥åŠ›å…ƒ
-- sweepã‚„workerã¯èµ·å‹•æ™‚ã«è¨­å®šã‚¹ãƒŠãƒƒãƒ—ã‚·ãƒ§ãƒƒãƒˆã‚’å—ã‘å–ã‚‹
+## ‘•’uİ’è‚ÌˆêŠ‡ŠÇ—
+•ûj:
+- device registry‚ÅDAQ/Camera/FG/ROIİ’è‚ğˆêŒ³ŠÇ—
+- GUIã•”ƒ^ƒu‚ª—Bˆê‚Ì“ü—ÍŒ³
+- sweep‚âworker‚Í‹N“®‚Éİ’èƒXƒiƒbƒvƒVƒ‡ƒbƒg‚ğó‚¯æ‚é
 
-å›ºå®šã™ã‚‹ã‚«ãƒ¡ãƒ©ãƒˆãƒªã‚¬è¨­å®š:
+ŒÅ’è‚·‚éƒJƒƒ‰ƒgƒŠƒKİ’è:
 - source=EXTERNAL
 - connector=BNC
-- polarity=POSITIVEï¼ˆç«‹ã¡ä¸ŠãŒã‚Šï¼‰
+- polarity=POSITIVEi—§‚¿ã‚ª‚èj
 - active=EDGE
 - mode=NORMAL
 
-## Setupã‚¿ãƒ–ã«æ®‹ã™ã€Œå¿…è¦æœ€å°é™ã€ã®è¨­å®šé …ç›®ï¼ˆå©ãå°ï¼‰
+## Setupƒ^ƒu‚Éc‚·u•K—vÅ¬ŒÀv‚Ìİ’è€–Úi’@‚«‘äj
 - DAQ
-  - deviceï¼ˆä¾‹: Dev1ï¼‰
-  - modeï¼ˆreal/dryï¼‰
+  - devicei—á: Dev1j
+  - modeireal/dryj
 - Camera
-  - modeï¼ˆreal/dryï¼‰
+  - modeireal/dryj
   - exposure_ms
-  - subarrayï¼ˆenable, x, y, width, heightï¼‰
-  - verboseï¼ˆè©³ç´°ãƒ­ã‚°ã®ã¿è¿½åŠ ï¼‰
+  - subarrayienable, x, y, width, heightj
+  - verboseiÚ×ƒƒO‚Ì‚İ’Ç‰Áj
 - FG
   - visa_resource
   - amp_mvpp
-  - waveï¼ˆä¾‹: SINï¼‰
+  - wavei—á: SINj
   - offset_v
   - start_hz
   - stop_hz
   - time_s
   - no_fg
-- Sweepã®å®Ÿè¡Œã«å¿…è¦ãªå…±é€šé …ç›®
+- Sweep‚ÌÀs‚É•K—v‚È‹¤’Ê€–Ú
   - sequence_json_path
 
-â€» max_attempt / update_interval ã¯ãƒ‡ãƒãƒƒã‚°æ™‚ã®ã¿UIè¡¨ç¤ºã«ã—ã¦ã€æœ€çµ‚ã¯å®šæ•°åŒ–
-â€» dry_image_dir ã¯å‰Šé™¤
+¦ max_attempt / update_interval ‚ÍƒfƒoƒbƒO‚Ì‚İUI•\¦‚É‚µ‚ÄAÅI‚Í’è”‰»
+¦ dry_image_dir ‚Ííœ
 
-## ã‚¨ãƒ©ãƒ¼ã®å¯è¦–åŒ–ï¼ˆæ¡ˆAï¼‰
-- Diagnosticsã‚¿ãƒ–ã«ã€Œæœ€å¾Œã®ã‚¨ãƒ©ãƒ¼ã€1ä»¶ã ã‘è¡¨ç¤º
-- ä¾‹å¤–æ™‚ã®ãƒ­ã‚°ãƒ•ã‚¡ã‚¤ãƒ«ã¸ã®ãƒªãƒ³ã‚¯ï¼ˆãƒ‘ã‚¹è¡¨ç¤ºï¼‰ã‚’æ·»ä»˜ã—ã¦è¿½è·¡ã—ã‚„ã™ãã™ã‚‹
-## GUIæ§‹æˆï¼ˆæ¡ˆ3: Setup / Run / Diagnosticsï¼‰
-- Setup: è£…ç½®è¨­å®šã‚’ä¸€æ‹¬ç®¡ç†ï¼ˆDAQ/Camera/FG/Trigger/Subarray/Exposureï¼‰
-- Run: Sequence / Sweep / Camera Snapã®å®Ÿè¡ŒUI
-- Diagnostics: ãƒ­ã‚°è¡¨ç¤ºã€æ¥ç¶šãƒã‚§ãƒƒã‚¯ã€ã‚«ãƒ¡ãƒ©ãƒ†ã‚¹ãƒˆã€æ‰‹å‹•ã‚·ãƒ£ãƒƒã‚¿ï¼ˆãƒ„ãƒ¼ãƒ«ã«ç§»å‹•ï¼‰
+## ƒGƒ‰[‚Ì‰Â‹‰»iˆÄAj
+- Diagnosticsƒ^ƒu‚ÉuÅŒã‚ÌƒGƒ‰[v1Œ‚¾‚¯•\¦
+- —áŠO‚ÌƒƒOƒtƒ@ƒCƒ‹‚Ö‚ÌƒŠƒ“ƒNiƒpƒX•\¦j‚ğ“Y•t‚µ‚Ä’ÇÕ‚µ‚â‚·‚­‚·‚é
+## GUI\¬iˆÄ3: Setup / Run / Diagnosticsj
+- Setup: ‘•’uİ’è‚ğˆêŠ‡ŠÇ—iDAQ/Camera/FG/Trigger/Subarray/Exposurej
+- Run: Sequence / Sweep / Camera Snap‚ÌÀsUI
+- Diagnostics: ƒƒO•\¦AÚ‘±ƒ`ƒFƒbƒNAƒJƒƒ‰ƒeƒXƒgAè“®ƒVƒƒƒbƒ^iƒc[ƒ‹‚ÉˆÚ“®j
 
-## ææ¡ˆãƒ¢ã‚¸ãƒ¥ãƒ¼ãƒ«æ§‹æˆ
+## ’ñˆÄƒ‚ƒWƒ…[ƒ‹\¬
 - src/shutter_camera_trigger/
   - config/
-    - device_registry.py   # è¨­å®šã®èª­ã¿æ›¸ãã¨æ¤œè¨¼
+    - device_registry.py   # İ’è‚Ì“Ç‚İ‘‚«‚ÆŒŸØ
   - hardware/
-    - daq_iface.py         # DAQã®real/dry I/F
-    - camera_iface.py      # Cameraã®real/dry I/F
+    - daq_iface.py         # DAQ‚Ìreal/dry I/F
+    - camera_iface.py      # Camera‚Ìreal/dry I/F
   - pipeline/
-    - roi_processing.py    # ROI/threshold/stateåˆ¤å®š
-    - spectrum_calc.py     # ã‚¹ãƒšã‚¯ãƒˆãƒ«è¨ˆç®—
+    - roi_processing.py    # ROI/threshold/state”»’è
+    - spectrum_calc.py     # ƒXƒyƒNƒgƒ‹ŒvZ
   - sweep/
-    - controller.py        # çŠ¶æ…‹æ©Ÿæ¢°ã¨ã‚ªãƒ¼ã‚±ã‚¹ãƒˆãƒ¬ãƒ¼ã‚·ãƒ§ãƒ³
-    - workflow.py          # æ‰‹é †å®Ÿè£…ï¼ˆI/Fã¨pipelineåˆ©ç”¨ï¼‰
-    - model.py             # dataclasså®šç¾©
+    - controller.py        # ó‘Ô‹@ŠB‚ÆƒI[ƒPƒXƒgƒŒ[ƒVƒ‡ƒ“
+    - workflow.py          # è‡À‘•iI/F‚Æpipeline—˜—pj
+    - model.py             # dataclass’è‹`
   - ui/
-    - panels/              # è¨­å®š/ãƒ­ã‚°/å®Ÿè¡Œãƒ‘ãƒãƒ«ãªã©
-    - controller_bridge.py # UIã¨controllerã®æ¥ç€
+    - panels/              # İ’è/ƒƒO/Àsƒpƒlƒ‹‚È‚Ç
+    - controller_bridge.py # UI‚Æcontroller‚ÌÚ’…
 
-## APIä»•æ§˜ï¼ˆhardwareå±¤: æ¡ˆBï¼‰
+## APId—lihardware‘w: ˆÄBj
 - DaqDevice
   - open(device: str) -> None
   - set_do(value: int) -> None
@@ -139,7 +139,7 @@
   - apply(cfg: FgConfig) -> None
   - close() -> None
 
-## APIä»•æ§˜ï¼ˆcontrollerå±¤: æ¡ˆBï¼‰
+## APId—licontroller‘w: ˆÄBj
 - SweepController
   - prepare(inputs: SweepInput) -> PrepareResult
   - roi_check(state: SweepState) -> RoiResult
@@ -148,13 +148,13 @@
   - stop(state: SweepState, *, reason: str) -> None
   - status(state: SweepState) -> SweepStatus
 
-## APIä»•æ§˜ï¼ˆpipelineå±¤: æ¡ˆAï¼‰
+## APId—lipipeline‘w: ˆÄAj
 - analyze_roi(frames: np.ndarray, roi: RoiSpec) -> RoiStats
 - estimate_threshold(samples: np.ndarray) -> ThresholdResult
 - classify_frame(frame: np.ndarray, th: float) -> bool
 - summarize_sweep(results: list[ShotResult]) -> SpectrumResult
 
-## ãƒ‡ãƒ¼ã‚¿å‹ä»•æ§˜ï¼ˆå®Ÿè£…å‰ã«ç¢ºå®šã™ã‚‹å©ãå°ï¼‰
+## ƒf[ƒ^Œ^d—liÀ‘•‘O‚ÉŠm’è‚·‚é’@‚«‘äj
 - DeviceRegistry
   - daq: DaqConfig
   - camera: CameraConfig
@@ -169,7 +169,7 @@
   - exposure_ms: float
   - subarray: SubarrayConfig
   - verbose: bool
-  - trigger: TriggerConfig (å›ºå®š: EXTERNAL/BNC/POSITIVE/EDGE/NORMAL)
+  - trigger: TriggerConfig (ŒÅ’è: EXTERNAL/BNC/POSITIVE/EDGE/NORMAL)
 - SubarrayConfig
   - enabled: bool
   - x: int
@@ -185,7 +185,7 @@
 - FgConfig
   - visa_resource: str
   - amp_mvpp: float
-  - wave: Literal["SIN"]  # å›ºå®š
+  - wave: Literal["SIN"]  # ŒÅ’è
   - offset_v: float
   - start_hz: float
   - stop_hz: float
@@ -193,16 +193,16 @@
   - no_fg: bool
 - SweepDefaults
   - n_target: int
-  - max_attempt: int  # ãƒ‡ãƒãƒƒã‚°ä¸­ã®ã¿UIè¡¨ç¤ºã€å®‰å®šå¾Œã¯å®šæ•°åŒ–
+  - max_attempt: int  # ƒfƒoƒbƒO’†‚Ì‚İUI•\¦AˆÀ’èŒã‚Í’è”‰»
   - settle_s: float
-  - update_interval: float  # ãƒ‡ãƒãƒƒã‚°ä¸­ã®ã¿UIè¡¨ç¤ºã€å®‰å®šå¾Œã¯å®šæ•°åŒ–
-- SequenceSpecï¼ˆæ¡ˆAï¼‰
+  - update_interval: float  # ƒfƒoƒbƒO’†‚Ì‚İUI•\¦AˆÀ’èŒã‚Í’è”‰»
+- SequenceSpeciˆÄAj
   - do_sequence: list[DoStep]
-  - ao_insert_index: int  # -1ã¯ç„¡åŠ¹
+  - ao_insert_index: int  # -1‚Í–³Œø
   - ao_width_ms: float
-  - ao_rate_hz: float  # å›ºå®š: 5000
-  - ao_v_high: float  # å›ºå®š: 3.0
-  - ao_v_low: float  # å›ºå®š: 0.0
+  - ao_rate_hz: float  # ŒÅ’è: 5000
+  - ao_v_high: float  # ŒÅ’è: 3.0
+  - ao_v_low: float  # ŒÅ’è: 0.0
 - DoStep
   - value: int  # 4-bit DO
   - hold_s: float
@@ -237,102 +237,102 @@
   - points: list[tuple[float, int, int]]
   - meta: dict[str, Any]
 
-## IPCï¼ˆQueueã¨Socketã®é•ã„ï¼‰
-- Queue: åŒä¸€PCã®ãƒ—ãƒ­ã‚»ã‚¹é–“é€šä¿¡ã«æœ€é©ã€è¨­å®šãŒç°¡å˜
-- Socket: ãƒªãƒ¢ãƒ¼ãƒˆæ“ä½œã‚‚å¯èƒ½ã€èªè¨¼ã‚„ãƒãƒ¼ãƒˆç®¡ç†ãŒå¿…è¦
-- æ¨å¥¨: ã¾ãšQueueã§çµ±ä¸€ã—ã€å¿…è¦ãªã‚‰Socketã‚¢ãƒ€ãƒ—ã‚¿ã‚’è¿½åŠ 
+## IPCiQueue‚ÆSocket‚Ìˆá‚¢j
+- Queue: “¯ˆêPC‚ÌƒvƒƒZƒXŠÔ’ÊM‚ÉÅ“KAİ’è‚ªŠÈ’P
+- Socket: ƒŠƒ‚[ƒg‘€ì‚à‰Â”\A”FØ‚âƒ|[ƒgŠÇ—‚ª•K—v
+- „§: ‚Ü‚¸Queue‚Å“ˆê‚µA•K—v‚È‚çSocketƒAƒ_ƒvƒ^‚ğ’Ç‰Á
 
-## å®‰å…¨åœæ­¢ã®çµ±ä¸€ä»•æ§˜ï¼ˆæ¡ˆBï¼‰
-- åœæ­¢è¦æ±‚/ä¾‹å¤–ç™ºç”Ÿ -> ãƒ­ã‚°è¨˜éŒ² -> ã‚«ãƒ¡ãƒ©åœæ­¢ -> FGåœæ­¢ -> DAQ ALL_OFF -> ãƒ¯ãƒ¼ã‚«ãƒ¼çµ‚äº†
-- ã™ã¹ã¦ã®æ©Ÿå™¨ã¯æ‹˜æŸè§£é™¤ï¼ˆclose/stop/releaseï¼‰ã‚’å®Ÿè¡Œã—ã¦ã‹ã‚‰çµ‚äº†ã™ã‚‹
-- å®Ÿæ©Ÿã¯å®‰å…¨å„ªå…ˆã§ã€å¾…ã¡æ™‚é–“ã¯çŸ­ãï¼ˆã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆå³å®ˆï¼‰
-## è¨­å®šã®å›ºå®šåŒ–ãƒ«ãƒ¼ãƒ«ï¼ˆæ¡ˆAï¼‰
-- ãƒ‡ãƒãƒƒã‚°ä¸­ã¯UIè¡¨ç¤º
-- å®‰å®šå¾Œã¯configã®å®šæ•°ã«ç§»å‹•ã—ã€UIã‹ã‚‰ã¯éè¡¨ç¤º
-- å¤‰æ›´ãŒå¿…è¦ãªã‚‰configã‚’ç·¨é›†
-## æ®µéšçš„ãƒ—ãƒ©ãƒ³
-ãƒ•ã‚§ãƒ¼ã‚º1: è¨­è¨ˆã¨ãƒ‰ã‚­ãƒ¥ãƒ¡ãƒ³ãƒˆ
-- device registryã®ã‚¹ã‚­ãƒ¼ãƒã‚’æ±ºã‚ã‚‹
-- SequenceSpecã¨ã‚¢ã‚¯ã‚·ãƒ§ãƒ³å‹ã®ä»•æ§˜ã‚’æ›¸ã
-- controllerã®çŠ¶æ…‹æ©Ÿæ¢°ã¨ã‚¤ãƒ™ãƒ³ãƒˆä»•æ§˜ã‚’ã¾ã¨ã‚ã‚‹
+## ˆÀ‘S’â~‚Ì“ˆêd—liˆÄBj
+- ’â~—v‹/—áŠO”­¶ -> ƒƒO‹L˜^ -> ƒJƒƒ‰’â~ -> FG’â~ -> DAQ ALL_OFF -> ƒ[ƒJ[I—¹
+- ‚·‚×‚Ä‚Ì‹@Ší‚ÍS‘©‰ğœiclose/stop/releasej‚ğÀs‚µ‚Ä‚©‚çI—¹‚·‚é
+- À‹@‚ÍˆÀ‘S—Dæ‚ÅA‘Ò‚¿ŠÔ‚Í’Z‚­iƒ^ƒCƒ€ƒAƒEƒgŒµçj
+## İ’è‚ÌŒÅ’è‰»ƒ‹[ƒ‹iˆÄAj
+- ƒfƒoƒbƒO’†‚ÍUI•\¦
+- ˆÀ’èŒã‚Íconfig‚Ì’è”‚ÉˆÚ“®‚µAUI‚©‚ç‚Í”ñ•\¦
+- •ÏX‚ª•K—v‚È‚çconfig‚ğ•ÒW
+## ’iŠK“Iƒvƒ‰ƒ“
+ƒtƒF[ƒY1: İŒv‚ÆƒhƒLƒ…ƒƒ“ƒg
+- device registry‚ÌƒXƒL[ƒ}‚ğŒˆ‚ß‚é
+- SequenceSpec‚ÆƒAƒNƒVƒ‡ƒ“Œ^‚Ìd—l‚ğ‘‚­
+- controller‚Ìó‘Ô‹@ŠB‚ÆƒCƒxƒ“ƒgd—l‚ğ‚Ü‚Æ‚ß‚é
 
-ãƒ•ã‚§ãƒ¼ã‚º2: ãƒ­ã‚°
-- loggingåŸºç›¤ã¨GUIãƒ­ã‚°ãƒ‘ãƒãƒ«ã®è¨­è¨ˆ
-- ã‚«ãƒ¡ãƒ©ãƒ­ã‚°é …ç›®ã®æ¨™æº–åŒ–
-- cam verboseã«ä¾å­˜ã›ãšé‡è¦ãƒ­ã‚°ã‚’å¸¸æ™‚å‡ºã™ï¼ˆè©³ç´°ã®ã¿verboseã§è¿½åŠ ï¼‰
+ƒtƒF[ƒY2: ƒƒO
+- loggingŠî”Õ‚ÆGUIƒƒOƒpƒlƒ‹‚ÌİŒv
+- ƒJƒƒ‰ƒƒO€–Ú‚Ì•W€‰»
+- cam verbose‚ÉˆË‘¶‚¹‚¸d—vƒƒO‚ğío‚·iÚ×‚Ì‚İverbose‚Å’Ç‰Áj
 
-ãƒ•ã‚§ãƒ¼ã‚º3: ãƒãƒ¼ãƒ‰ã‚¦ã‚§ã‚¢I/F
-- DAQ/Camera/FGã®real/dry I/Fã‚’ä½œã‚‹
-- æ—¢å­˜å®Ÿè£…ã®æœ€å°ç§»æ¤ã§å‹•ä½œç¶­æŒ
+ƒtƒF[ƒY3: ƒn[ƒhƒEƒFƒAI/F
+- DAQ/Camera/FG‚Ìreal/dry I/F‚ğì‚é
+- Šù‘¶À‘•‚ÌÅ¬ˆÚA‚Å“®ìˆÛ
 
-ãƒ•ã‚§ãƒ¼ã‚º4: sweepã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©
-- sweepãƒ­ã‚¸ãƒƒã‚¯ã‚’controller/workflowã¸ç§»å‹•
-- GUIã¯controller APIã®ã¿ã‚’å‘¼ã¶
+ƒtƒF[ƒY4: sweepƒRƒ“ƒgƒ[ƒ‰
+- sweepƒƒWƒbƒN‚ğcontroller/workflow‚ÖˆÚ“®
+- GUI‚Ícontroller API‚Ì‚İ‚ğŒÄ‚Ô
 
-ãƒ•ã‚§ãƒ¼ã‚º5: ã‚·ãƒ¼ã‚±ãƒ³ã‚¹åˆ†é›¢
-- SequenceSpecã¨ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«æ©Ÿæ§‹ã‚’å°å…¥
-- DAQ/Cameraå®Ÿè¡Œéƒ¨ã‚’ç½®æ›
+ƒtƒF[ƒY5: ƒV[ƒPƒ“ƒX•ª—£
+- SequenceSpec‚ÆƒRƒ“ƒpƒCƒ‹‹@\‚ğ“±“ü
+- DAQ/CameraÀs•”‚ğ’uŠ·
 
-## æ¤œè¨¼ãƒ—ãƒ©ãƒ³
+## ŒŸØƒvƒ‰ƒ“
 - Dry:
-  - åŒã˜SequenceSpecã§å‡¦ç†ãƒ‘ã‚¤ãƒ—ãƒ©ã‚¤ãƒ³ã‚’æ¤œè¨¼
+  - “¯‚¶SequenceSpec‚Åˆ—ƒpƒCƒvƒ‰ƒCƒ“‚ğŒŸØ
 - Real:
-  - æ¥ç¶šã¨å–å¾—ãƒ­ã‚°ã§ãƒ‡ãƒ¼ã‚¿ãŒå–ã‚Œã¦ã„ã‚‹ã“ã¨ã‚’ç¢ºèª
-- å…±é€š:
-  - ä¾‹å¤–æ™‚ã«å®‰å…¨åœæ­¢ï¼ˆALL_OFFï¼‰ã•ã‚Œã‚‹ã“ã¨
+  - Ú‘±‚Ææ“¾ƒƒO‚Åƒf[ƒ^‚ªæ‚ê‚Ä‚¢‚é‚±‚Æ‚ğŠm”F
+- ‹¤’Ê:
+  - —áŠO‚ÉˆÀ‘S’â~iALL_OFFj‚³‚ê‚é‚±‚Æ
 
-## ä¸€èˆ¬çš„ãªè¨­è¨ˆãƒ»é‹ç”¨ãƒ«ãƒ¼ãƒ«ï¼ˆè¿½åŠ ï¼‰
-- 1ãƒ•ã‚¡ã‚¤ãƒ«ã¯200ã€œ500è¡Œã‚’ç›®å®‰ï¼ˆå¤§ããè¶…ãˆã‚‹å ´åˆã¯åˆ†å‰²ã‚’æ¤œè¨ï¼‰
-- ãƒ•ã‚¡ã‚¤ãƒ«åã¨ä¸­èº«ã®è²¬å‹™ãŒä¸€è‡´ã—ãªã„å ´åˆã¯å¿…ãšç¢ºèªãƒ»ç›¸è«‡ã—ã¦ã‹ã‚‰é€²ã‚ã‚‹
-- printã§ã¯ãªãloggingã‚’ä½¿ç”¨ã—ã€ä¾‹å¤–æ™‚ã¯å®‰å…¨åœæ­¢ã‚’å„ªå…ˆ
-- é‡è¦ãªåˆ¶å¾¡ãƒ«ãƒ¼ãƒ—ã¯åœæ­¢æ¡ä»¶ã‚’å¿…ãšæŒã¤ï¼ˆç„¡é™ãƒ«ãƒ¼ãƒ—ç¦æ­¢ï¼‰
-- å‡ºåŠ›å…ˆã®ãƒ«ãƒ¼ãƒ«ã‚’çµ±ä¸€ã—ã€ã©ã®å‡¦ç†ãŒã©ã“ã«ä¿å­˜ã™ã‚‹ã‹ã‚’æ˜æ–‡åŒ–ã™ã‚‹
-- dry -> real ã®é †ã§æ¤œè¨¼ã™ã‚‹é‹ç”¨é †åºã‚’å®ˆã‚‹
+## ˆê”Ê“I‚ÈİŒvE‰^—pƒ‹[ƒ‹i’Ç‰Áj
+- 1ƒtƒ@ƒCƒ‹‚Í200?500s‚ğ–ÚˆÀi‘å‚«‚­’´‚¦‚éê‡‚Í•ªŠ„‚ğŒŸ“¢j
+- ƒtƒ@ƒCƒ‹–¼‚Æ’†g‚ÌÓ–±‚ªˆê’v‚µ‚È‚¢ê‡‚Í•K‚¸Šm”FE‘Š’k‚µ‚Ä‚©‚çi‚ß‚é
+- print‚Å‚Í‚È‚­logging‚ğg—p‚µA—áŠO‚ÍˆÀ‘S’â~‚ğ—Dæ
+- d—v‚È§Œäƒ‹[ƒv‚Í’â~ğŒ‚ğ•K‚¸‚Âi–³ŒÀƒ‹[ƒv‹Ö~j
+- o—Íæ‚Ìƒ‹[ƒ‹‚ğ“ˆê‚µA‚Ç‚Ìˆ—‚ª‚Ç‚±‚É•Û‘¶‚·‚é‚©‚ğ–¾•¶‰»‚·‚é
+- dry -> real ‚Ì‡‚ÅŒŸØ‚·‚é‰^—p‡˜‚ğç‚é
 
-## ãƒ­ã‚°ä¿å­˜ãƒ«ãƒ¼ãƒ«ï¼ˆç¢ºå®šï¼‰
-- ä¿å­˜å…ˆ: logs/YYYY-MM-DD/
-- ãƒ•ã‚¡ã‚¤ãƒ«å:
-  - app.logï¼ˆGUI/çµ±åˆãƒ­ã‚°ï¼‰
+## ƒƒO•Û‘¶ƒ‹[ƒ‹iŠm’èj
+- •Û‘¶æ: logs/YYYY-MM-DD/
+- ƒtƒ@ƒCƒ‹–¼:
+  - app.logiGUI/“‡ƒƒOj
   - daq_worker.log
   - camera_worker.log
   - sweep.log
   - fg.log
-- ãƒ­ã‚°è¡Œã®å…ˆé ­ã« timestamp + run_idï¼ˆtimestampï¼‰ã‚’å¿…ãšå«ã‚ã‚‹
+- ƒƒOs‚Ìæ“ª‚É timestamp + run_iditimestampj‚ğ•K‚¸ŠÜ‚ß‚é
 
-## å‡ºåŠ›ãƒ‡ãƒ¼ã‚¿ã®ä¿å­˜ãƒ«ãƒ¼ãƒ«ï¼ˆç¢ºå®šï¼‰
-- ã™ã¹ã¦ data/output/<run_type>/<timestamp>/ ã«ä¿å­˜ã™ã‚‹
-- å…±é€šãƒ•ã‚¡ã‚¤ãƒ«:
-  - config.jsonï¼ˆä½¿ç”¨ã—ãŸè¨­å®šã®ã‚¹ãƒŠãƒƒãƒ—ã‚·ãƒ§ãƒƒãƒˆï¼‰
-  - manifest.jsonï¼ˆç”Ÿæˆç‰©ä¸€è¦§ï¼‰
+## o—Íƒf[ƒ^‚Ì•Û‘¶ƒ‹[ƒ‹iŠm’èj
+- ‚·‚×‚Ä data/output/<run_type>/<timestamp>/ ‚É•Û‘¶‚·‚é
+- ‹¤’Êƒtƒ@ƒCƒ‹:
+  - config.jsonig—p‚µ‚½İ’è‚ÌƒXƒiƒbƒvƒVƒ‡ƒbƒgj
+  - manifest.jsoni¶¬•¨ˆê——j
 - run_type:
-  - spectrum: ã‚¹ã‚¤ãƒ¼ãƒ—æœ¬ä½“
-  - camera_snap: å˜ç™ºã‚¹ãƒŠãƒƒãƒ—
-  - camera_check: æ¥ç¶šç¢ºèª
-  - shutter: DO/AOã‚·ãƒ¼ã‚±ãƒ³ã‚¹å˜ä½“
+  - spectrum: ƒXƒC[ƒv–{‘Ì
+  - camera_snap: ’P”­ƒXƒiƒbƒv
+  - camera_check: Ú‘±Šm”F
+  - shutter: DO/AOƒV[ƒPƒ“ƒX’P‘Ì
 
-## Sweepçµæœã®ä¿å­˜ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆï¼ˆç¢ºå®šï¼‰
+## SweepŒ‹‰Ê‚Ì•Û‘¶ƒtƒH[ƒ}ƒbƒgiŠm’èj
 - shots.csv:
   - columns: freq_hz, shot_idx, bright, dark, t_s
 - spectrum.csv:
   - columns: freq_hz, bright, dark
 - plot.png:
-  - ã‚¹ãƒšã‚¯ãƒˆãƒ«ãƒ—ãƒ­ãƒƒãƒˆã®PNG
+  - ƒXƒyƒNƒgƒ‹ƒvƒƒbƒg‚ÌPNG
 
-## GUIã‚¨ãƒ©ãƒ¼è¡¨ç¤ºãƒ†ãƒ³ãƒ—ãƒ¬ï¼ˆç¢ºå®šï¼‰
-- Diagnosticsã®ã€Œæœ€å¾Œã®ã‚¨ãƒ©ãƒ¼ã€è¡¨ç¤º:
+## GUIƒGƒ‰[•\¦ƒeƒ“ƒvƒŒiŠm’èj
+- Diagnostics‚ÌuÅŒã‚ÌƒGƒ‰[v•\¦:
   - Error: {label} | {message}
   - Log: {log_path}
 
-## ç¢ºèªã—ãŸã„ã“ã¨
-- GUIä¸Šéƒ¨ã‚¿ãƒ–ã«é›†ç´„ã™ã¹ãè¨­å®šé …ç›®ã¯ä½•ã‹
-- ãƒ­ã‚°ä¿å­˜å…ˆã¨ãƒ­ãƒ¼ãƒ†ãƒ¼ã‚·ãƒ§ãƒ³æ–¹é‡
-- å³å¯†ãªãƒªã‚¢ãƒ«ã‚¿ã‚¤ãƒ ãŒå¿…è¦ãªã‚·ãƒ¼ã‚±ãƒ³ã‚¹ã¯ã©ã‚Œã‹
+## Šm”F‚µ‚½‚¢‚±‚Æ
+- GUIã•”ƒ^ƒu‚ÉW–ñ‚·‚×‚«İ’è€–Ú‚Í‰½‚©
+- ƒƒO•Û‘¶æ‚Æƒ[ƒe[ƒVƒ‡ƒ“•ûj
+- Œµ–§‚ÈƒŠƒAƒ‹ƒ^ƒCƒ€‚ª•K—v‚ÈƒV[ƒPƒ“ƒX‚Í‚Ç‚ê‚©
 
 ---
-## DeviceRegistry ã‚¹ã‚­ãƒ¼ãƒï¼ˆãƒ•ã‚§ãƒ¼ã‚º1ãƒ»è¨­è¨ˆï¼‰
-**ç›®çš„**: GUIã®å…¥åŠ›ã‚’ä¸€å…ƒç®¡ç†ã—ã€sweep/workerãŒèµ·å‹•æ™‚ã«ã‚¹ãƒŠãƒƒãƒ—ã‚·ãƒ§ãƒƒãƒˆã‚’å—ã‘å–ã‚‹ã€‚
+## DeviceRegistry ƒXƒL[ƒ}iƒtƒF[ƒY1EİŒvj
+**–Ú“I**: GUI‚Ì“ü—Í‚ğˆêŒ³ŠÇ—‚µAsweep/worker‚ª‹N“®‚ÉƒXƒiƒbƒvƒVƒ‡ƒbƒg‚ğó‚¯æ‚éB
 
-### ãƒ‡ãƒ¼ã‚¿æ§‹é€ ï¼ˆæ¡ˆAï¼‰
+### ƒf[ƒ^\‘¢iˆÄAj
 - DeviceRegistry
   - daq: DaqConfig
   - camera: CameraConfig
@@ -350,7 +350,7 @@
   - exposure_ms: float
   - subarray: SubarrayConfig
   - verbose: bool
-  - trigger: TriggerConfig  # å›ºå®š: EXTERNAL/BNC/POSITIVE/EDGE/NORMAL
+  - trigger: TriggerConfig  # ŒÅ’è: EXTERNAL/BNC/POSITIVE/EDGE/NORMAL
 - SubarrayConfig
   - enabled: bool
   - x: int
@@ -378,26 +378,26 @@
   - settle_s: float
   - update_interval: float
 - IoPaths
-  - logs_root: str  # ä¾‹: logs/YYYY-MM-DD/
-  - output_root: str  # ä¾‹: data/output/
+  - logs_root: str  # —á: logs/YYYY-MM-DD/
+  - output_root: str  # —á: data/output/
 - UiFlags
   - show_debug_fields: bool
   - camera_verbose_additional_only: bool
 
-### ä¿å­˜ãƒ»èª­ã¿è¾¼ã¿ãƒ«ãƒ¼ãƒ«
-- ä¿å­˜å…ˆ: `config/device_registry.json`
-- èµ·å‹•æ™‚ã«ãƒ­ãƒ¼ãƒ‰ -> UIã¸åæ˜  -> å¤‰æ›´æ™‚ã«ä¿å­˜
-- sweep/workerèµ·å‹•æ™‚ã«ã‚¹ãƒŠãƒƒãƒ—ã‚·ãƒ§ãƒƒãƒˆã‚’æ¸¡ã™ï¼ˆä»¥é™ã¯UIã‚’å‚ç…§ã—ãªã„ï¼‰
-- `version` ã§ãƒã‚¤ã‚°ãƒ¬ãƒ¼ã‚·ãƒ§ãƒ³ã‚’ç®¡ç†ï¼ˆä¾‹: "1.0"ï¼‰
+### •Û‘¶E“Ç‚İ‚İƒ‹[ƒ‹
+- •Û‘¶æ: `config/device_registry.json`
+- ‹N“®‚Éƒ[ƒh -> UI‚Ö”½‰f -> •ÏX‚É•Û‘¶
+- sweep/worker‹N“®‚ÉƒXƒiƒbƒvƒVƒ‡ƒbƒg‚ğ“n‚·iˆÈ~‚ÍUI‚ğQÆ‚µ‚È‚¢j
+- `version` ‚Åƒ}ƒCƒOƒŒ[ƒVƒ‡ƒ“‚ğŠÇ—i—á: "1.0"j
 
-### ãƒãƒªãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã®æ–¹é‡
-- `mode` ã¯ strict ã« "real"/"dry"
-- `exposure_ms` ã¯ 0 ã‚ˆã‚Šå¤§ãã„
-- `subarray` ã¯ enabled ã®æ™‚ã« x,y,width,height ã‚’å¿…é ˆ
-- `sequence_json_path` ã¯å­˜åœ¨ç¢ºèªï¼ˆUIã§è­¦å‘Šã€èµ·å‹•å‰ã¯å¿…é ˆï¼‰
-- `logs_root`/`output_root` ã¯å®Ÿè¡Œæ™‚ã«è‡ªå‹•ä½œæˆ
+### ƒoƒŠƒf[ƒVƒ‡ƒ“‚Ì•ûj
+- `mode` ‚Í strict ‚É "real"/"dry"
+- `exposure_ms` ‚Í 0 ‚æ‚è‘å‚«‚¢
+- `subarray` ‚Í enabled ‚Ì‚É x,y,width,height ‚ğ•K{
+- `sequence_json_path` ‚Í‘¶İŠm”FiUI‚ÅŒxA‹N“®‘O‚Í•K{j
+- `logs_root`/`output_root` ‚ÍÀs‚É©“®ì¬
 
-### ä¾‹ï¼ˆdevice_registry.json ã®æœ€å°æ§‹æˆï¼‰
+### —áidevice_registry.json ‚ÌÅ¬\¬j
 ```json
 {
   "version": "1.0",
@@ -438,19 +438,19 @@
 ```
 
 ---
-## SequenceSpec ã¨ã‚¢ã‚¯ã‚·ãƒ§ãƒ³å‹ï¼ˆãƒ•ã‚§ãƒ¼ã‚º1ãƒ»è¨­è¨ˆï¼‰
-**ç›®çš„**: æ„å›³(SequenceSpec)ã¨å®Ÿè¡Œã‚³ãƒãƒ³ãƒ‰ã‚’åˆ†é›¢ã—ã€dry/realã§åŒä¸€ãƒ•ãƒ­ãƒ¼ã‚’é€šã™ã€‚
+## SequenceSpec ‚ÆƒAƒNƒVƒ‡ƒ“Œ^iƒtƒF[ƒY1EİŒvj
+**–Ú“I**: ˆÓ}(SequenceSpec)‚ÆÀsƒRƒ}ƒ“ƒh‚ğ•ª—£‚µAdry/real‚Å“¯ˆêƒtƒ[‚ğ’Ê‚·B
 
-### SequenceSpecï¼ˆä¸Šä½ä»•æ§˜ï¼‰
+### SequenceSpeciãˆÊd—lj
 - SequenceSpec
   - do_sequence: list[DoStep]
-  - ao_insert_index: int  # -1ã¯ç„¡åŠ¹
+  - ao_insert_index: int  # -1‚Í–³Œø
   - ao_width_ms: float
-  - ao_rate_hz: float  # å›ºå®š: 5000
-  - ao_v_high: float  # å›ºå®š: 3.0
-  - ao_v_low: float  # å›ºå®š: 0.0
-  - camera_actions: list[CameraAction]  # ä»»æ„
-  - sync_markers: list[SyncMarker]  # ä»»æ„
+  - ao_rate_hz: float  # ŒÅ’è: 5000
+  - ao_v_high: float  # ŒÅ’è: 3.0
+  - ao_v_low: float  # ŒÅ’è: 0.0
+  - camera_actions: list[CameraAction]  # ”CˆÓ
+  - sync_markers: list[SyncMarker]  # ”CˆÓ
 - DoStep
   - value: int  # 4-bit DO
   - hold_s: float
@@ -462,12 +462,12 @@
   - t_s: float
   - label: str
 
-### ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ä»•æ§˜ï¼ˆæ„å›³->å®Ÿè¡Œï¼‰
-- äº‹å‰ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«: å®Ÿè¡Œå‰ã«SequenceSpecã‚’ãƒãƒ¼ãƒ‰ã‚¦ã‚§ã‚¢å‘ã‘ã‚³ãƒãƒ³ãƒ‰ã¸å¤‰æ›
-- å®Ÿè¡Œä¸­ã¯ãƒ‘ãƒ¼ã‚¹ã—ãªã„ï¼ˆã‚¿ã‚¤ãƒŸãƒ³ã‚°å½±éŸ¿ã‚’é¿ã‘ã‚‹ï¼‰
-- Camera TTLã¯DOã«å«ã‚ã‚‹ï¼ˆSequenceSpecã®do_sequenceã«å«ã‚ã‚‹ï¼‰
+### ƒRƒ“ƒpƒCƒ‹d—liˆÓ}->Àsj
+- –‘OƒRƒ“ƒpƒCƒ‹: Às‘O‚ÉSequenceSpec‚ğƒn[ƒhƒEƒFƒAŒü‚¯ƒRƒ}ƒ“ƒh‚Ö•ÏŠ·
+- Às’†‚Íƒp[ƒX‚µ‚È‚¢iƒ^ƒCƒ~ƒ“ƒO‰e‹¿‚ğ”ğ‚¯‚éj
+- Camera TTL‚ÍDO‚ÉŠÜ‚ß‚éiSequenceSpec‚Ìdo_sequence‚ÉŠÜ‚ß‚éj
 
-### JSONã‚¹ã‚­ãƒ¼ãƒï¼ˆæ¡ˆAï¼‰
+### JSONƒXƒL[ƒ}iˆÄAj
 - sequence_json (SequenceSpec)
   - do_sequence: list[{value:int, hold_s:float}]
   - ao_insert_index: int
@@ -478,7 +478,7 @@
   - camera_actions: list[{t_s:float, kind:str, meta:dict}]  # optional
   - sync_markers: list[{t_s:float, label:str}]  # optional
 
-### ä¾‹ï¼ˆsequence_jsonï¼‰
+### —áisequence_jsonj
 ```json
 {
   "do_sequence": [
@@ -500,7 +500,7 @@
 }
 ```
 
-### å®Ÿè¡Œã‚³ãƒãƒ³ãƒ‰å‹ï¼ˆDAQ/Cameraå‘ã‘ï¼‰
+### ÀsƒRƒ}ƒ“ƒhŒ^iDAQ/CameraŒü‚¯j
 - DaqSequenceCommand
   - do_sequence: list[tuple[int, float]]
   - ao_insert_index: int
@@ -513,244 +513,166 @@
   - timeout_s: float
   - meta: dict[str, Any]
 
-### ãƒãƒªãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã®æ–¹é‡
-- do_sequenceã¯ç©ºä¸å¯
-- hold_sã¯0ã‚ˆã‚Šå¤§ãã„
-- ao_insert_indexã¯-1..len(do_sequence)-1
-- ao_width_msã¯0ä»¥ä¸Š
-- ao_rate_hz, ao_v_high, ao_v_lowã¯å›ºå®šå€¤ã®ã¿è¨±å¯ï¼ˆUIéè¡¨ç¤ºï¼‰
+### ƒoƒŠƒf[ƒVƒ‡ƒ“‚Ì•ûj
+- do_sequence‚Í‹ó•s‰Â
+- hold_s‚Í0‚æ‚è‘å‚«‚¢
+- ao_insert_index‚Í-1..len(do_sequence)-1
+- ao_width_ms‚Í0ˆÈã
+- ao_rate_hz, ao_v_high, ao_v_low‚ÍŒÅ’è’l‚Ì‚İ‹–‰ÂiUI”ñ•\¦j
 
 ---
-## SweepController çŠ¶æ…‹æ©Ÿæ¢°ã¨ã‚¤ãƒ™ãƒ³ãƒˆä»•æ§˜ï¼ˆãƒ•ã‚§ãƒ¼ã‚º1ãƒ»è¨­è¨ˆï¼‰
-**ç›®çš„**: çŠ¶æ…‹é·ç§»ã‚’æ˜ç¢ºåŒ–ã—ã€å®‰å…¨åœæ­¢ã¨UIé€šçŸ¥ã‚’ä¸€è²«ã•ã›ã‚‹ã€‚
+## SweepController ó‘Ô‹@ŠB‚ÆƒCƒxƒ“ƒgd—liƒtƒF[ƒY1EİŒvj
+**–Ú“I**: ó‘Ô‘JˆÚ‚ğ–¾Šm‰»‚µAˆÀ‘S’â~‚ÆUI’Ê’m‚ğˆêŠÑ‚³‚¹‚éB
 
-### çŠ¶æ…‹å®šç¾©ï¼ˆSweepPhaseï¼‰
-- idle: åˆæœŸçŠ¶æ…‹ã€‚ãƒ¯ãƒ¼ã‚«ãƒ¼æœªèµ·å‹•ã€‚
-- prepared: ã‚»ãƒƒã‚·ãƒ§ãƒ³ç”Ÿæˆå®Œäº†ã€‚ROIãƒã‚§ãƒƒã‚¯å¯èƒ½ã€‚
-- roi_done: ROIç¢ºå®šæ¸ˆã¿ã€‚Thresholdå¯èƒ½ã€‚
-- threshold_done: ã—ãã„å€¤ç¢ºå®šæ¸ˆã¿ã€‚Sweepé–‹å§‹å¯èƒ½ã€‚
-- running: sweepå®Ÿè¡Œä¸­ã€‚
-- stopping: åœæ­¢å‡¦ç†ä¸­ï¼ˆå®‰å…¨åœæ­¢ï¼‰ã€‚
-- error: ä¾‹å¤–ç™ºç”Ÿã€‚åœæ­¢æ¸ˆã¿/è¦å¾©å¸°ã€‚
+### ó‘Ô’è‹`iSweepPhasej
+- idle: ‰Šúó‘ÔBƒ[ƒJ[–¢‹N“®B
+- prepared: ƒZƒbƒVƒ‡ƒ“¶¬Š®—¹BROIƒ`ƒFƒbƒN‰Â”\B
+- roi_done: ROIŠm’èÏ‚İBThreshold‰Â”\B
+- threshold_done: ‚µ‚«‚¢’lŠm’èÏ‚İBSweepŠJn‰Â”\B
+- running: sweepÀs’†B
+- stopping: ’â~ˆ—’†iˆÀ‘S’â~jB
+- error: —áŠO”­¶B’â~Ï‚İ/—v•œ‹AB
 
-### é·ç§»ï¼ˆç¾è¡Œå®Ÿè£…ï¼‰
+### ‘JˆÚiŒ»sÀ‘•j
 - idle -> prepared: prepare_session()
-- prepared -> roi_done: roi_check()ã§ROIæ¤œå‡º
-- roi_done -> threshold_done: threshold_check()ã§é©ç”¨
+- prepared -> roi_done: roi_check()‚ÅROIŒŸo
+- roi_done -> threshold_done: threshold_check()‚Å“K—p
 - threshold_done -> running: start_sweep()
-- running -> stopping: stop_sweep()ã¾ãŸã¯ä¾‹å¤–
-- stopping -> idle: cleanupå®Œäº†
-- any -> error: ä¾‹å¤–ç™ºç”Ÿï¼ˆãƒ­ã‚°è¨˜éŒ² + å®‰å…¨åœæ­¢ï¼‰
+- running -> stopping: stop_sweep()‚Ü‚½‚Í—áŠO
+- stopping -> idle: cleanupŠ®—¹
+- any -> error: —áŠO”­¶iƒƒO‹L˜^ + ˆÀ‘S’â~j
 
-### ã‚¬ãƒ¼ãƒ‰ï¼ˆSweepControllerï¼‰
-- prepare_session: idle/roi_done/threshold_done/prepared ã¯è¨±å¯ã€running/stopping/errorã¯æ‹’å¦
-- roi_check: prepared/roi_done/threshold_doneã®ã¿è¨±å¯
-- threshold_check: prepared/roi_done/threshold_doneã®ã¿è¨±å¯ï¼ˆROIæœªè¨­å®šã¯ã‚¨ãƒ©ãƒ¼ï¼‰
-- start_sweep: threshold_doneã®ã¿è¨±å¯
-- stop_sweep: idleä»¥å¤–ã¯è¨±å¯
+### ƒK[ƒhiSweepControllerj
+- prepare_session: idle/roi_done/threshold_done/prepared ‚Í‹–‰ÂArunning/stopping/error‚Í‹‘”Û
+- roi_check: prepared/roi_done/threshold_done‚Ì‚İ‹–‰Â
+- threshold_check: prepared/roi_done/threshold_done‚Ì‚İ‹–‰ÂiROI–¢İ’è‚ÍƒGƒ‰[j
+- start_sweep: threshold_done‚Ì‚İ‹–‰Â
+- stop_sweep: idleˆÈŠO‚Í‹–‰Â
 
-### ã‚¤ãƒ™ãƒ³ãƒˆï¼ˆUIå‘ã‘ï¼‰
-- on_status(text): é€²æ—/çŠ¶æ…‹ãƒ©ãƒ™ãƒ«
-- on_warning(text): FG/ã‚«ãƒ¡ãƒ©ã®æ³¨æ„
-- on_error(label, message, log_path): Diagnosticsç”¨
+### ƒCƒxƒ“ƒgiUIŒü‚¯j
+- on_status(text): i’»/ó‘Ôƒ‰ƒxƒ‹
+- on_warning(text): FG/ƒJƒƒ‰‚Ì’ˆÓ
+- on_error(label, message, log_path): Diagnostics—p
 - on_state_change(prev, next)
 - on_plot_reset()
 - on_plot_update(step_idx, freq_hz, bright, dark)
 - on_worker_ready(name)
 - on_worker_stopped(name)
 
-### ä¾‹å¤–æ™‚ã®å®‰å…¨åœæ­¢ï¼ˆçµ±ä¸€ï¼‰
-- ä¾‹å¤–ç™ºç”Ÿ -> on_error -> ã‚«ãƒ¡ãƒ©åœæ­¢ -> FGåœæ­¢ -> DAQ all_off -> ãƒ¯ãƒ¼ã‚«ãƒ¼çµ‚äº†
-- stoppingä¸­ã¯æ–°è¦ã‚³ãƒãƒ³ãƒ‰å—ä»˜ç¦æ­¢
+### —áŠO‚ÌˆÀ‘S’â~i“ˆêj
+- —áŠO”­¶ -> on_error -> ƒJƒƒ‰’â~ -> FG’â~ -> DAQ all_off -> ƒ[ƒJ[I—¹
+- stopping’†‚ÍV‹KƒRƒ}ƒ“ƒhó•t‹Ö~
 
-### UIæ“ä½œã®ç¦æ­¢æ¡ä»¶
-- running/stoppingä¸­ã¯è¨­å®šç·¨é›†ã‚’ç„¡åŠ¹åŒ–
-- prepared/roi_done/threshold_doneä¸­ã«ãƒ¢ãƒ¼ãƒ‰å¤‰æ›´ã¯è­¦å‘Šè¡¨ç¤º
-
-
+### UI‘€ì‚Ì‹Ö~ğŒ
+- running/stopping’†‚Íİ’è•ÒW‚ğ–³Œø‰»
+- prepared/roi_done/threshold_done’†‚Éƒ‚[ƒh•ÏX‚ÍŒx•\¦
 
 
 
----
-## ç¾çŠ¶UI/è¨­å®šã¨ã®å·®åˆ†æ•´ç†ï¼ˆãƒ•ã‚§ãƒ¼ã‚º1ï¼‰
-### UIã«å­˜åœ¨ã™ã‚‹ãŒDeviceRegistryã«æœªå®šç¾©
-- camera_trigger_delay_s: ç¾åœ¨ãƒˆãƒƒãƒ—ãƒãƒ¼ã«Delay(s)ãŒã‚ã‚‹ãŒã€è¨­è¨ˆæ¡ˆã§ã¯å›ºå®šãƒˆãƒªã‚¬ã®ã¿ã§æœªå®šç¾©ã€‚
-- dry_image_dir: ç¾åœ¨ãƒˆãƒƒãƒ—ãƒãƒ¼ã«å…¥åŠ›ãŒã‚ã‚‹ãŒã€è¨­è¨ˆæ¡ˆã§ã¯å‰Šé™¤æ–¹é‡ã€‚
-- ao_width(ms)å…¥åŠ›: ãƒˆãƒƒãƒ—ãƒãƒ¼ã®AO widthã¯SequenceSpecå´ã¸çµ±åˆã™ã‚‹å‰æã§æœªå®šç¾©ã€‚
-- Sequenceã‚¿ãƒ–ã®ç”Ÿãƒ†ã‚­ã‚¹ãƒˆç·¨é›†: SequenceSpec(JSON)ä¸€æœ¬åŒ–ã®æ–¹é‡ã¨ã¯æœªæ•´åˆã€‚
 
-### DeviceRegistryã«ã‚ã‚‹ãŒUIã«æœªéœ²å‡º
-- io_paths.logs_root / output_root: UIã«ã¯æœªè¡¨ç¤ºï¼ˆconfigã«å›ºå®šã§OKï¼‰ã€‚
-- ui.show_debug_fields / camera_verbose_additional_only: æ—¢å­˜UIã¯å¸¸æ™‚è¡¨ç¤ºã€‚
-
-### UIå†…ã§é‡è¤‡/åˆ†æ•£ã—ã¦ã„ã‚‹è¨­å®š
-- DAQ device/mode: Top barã®device_var/device_mode_varã¨Sweepã‚¿ãƒ–ã®sw_device/sw_daq_modeãŒé‡è¤‡ã€‚
-- FGè¨­å®š: Top barã®FG VISA/ampã¨Sweepã‚¿ãƒ–ã®sw_visa/sw_fg_amp_mvppãŒé‡è¤‡ã€‚
-- Camera mode/exposure: Top barã«ã‚ã‚‹ãŒSweep/Cameraã‚¿ãƒ–å´ã§å‚ç…§ï¼ˆçµ±åˆã¯æœªå®Œï¼‰ã€‚
-- Sequence JSON: Sweepã‚¿ãƒ–ã§ãƒ‘ã‚¹æŒ‡å®šã€Sequenceã‚¿ãƒ–ã¯ãƒ†ã‚­ã‚¹ãƒˆç·¨é›†ï¼ˆä¸€æœ¬åŒ–ãŒå¿…è¦ï¼‰ã€‚
-
-### ç§»è¡Œã®æŒ‡é‡ï¼ˆæš«å®šï¼‰
-- Setupã‚¿ãƒ–(Top)ã‚’å”¯ä¸€ã®å…¥åŠ›å…ƒã«ã—ã€Sweep/Cameraã¯å‚ç…§å°‚ç”¨ã€‚
-- dry_image_dirã¨camera_trigger_delayã¯è¨­è¨ˆç¢ºå®šã¾ã§éè¡¨ç¤ºã¾ãŸã¯Debugæ‰±ã„ã€‚
-- SequenceSpec(JSON)ã«çµ±åˆã—ã€Sequenceã‚¿ãƒ–ã¯é–²è¦§/æ¤œè¨¼å°‚ç”¨ã«ç§»è¡Œã€‚
 
 ---
-## ãƒ­ã‚°åŸºç›¤ã¨GUIãƒ­ã‚°ãƒ‘ãƒãƒ«ï¼ˆãƒ•ã‚§ãƒ¼ã‚º2ãƒ»è¨­è¨ˆï¼‰
-**ç›®çš„**: é‡è¦ã‚¤ãƒ™ãƒ³ãƒˆã‚’å¸¸æ™‚è¨˜éŒ²ã—ã€GUIã‹ã‚‰è¿…é€Ÿã«ç¢ºèªã§ãã‚‹ã‚ˆã†ã«ã™ã‚‹ã€‚
+## Œ»óUI/İ’è‚Æ‚Ì·•ª®—iƒtƒF[ƒY1j
+### UI‚É‘¶İ‚·‚é‚ªDeviceRegistry‚É–¢’è‹`
+- camera_trigger_delay_s: Œ»İƒgƒbƒvƒo[‚ÉDelay(s)‚ª‚ ‚é‚ªAİŒvˆÄ‚Å‚ÍŒÅ’èƒgƒŠƒK‚Ì‚İ‚Å–¢’è‹`B
+- dry_image_dir: Œ»İƒgƒbƒvƒo[‚É“ü—Í‚ª‚ ‚é‚ªAİŒvˆÄ‚Å‚Ííœ•ûjB
+- ao_width(ms)“ü—Í: ƒgƒbƒvƒo[‚ÌAO width‚ÍSequenceSpec‘¤‚Ö“‡‚·‚é‘O’ñ‚Å–¢’è‹`B
+- Sequenceƒ^ƒu‚Ì¶ƒeƒLƒXƒg•ÒW: SequenceSpec(JSON)ˆê–{‰»‚Ì•ûj‚Æ‚Í–¢®‡B
 
-### ãƒ­ã‚°å‡ºåŠ›ãƒ«ãƒ¼ãƒ«ï¼ˆç¢ºå®šæº–æ‹ ï¼‰
-- ä¿å­˜å…ˆ: `logs/YYYY-MM-DD/`
-- ãƒ•ã‚¡ã‚¤ãƒ«å:
-  - app.logï¼ˆGUI/çµ±åˆãƒ­ã‚°ï¼‰
+### DeviceRegistry‚É‚ ‚é‚ªUI‚É–¢˜Io
+- io_paths.logs_root / output_root: UI‚É‚Í–¢•\¦iconfig‚ÉŒÅ’è‚ÅOKjB
+- ui.show_debug_fields / camera_verbose_additional_only: Šù‘¶UI‚Íí•\¦B
+
+### UI“à‚Åd•¡/•ªU‚µ‚Ä‚¢‚éİ’è
+- DAQ device/mode: Top bar‚Ìdevice_var/device_mode_var‚ÆSweepƒ^ƒu‚Ìsw_device/sw_daq_mode‚ªd•¡B
+- FGİ’è: Top bar‚ÌFG VISA/amp‚ÆSweepƒ^ƒu‚Ìsw_visa/sw_fg_amp_mvpp‚ªd•¡B
+- Camera mode/exposure: Top bar‚É‚ ‚é‚ªSweep/Cameraƒ^ƒu‘¤‚ÅQÆi“‡‚Í–¢Š®jB
+- Sequence JSON: Sweepƒ^ƒu‚ÅƒpƒXw’èASequenceƒ^ƒu‚ÍƒeƒLƒXƒg•ÒWiˆê–{‰»‚ª•K—vjB
+
+### ˆÚs‚Ìwjib’èj
+- Setupƒ^ƒu(Top)‚ğ—Bˆê‚Ì“ü—ÍŒ³‚É‚µASweep/Camera‚ÍQÆê—pB
+- dry_image_dir‚Æcamera_trigger_delay‚ÍİŒvŠm’è‚Ü‚Å”ñ•\¦‚Ü‚½‚ÍDebugˆµ‚¢B
+- SequenceSpec(JSON)‚É“‡‚µASequenceƒ^ƒu‚Í‰{——/ŒŸØê—p‚ÉˆÚsB
+
+---
+## ƒƒOŠî”Õ‚ÆGUIƒƒOƒpƒlƒ‹iƒtƒF[ƒY2EİŒvj
+**–Ú“I**: d—vƒCƒxƒ“ƒg‚ğí‹L˜^‚µAGUI‚©‚çv‘¬‚ÉŠm”F‚Å‚«‚é‚æ‚¤‚É‚·‚éB
+
+### ƒƒOo—Íƒ‹[ƒ‹iŠm’è€‹’j
+- •Û‘¶æ: `logs/YYYY-MM-DD/`
+- ƒtƒ@ƒCƒ‹–¼:
+  - app.logiGUI/“‡ƒƒOj
   - daq_worker.log
   - camera_worker.log
   - sweep.log
   - fg.log
-- ãƒ­ã‚°è¡Œã®å…ˆé ­ã« `timestamp + run_id` ã‚’å¿…ãšå«ã‚ã‚‹
+- ƒƒOs‚Ìæ“ª‚É `timestamp + run_id` ‚ğ•K‚¸ŠÜ‚ß‚é
 
 ### run_id
-- ç”Ÿæˆ: `YYYYMMDD_HHMMSS` å½¢å¼
-- ç”Ÿæˆã‚¿ã‚¤ãƒŸãƒ³ã‚°: GUIèµ·å‹•æ™‚ã«ä½œæˆã—ã€sweep/camera_check/camera_snapã§å…±æœ‰
-- GUIã¨workerã®ãƒ­ã‚°ã¯åŒä¸€run_idã‚’å¼•ãå›ã™
+- ¶¬: `YYYYMMDD_HHMMSS` Œ`®
+- ¶¬ƒ^ƒCƒ~ƒ“ƒO: GUI‹N“®‚Éì¬‚µAsweep/camera_check/camera_snap‚Å‹¤—L
+- GUI‚Æworker‚ÌƒƒO‚Í“¯ˆêrun_id‚ğˆø‚«‰ñ‚·
 
-### å®Ÿè£…æ–¹é‡ï¼ˆæ¡ˆAï¼‰
-- loggingåŸºç›¤ã¯ä»¥ä¸‹ã®2ç³»çµ±ã§æ§‹æˆ
-  - FileHandler: å„ãƒ­ã‚°ãƒ•ã‚¡ã‚¤ãƒ«ã¸å‡ºåŠ›
-  - QueueHandler/QueueListener: GUIè¡¨ç¤ºç”¨ã«ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’ã‚­ãƒ¥ãƒ¼ã¸è»¢é€
-- GUIã®ä¸‹éƒ¨ãƒ‘ãƒãƒ«ã«Text+Scrollbarã‚’é…ç½®ã—ã€`after()`ã§ã‚­ãƒ¥ãƒ¼ã‚’å¸ã„ä¸Šã’ã¦è¿½è¨˜
-- ãƒ­ã‚°ãƒ¬ãƒ™ãƒ«åˆ‡æ›¿ï¼ˆINFO/DEBUGï¼‰ã¨ cameraãƒ•ã‚£ãƒ«ã‚¿ã‚’æä¾›
-- `camera_verbose` ã¯è©³ç´°ãƒ­ã‚°ã®è¿½åŠ ã®ã¿ï¼ˆé‡è¦ãƒ­ã‚°ã¯å¸¸æ™‚å‡ºã™ï¼‰
+### À‘••ûjiˆÄAj
+- loggingŠî”Õ‚ÍˆÈ‰º‚Ì2Œn“‚Å\¬
+  - FileHandler: ŠeƒƒOƒtƒ@ƒCƒ‹‚Öo—Í
+  - QueueHandler/QueueListener: GUI•\¦—p‚ÉƒƒbƒZ[ƒW‚ğƒLƒ…[‚Ö“]‘—
+- GUI‚Ì‰º•”ƒpƒlƒ‹‚ÉText+Scrollbar‚ğ”z’u‚µA`after()`‚ÅƒLƒ…[‚ğ‹z‚¢ã‚°‚Ä’Ç‹L
+- ƒƒOƒŒƒxƒ‹Ø‘ÖiINFO/DEBUGj‚Æ cameraƒtƒBƒ‹ƒ^‚ğ’ñ‹Ÿ
+- `camera_verbose` ‚ÍÚ×ƒƒO‚Ì’Ç‰Á‚Ì‚İid—vƒƒO‚Íío‚·j
 
-### GUIãƒ­ã‚°ãƒ‘ãƒãƒ«ä»•æ§˜
-- Panel: ä¸‹éƒ¨ã®å›ºå®šé ˜åŸŸ
+### GUIƒƒOƒpƒlƒ‹d—l
+- Panel: ‰º•”‚ÌŒÅ’è—Ìˆæ
 - Controls:
   - Level: INFO/DEBUG
   - Filter: camera only / all
-- è¡¨ç¤º: ç›´è¿‘Nè¡Œï¼ˆä¾‹: 2000è¡Œï¼‰ã§ãƒªãƒ³ã‚°ãƒãƒƒãƒ•ã‚¡é‹ç”¨
-- ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«ã¯è‡ªå‹•è¿½å¾“ï¼ˆãƒ¦ãƒ¼ã‚¶ãƒ¼æ“ä½œæ™‚ã¯è¿½å¾“è§£é™¤ï¼‰
+- •\¦: ’¼‹ßNsi—á: 2000sj‚ÅƒŠƒ“ƒOƒoƒbƒtƒ@‰^—p
+- ƒXƒNƒ[ƒ‹‚Í©“®’Ç]iƒ†[ƒU[‘€ì‚Í’Ç]‰ğœj
 
-### ä¾‹å¤–æ™‚ã®UIé€šçŸ¥
-- ä¾‹å¤–æ¤œçŸ¥æ™‚:
-  - `on_error(label, message, log_path)` ã‚’ç™ºç«
-  - Diagnosticsã‚¿ãƒ–ã®ã€Œæœ€å¾Œã®ã‚¨ãƒ©ãƒ¼ã€ã‚’æ›´æ–°
-  - ãƒ­ã‚°ãƒ•ã‚¡ã‚¤ãƒ«ã¸ã®ãƒ‘ã‚¹ã‚’è¡¨ç¤º
+### —áŠO‚ÌUI’Ê’m
+- —áŠOŒŸ’m:
+  - `on_error(label, message, log_path)` ‚ğ”­‰Î
+  - Diagnosticsƒ^ƒu‚ÌuÅŒã‚ÌƒGƒ‰[v‚ğXV
+  - ƒƒOƒtƒ@ƒCƒ‹‚Ö‚ÌƒpƒX‚ğ•\¦
 
-### ã‚«ãƒ¡ãƒ©é‡è¦ãƒ­ã‚°ï¼ˆå¸¸æ™‚ï¼‰
-- æ¥ç¶šè©¦è¡Œ/åˆ—æŒ™/é¸æŠID/æˆåŠŸ/ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆ
-- éœ²å…‰/ãƒˆãƒªã‚¬/ROIè¨­å®š/å–å¾—é–‹å§‹/åœæ­¢
-- å¤±æ•—æ™‚ã®ä¾‹å¤–ç¨®åˆ¥/ã‚¹ã‚¿ãƒƒã‚¯ãƒˆãƒ¬ãƒ¼ã‚¹/ç›´å‰ã‚³ãƒãƒ³ãƒ‰
+### ƒJƒƒ‰d—vƒƒOiíj
+- Ú‘±s/—ñ‹“/‘I‘ğID/¬Œ÷/ƒ^ƒCƒ€ƒAƒEƒg
+- ˜IŒõ/ƒgƒŠƒK/ROIİ’è/æ“¾ŠJn/’â~
+- ¸”s‚Ì—áŠOí•Ê/ƒXƒ^ƒbƒNƒgƒŒ[ƒX/’¼‘OƒRƒ}ƒ“ƒh
 
-### å®Ÿè£…ã‚¿ã‚¹ã‚¯ï¼ˆãƒ•ã‚§ãƒ¼ã‚º2ï¼‰
-- loggingåˆæœŸåŒ–ãƒ¦ãƒ¼ãƒ†ã‚£ãƒªãƒ†ã‚£ï¼ˆrun_id/handlersã‚’çµ±ä¸€ï¼‰
-- GUIãƒ­ã‚°ãƒ‘ãƒãƒ«å®Ÿè£…ï¼ˆText+Queueï¼‰
-- workerå´ã«run_idä¼æ¬ï¼ˆcfgã«è¿½åŠ ï¼‰
-- é‡è¦ãƒ­ã‚°ã®è¿½åŠ ï¼ˆcamera/daq/fg/sweepï¼‰
+### À‘•ƒ^ƒXƒNiƒtƒF[ƒY2j
+- logging‰Šú‰»ƒ†[ƒeƒBƒŠƒeƒBirun_id/handlers‚ğ“ˆêj
+- GUIƒƒOƒpƒlƒ‹À‘•iText+Queuej
+- worker‘¤‚Érun_id“`”Àicfg‚É’Ç‰Áj
+- d—vƒƒO‚Ì’Ç‰Áicamera/daq/fg/sweepj
 
 ---
-## é€²æ—ãƒ¡ãƒ¢
-- 2026-01-13: `gui_support/logging_setup.py` ã‚’è¿½åŠ ã—ã€GUIèµ·å‹•æ™‚ã«app.logã¸å‡ºåŠ›ã™ã‚‹åˆæœŸåŒ–ã‚’å®Ÿè£…ã€‚
-- 2026-01-13: `gui_support/log_panel.py` ã‚’è¿½åŠ ã—ã€GUIä¸‹éƒ¨ã«ãƒ­ã‚°ãƒ‘ãƒãƒ«ï¼ˆQueue->Textï¼‰ã‚’å®Ÿè£…ã€‚
-- 2026-01-13: run_id/log_pathã‚’camera/daq/fgã¸ä¼æ¬ã—ã€`logs/YYYY-MM-DD/`é…ä¸‹ã«ä¿å­˜ã™ã‚‹æ–¹é‡ã¸å¯„ã›ãŸã€‚
-- 2026-01-13: camera/GUI/sweepã®ä¸»è¦æ“ä½œãƒ­ã‚°ã‚’è¿½åŠ ã—ã€ã‚«ãƒ¡ãƒ©æ¥ç¶šãƒ‡ãƒãƒƒã‚°ã‚’å¼·åŒ–ã€‚
-- 2026-01-13: Diagnosticsã‚¿ãƒ–ã‚’è¿½åŠ ã—ã€æœ€å¾Œã®ã‚¨ãƒ©ãƒ¼è¡¨ç¤ºã‚’GUIã§ç¢ºèªã§ãã‚‹ã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-13: Diagnosticsã®ã‚³ãƒ”ãƒ¼/ã‚¯ãƒªã‚¢æ©Ÿèƒ½ã¨ãƒ­ã‚°ãƒ•ã‚£ãƒ«ã‚¿æ‹¡å¼µã‚’è¿½åŠ ã€‚
-- 2026-01-13: Diagnosticsã®ãƒ­ã‚°ãƒ‘ã‚¹è§£æ±ºãƒ˜ãƒ«ãƒ‘ãƒ¼ã‚’è¿½åŠ ã—ã€ã‚¨ãƒ©ãƒ¼æ™‚ã®å‚ç…§ãƒ­ã‚°ã‚’çµ±ä¸€ã€‚
-- 2026-01-13: ãƒ­ã‚°ãƒ‘ãƒãƒ«ã«Diagnosticsãƒ•ã‚£ãƒ«ã‚¿ã‚’è¿½åŠ ã€‚
-- 2026-01-13: Diagnosticsã®æ›´æ–°æ™‚ã«app.logã¸çµ±ä¸€ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆã§è¨˜éŒ²ã™ã‚‹ã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-13: Diagnosticsã«ç›´è¿‘ã‚¨ãƒ©ãƒ¼å±¥æ­´ï¼ˆæœ€å¤§20ä»¶ï¼‰ã‚’è¡¨ç¤ºã™ã‚‹ãƒªã‚¹ãƒˆã‚’è¿½åŠ ã€‚
-- 2026-01-13: ãƒ­ã‚°ãƒ‘ãƒãƒ«ã«Pause/Followãƒœã‚¿ãƒ³ã¨é¸æŠã‚³ãƒ”ãƒ¼ã‚’è¿½åŠ ã€‚
-- 2026-01-13: GUIã‚’Setup/Run/Diagnosticsã®ãƒˆãƒƒãƒ—æ§‹æˆã«ç§»ã—ã€Manualã‚’Diagnosticsé…ä¸‹ã¸ç§»å‹•ã€‚
-- 2026-01-13: Diagnosticsã«Camera check/snapã®å°ç·šã‚’è¿½åŠ ã—ã€å®Ÿè¡Œç³»ã‚¿ãƒ–ã®å½¹å‰²ã‚’æ•´ç†ã€‚
-- 2026-01-13: Top Barã‹ã‚‰Camera checkãƒœã‚¿ãƒ³ã‚’å¤–ã—ã€Diagnosticsã«é›†ç´„ã€‚
-- 2026-01-13: Cameraã‚¿ãƒ–ã®Snapæ“ä½œã‚’å‰Šé™¤ã—ã€Diagnosticså´ã®å°ç·šã«çµ±ä¸€ã€‚
-- 2026-01-13: Sequenceã‚¿ãƒ–ã‚’JSONå‚ç…§å°‚ç”¨ã«ã—ã€Reloadã§Sweepã®JSONãƒ‘ã‚¹ã‚’èª­ã‚ã‚‹ã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-13: Sweepã‚¿ãƒ–ã®DAQ/FGå…¥åŠ›ã‚’å‚ç…§è¡¨ç¤ºã«åˆ‡ã‚Šæ›¿ãˆã€Setupã®å€¤ã‚’å”¯ä¸€ã®å…¥åŠ›å…ƒã«ã—ãŸã€‚
-- 2026-01-13: Sweepã‚¿ãƒ–ã®Camera modeã‚‚å‚ç…§è¡¨ç¤ºã«åˆ‡ã‚Šæ›¿ãˆã€Setupã‚’å”¯ä¸€ã®å…¥åŠ›å…ƒã«çµ±ä¸€ã€‚
-- 2026-01-13: Sequence JSONã®å…¥åŠ›ã‚’Setupã«ç§»ã—ã€Sweepã‚¿ãƒ–ã§ã¯å‚ç…§è¡¨ç¤ºã®ã¿ã¨ã—ãŸã€‚
-- 2026-01-13: Setupã®Top Barã‚’DAQ/FG/Sequence/Camera/Trigger/Subarrayã®ã‚»ã‚¯ã‚·ãƒ§ãƒ³ã«æ•´ç†ã€‚
-- 2026-01-13: Triggerè¨­å®šã‚’å›ºå®šå€¤ã®è¡¨ç¤ºã«åˆ‡ã‚Šæ›¿ãˆã€Delayå…¥åŠ›ã‚’Setupã‹ã‚‰å¤–ã—ãŸã€‚
-- 2026-01-13: Sweepã‚¿ãƒ–ã‚’Frequencies/Targets/Sequence/Setup snapshotã«åˆ†ã‘ã¦è¦–èªæ€§ã‚’æ”¹å–„ã€‚
-- 2026-01-13: Diagnosticsã‚’2ã‚«ãƒ©ãƒ æ§‹æˆã«ã—ã€å·¦ã«è©³ç´°/å±¥æ­´ã€å³ã«Quick summaryã‚’é…ç½®ã€‚
-- 2026-01-13: Manualã‚¿ãƒ–ã«è¦‹å‡ºã—ã¨æ³¨æ„æ–‡ã‚’è¿½åŠ ã—ã¦æ„å›³ã‚’æ˜ç¢ºåŒ–ã€‚
-- 2026-01-13: Runã‚¿ãƒ–å†…ã®é †åºã‚’Sweepâ†’Sequenceâ†’Cameraã«èª¿æ•´ã€‚
-- 2026-01-13: Sequenceã‚¿ãƒ–ã«ã€Œread-onlyã€ãƒ©ãƒ™ãƒ«ã‚’è¿½åŠ ã—ã€å‚ç…§å°‚ç”¨ã‚’æ˜ç¤ºã€‚
-- 2026-01-13: Cameraã‚¿ãƒ–ã®æ¡ˆå†…æ–‡ã‚’èª¿æ•´ã—ã€DiagnosticsçµŒç”±ã®æ“ä½œã‚’æ˜ç¢ºåŒ–ã€‚
-- 2026-01-13: Runã‚¿ãƒ–ã«è¦‹å‡ºã—ãƒ©ãƒ™ãƒ«ã‚’è¿½åŠ ã—ã¦æ„å›³ã‚’æ˜ç¤ºã€‚
-- 2026-01-13: Setupã¨Diagnosticsã«è¦‹å‡ºã—ãƒ©ãƒ™ãƒ«ã‚’è¿½åŠ ã—ã¦ã‚»ã‚¯ã‚·ãƒ§ãƒ³æ„å›³ã‚’æ˜ç¢ºåŒ–ã€‚
-- 2026-01-13: Setupå†…ãƒ©ãƒ™ãƒ«ã®æ–‡è¨€ã‚’çŸ­ç¸®ã—ã¦è¦–èªæ€§ã‚’æ”¹å–„ã€‚
-- 2026-01-13: Runã‚¿ãƒ–ã«Setupå‚ç…§ã®è£œè¶³ãƒ©ãƒ™ãƒ«ã‚’è¿½åŠ ã€‚
-- 2026-01-13: Setupå†…ã®å…¥åŠ›ã«å˜ä½ãƒ©ãƒ™ãƒ«ï¼ˆms/mVppï¼‰ã‚’è¿½åŠ ã—ã¦æ˜ç¢ºåŒ–ã€‚
-- 2026-01-13: Sweepã‚¿ãƒ–ã®Frequency/Targetså…¥åŠ›ã«å˜ä½ãƒ©ãƒ™ãƒ«ã‚’è¿½åŠ ã—ã€ãƒ¬ã‚¤ã‚¢ã‚¦ãƒˆã‚’æ•´ç†ã€‚
-- 2026-01-13: No FGè¨­å®šã‚’Setupã«ç§»ã—ã€Sweepå´ã¯å‚ç…§è¡¨ç¤ºã®ã¿ã¸å¤‰æ›´ã€‚
-- 2026-01-13: device_registryã®dataclass/èª­ã¿æ›¸ã/ãƒãƒªãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã®éª¨æ ¼ã‚’è¿½åŠ ã€‚
-- 2026-01-13: device_registryã‚’GUIèµ·å‹•æ™‚ã«èª­ã¿è¾¼ã¿ã€çµ‚äº†æ™‚ã«ä¿å­˜ã™ã‚‹æœ€å°é…ç·šã‚’è¿½åŠ ã€‚
-- 2026-01-13: Sweep defaultsã‚’UIåˆæœŸå€¤ã¨ã—ã¦ä¿æŒã—ã€device_registryåæ˜ ãŒä¸Šæ›¸ãã§ãã‚‹ã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-13: `config/device_registry.json` ã®åˆæœŸãƒ†ãƒ³ãƒ—ãƒ¬ãƒ¼ãƒˆã‚’è¿½åŠ ã€‚
-- 2026-01-13: device_registryä¿å­˜æ™‚ã«io_paths/uiã‚’æ—¢å­˜è¨­å®šã‹ã‚‰å¼•ãç¶™ãã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-13: device_registryã®UIãƒ•ãƒ©ã‚°ã‚’åæ˜ ã—ã€Verboseè¡¨è¨˜ã¨Sweepã®debugé …ç›®è¡¨ç¤ºã«åæ˜ ã€‚
-- 2026-01-13: device_registryãƒ†ãƒ³ãƒ—ãƒ¬ãƒ¼ãƒˆã®`show_debug_fields`ã‚’falseã«è¨­å®šã€‚
-- 2026-01-13: hardware/pipelineã®ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªéª¨æ ¼ã¨Protocol/placeholderã‚’è¿½åŠ ã€‚
-- 2026-01-13: æ—¢å­˜DAQã‚­ãƒ¥ãƒ¼ã‚’ä½¿ã†`DaqClientDevice`ã‚¢ãƒ€ãƒ—ã‚¿ã‚’è¿½åŠ ã€‚
-- 2026-01-13: æ—¢å­˜RigolDG/ã‚«ãƒ¡ãƒ©ãƒ¯ãƒ¼ã‚«ã‚’ä½¿ã†FG/Cameraã‚¢ãƒ€ãƒ—ã‚¿ã‚’è¿½åŠ ã€‚
-- 2026-01-13: FG connect/disconnectã‚’RigolFgDeviceã‚¢ãƒ€ãƒ—ã‚¿çµŒç”±ã«åˆ‡æ›¿ã€‚
-- 2026-01-13: camera_check/snapã§CameraWorkerDeviceã‚¢ãƒ€ãƒ—ã‚¿ã‚’ä½¿ç”¨ã™ã‚‹ã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-13: camera_tabã®TTLç™ºè¡Œã‚’DaqClientDeviceçµŒç”±ã«ç½®æ›ã€‚
-- 2026-01-13: sequenceå®Ÿè¡Œã‚’DaqClientDeviceçµŒç”±ã«ç½®æ›ã€‚
-- 2026-01-13: sweepã®ROI bootstrap/stopã§DaqQueueDeviceã‚¢ãƒ€ãƒ—ã‚¿ã‚’å°å…¥ã€‚
-- 2026-01-13: sweepã®ROI/thresholdã‚¹ãƒ†ãƒ¼ã‚¸ã§DaqQueueDeviceçµŒç”±ã«ç½®æ›ã€‚
-- 2026-01-13: sweepã®spectrumã‚¹ãƒ†ãƒ¼ã‚¸ã‚‚DaqQueueDeviceçµŒç”±ã«ç½®æ›ã€‚
-- 2026-01-13: sweep primingï¼ˆcamera bootstrapï¼‰ã§ã‚‚DaqQueueDeviceçµŒç”±ã§TTLã‚’é€ã‚‹ã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-13: session_readyã®prime_cmdã‚’å¤‰æ•°åŒ–ã—ã¦DaqQueueDeviceé…ç·šã«åˆã‚ã›ãŸã€‚
-- 2026-01-13: sweep primingã®prime_cmdã‚’DaqSequenceCommandã§æ¸¡ã™ã‚ˆã†ã«ã—ã€dictä¾å­˜ã‚’ä½æ¸›ã€‚
-- 2026-01-13: manual actions/DAQ connect/disconnectã®set_doã‚’DaqClientDeviceçµŒç”±ã«ç½®æ›ã€‚
-- 2026-01-13: camera_checkã®ä¸€æ™‚DAQ primingã‚‚DaqQueueDeviceçµŒç”±ã«ç½®æ›ã€‚
-- 2026-01-14: Sweepã®ã‚¤ãƒ™ãƒ³ãƒˆé€šçŸ¥ã‚’SweepEventsã«é›†ç´„ã€‚
-- 2026-01-14: plotæ›´æ–°/å…¥åŠ›ã‚¨ãƒ©ãƒ¼é€šçŸ¥ã‚‚SweepEventsã¸çµ±åˆã€‚
-- 2026-01-14: SweepIOã«subarray/thresholdç¢ºèªã‚’åˆ‡ã‚Šå‡ºã—ã€UIä¾å­˜ã‚’åˆ†é›¢ã€‚
-- 2026-01-14: SweepUiã‚’å»ƒæ­¢ã—ã€Events/IO/Depsã®å¢ƒç•Œã«æ•´ç†ã€‚
-- 2026-01-14: Events/IO/Depsã®æœ€å°ã‚»ãƒƒãƒˆã«æ•´ç†ã—ã¦workflowä¾å­˜ã‚’æ˜ç¢ºåŒ–ã€‚
-- 2026-01-14: workflowã®ã‚¹ã‚¿ãƒ–å®Ÿè¡Œç”¨ã‚¹ã‚¯ãƒªãƒ—ãƒˆã‚’è¿½åŠ ï¼ˆsmoketestï¼‰ã€‚
-- 2026-01-14: SweepPhaseã®çŠ¶æ…‹ãƒˆãƒ©ãƒƒã‚­ãƒ³ã‚°ã¨on_state_changeã‚¤ãƒ™ãƒ³ãƒˆã‚’è¿½åŠ ã€‚
-- 2026-01-14: Diagnosticsã«Sweep stateå±¥æ­´ã‚’è¿½åŠ ã—ã€çŠ¶æ…‹é·ç§»ã‚’å¯è¦–åŒ–ã€‚
-- 2026-01-14: SweepStateã®running/prepared/threshold_doneã‚’phaseã¸çµ±åˆã€‚
-- 2026-01-14: phaseã«åˆã‚ã›ã¦Sweep statusæ–‡è¨€ã¨ãƒœã‚¿ãƒ³çŠ¶æ…‹ã®æ›´æ–°ã‚’æ•´ç†ã€‚
-- 2026-01-14: SweepControllerã§phaseã‚¬ãƒ¼ãƒ‰ã‚’é›†ç´„ã—ã€UIæ“ä½œåˆ¶é™ã‚’æ˜ç¢ºåŒ–ã€‚
-- 2026-01-14: Sweep statusæ–‡è¨€ã‚’çµ±ä¸€ã—ã€æ¬¡ã®ã‚¢ã‚¯ã‚·ãƒ§ãƒ³ãŒåˆ†ã‹ã‚‹è¡¨ç¤ºã«æ•´å‚™ã€‚
-- 2026-01-14: Sweepã‚¬ãƒ¼ãƒ‰/ã‚¨ãƒ©ãƒ¼ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã®æ–‡è¨€ã‚’å®šæ•°åŒ–ã—ã¦é‡è¤‡ã‚’å‰Šæ¸›ã€‚
-- 2026-01-14: ã‚¬ãƒ¼ãƒ‰æ–‡è¨€ã‚’UIãƒœã‚¿ãƒ³è¡¨è¨˜ï¼ˆROI/Threshold/Startï¼‰ã«åˆã‚ã›ã¦çµ±ä¸€ã€‚
-- 2026-01-14: Sequence JSONã®ao_insert_index/ao_width_msã‚’UIã«åæ˜ ã—ã€èª­ã¿å–ã‚Šè¡¨ç¤ºã¨ä¸€è‡´ã•ã›ãŸã€‚
-- 2026-01-14: Sequenceã‚¿ãƒ–ã®AO insert indexã‚’èª­ã¿å–ã‚Šå°‚ç”¨ã«å¤‰æ›´ã€‚
-- 2026-01-14: SweepPhaseã®çŠ¶æ…‹å®šç¾©/é·ç§»/ã‚¬ãƒ¼ãƒ‰ã‚’æœ€æ–°å®Ÿè£…ã«æ›´æ–°ã€‚
-- 2026-01-14: Setupã®AO widthå…¥åŠ›ã‚’èª­ã¿å–ã‚Šå°‚ç”¨ã«ã—ã€Sequence JSONã«åˆã‚ã›ãŸã€‚
-- 2026-01-14: Sequenceå®Ÿè¡Œã‚’JSONç”±æ¥ã®do_sequence/aoãƒ‘ãƒ©ãƒ¡ãƒ¼ã‚¿ã«çµ±ä¸€ã€‚
-- 2026-01-14: Sequenceã‚¿ãƒ–åˆæœŸè¡¨ç¤ºã‚’DeviceRegistryã®sequence_json_pathã«è¿½å¾“ã•ã›ãŸã€‚
-- 2026-01-14: Sequenceå®Ÿè¡Œæ™‚ã«JSONãƒ‘ã‚¹æœªè¨­å®š/ä¸å­˜åœ¨ã®ã‚¬ãƒ¼ãƒ‰ã‚’è¿½åŠ ã€‚
-- 2026-01-14: ãƒ­ã‚°åˆæœŸåŒ–ã§DeviceRegistryã®logs_rootã‚’å„ªå…ˆã™ã‚‹ã‚ˆã†ã«ã—ãŸã€‚
-- 2026-01-14: output_rootã‚’sweep/cameraã®å‡ºåŠ›ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã«åæ˜ ã€‚
-- 2026-01-14: run_shutter_sequenceã®å‡ºåŠ›å…ˆã‚‚output_rootã«è¿½å¾“ã•ã›ãŸã€‚
-- 2026-01-14: log_utils.make_run_folderã‚‚output_rootã«è¿½å¾“ã•ã›ãŸã€‚
-- 2026-01-14: output_rootã®è§£æ±ºã‚’device_registryã®ãƒ¦ãƒ¼ãƒ†ã‚£ãƒªãƒ†ã‚£ã«é›†ç´„ã€‚
-- 2026-01-14: camera_tabã®output_rootãƒ•ã‚©ãƒ¼ãƒ«ãƒãƒƒã‚¯ã‚‚resolve_output_rootã¸çµ±ä¸€ã€‚
-- 2026-01-14: run_spectrumã®å‡ºåŠ›å…ˆã‚‚output_rootã«è¿½å¾“ã•ã›ãŸã€‚
-- 2026-01-14: run_spectrumã®Sequence JSONãƒ‘ãƒ¼ã‚¹ã‚’read_sequence_json_paramsã¸çµ±ä¸€ã€‚
-- 2026-01-14: run_spectrumã®DAQå‘¼ã³å‡ºã—ã‚’DaqQueueDeviceçµŒç”±ã«çµ±ä¸€ã€‚
-- 2026-01-14: Sequence JSONã®camera_actions/sync_markersã‚’æ¤œè¨¼ã—ã¦ä¿æŒã™ã‚‹ã‚ˆã†è¿½åŠ ã€‚
-- 2026-01-14: sweepã‚»ãƒƒã‚·ãƒ§ãƒ³ã«camera_actions/sync_markersã‚’å¼•ãå›ã™ã‚ˆã†è¿½åŠ ã€‚
+## i’»ƒƒ‚
+- 2026-01-13: GUI‚ğSetup/Run/Diagnostics‚ÉÄ\¬‚µAManual/Camera/Sweep/Sequence‚Ì“±ü‚ğ®—B
+- 2026-01-13: GUIƒƒOƒpƒlƒ‹/Diagnostics‚Ì‹@”\‚ğ®”õiÅŒã‚ÌƒGƒ‰[•\¦A—š—ğAƒtƒBƒ‹ƒ^AƒRƒs[jB
+- 2026-01-13: Sequence JSON‚ğ—Bˆê‚Ì“ü—ÍŒ³‚É‚µASequence/Sweep‘¤‚ÍQÆ•\¦‚Ö“ˆêB
+- 2026-01-13: device_registry‚ÌœŠi‚ğ’Ç‰Á‚µA‹N“®/I—¹‚Ì“Ç‚İ‘‚«‚ğ”züB
+- 2026-01-13: hardware/pipeline‚ÌƒfƒBƒŒƒNƒgƒŠœŠi‚ÆAdapter(DAQ/Camera/FG)‚ğ’Ç‰ÁB
+- 2026-01-14: Sweep‚ÌEvents/IO/Deps‹«ŠE‚ÆPhaseó‘Ô‹@ŠB‚ğ“±“üB
+- 2026-01-14: Sweep‚ÌROI/Threshold/Spectrum‚ğworkflow‚ÖŠñ‚¹AGUIˆË‘¶‚ğ’áŒ¸B
+- 2026-01-14: output_root/logs_root‚Ì‰ğŒˆ‚ğ“ˆê‚µAÀso—Íæ‚ğ‹¤’Ê‰»B
+- 2026-01-14: Sequence JSON‚Ìcamera_actions/sync_markers‚ğŒŸØE•Û‚µAsweep‚Éˆø‚«‰ñ‚µB
+- 2026-01-14: sweep‚Ìconfig.json‚Éupdate_interval/camera_actions/sync_markers‚ğ•Û‘¶B
 
-## Adapterç§»è¡ŒçŠ¶æ³ï¼ˆæš«å®šï¼‰
-### DaqClientDeviceï¼ˆGUIå´ï¼‰
-- camera_tabï¼ˆsnap/TTL/primingï¼‰
-- sequence/controllerï¼ˆrun_sequence_once, set_doï¼‰
-- manual_actionsï¼ˆset_doï¼‰
-- daq/controllerï¼ˆconnect/disconnectæ™‚ã®set_doï¼‰
+## AdapterˆÚsó‹µib’èj
+### DaqClientDeviceiGUI‘¤j
+- camera_tabisnap/TTL/primingj
+- sequence/controllerirun_sequence_once, set_doj
+- manual_actionsiset_doj
+- daq/controllericonnect/disconnect‚Ìset_doj
 
-### DaqQueueDeviceï¼ˆworker/queueå´ï¼‰
+### DaqQueueDeviceiworker/queue‘¤j
 - sweep: roi_bootstrap/roi_check/threshold/spectrum/stop/priming
-- camera_checkã®ä¸€æ™‚DAQ priming
+- camera_check‚ÌˆêDAQ priming
 
 ### CameraWorkerDevice
-- camera_check/camera_snap ã®ãƒ•ãƒ¬ãƒ¼ãƒ å–å¾—
+- camera_check/camera_snap ‚ÌƒtƒŒ[ƒ€æ“¾
 
 ### RigolFgDevice
 - FG connect/disconnect
-- 2026-01-13: GUIã®ãƒˆãƒƒãƒ—ãƒ¬ãƒ™ãƒ«ã‚¿ãƒ–ã‚’Setup/Run/Diagnosticsã«å†æ§‹æˆã—ã€Setupå†…ã«Top Barã‚’ç§»è¨­ã€‚
+- 2026-01-13: GUI‚ÌƒgƒbƒvƒŒƒxƒ‹ƒ^ƒu‚ğSetup/Run/Diagnostics‚ÉÄ\¬‚µASetup“à‚ÉTop Bar‚ğˆÚİB
