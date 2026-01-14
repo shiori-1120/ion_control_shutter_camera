@@ -34,7 +34,7 @@
     "no_fg": true
   },
   "sweep_defaults": {
-    "n_target": 50,
+    "n_target": 10,
     "max_attempt": 100,
     "settle_s": 0.02,
     "update_interval": 1.0
