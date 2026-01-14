@@ -30,8 +30,5 @@
 - myenv で import と py_compile が通ること
 
 ## 残タスク
-- フェーズ3: ハードI/Fの整理（adapter/legacyの棚卸しと置換方針の明文化）
-- フェーズ5: SequenceSpec分離の仕上げ（sync_markers活用範囲の最終確認）
-- camera_actions/sync_markersの出力確認（警告ログは実装済）
-- 既存UIとDeviceRegistryの差分整理の最終確認
+- 手動検証: sweep/camera_check/camera_snapの実機/ドライでログと出力を確認
 

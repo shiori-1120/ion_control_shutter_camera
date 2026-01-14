@@ -588,13 +588,11 @@
 ### UI内で重複/分散している設定
 - DAQ device/mode: Top barのdevice_var/device_mode_varとSweepタブのsw_device/sw_daq_modeが重複。
 - FG設定: Top barのFG VISA/ampとSweepタブのsw_visa/sw_fg_amp_mvppが重複。
-- Camera mode/exposure: Top barにあるがSweep/Cameraタブ側で参照（統合は未完）。
-- Sequence JSON: Sweepタブでパス指定、Sequenceタブはテキスト編集（一本化が必要）。
+- Sequence JSON: Sweepタブでパス指定、Sequenceタブはテキスト表示（read-only）。
 
-### 移行の指針（暫定）
+### 移行の指針（確定）
 - Setupタブ(Top)を唯一の入力元にし、Sweep/Cameraは参照専用。
-- dry_image_dirとcamera_trigger_delayは設計確定まで非表示またはDebug扱い。
-- SequenceSpec(JSON)に統合し、Sequenceタブは閲覧/検証専用に移行。
+- SequenceSpec(JSON)に統合し、Sequenceタブは閲覧/検証専用。
 
 ---
 ## ログ基盤とGUIログパネル（フェーズ2・設計）
@@ -689,6 +687,7 @@
 - 2026-01-14: DAQ接続/切断のログを追加。
 - 2026-01-14: Camera check開始時のログを追加。
 - 2026-01-14: Camera snap開始時のログを追加。
+- 2026-01-14: フェーズ3/5の設計・実装整理を完了（残タスク更新）。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming
@@ -720,3 +719,7 @@
 ### 直接legacy参照が残る箇所（棚卸し）
 - shutter_guiがDaqClientを直接保持（GUI側の即時操作用）
 - DaqClientDeviceがDaqClientをラップ（GUI側用途）
+
+### 完了事項（フェーズ3/5まとめ）
+- Camera/DAQ/FGのadapter経由に統一し、run_spectrumもRigolFgDeviceに統一済み。
+- camera_actions/sync_markersはconfig/manifest/JSON/CSV出力とGUI要約表示まで実装済み。
