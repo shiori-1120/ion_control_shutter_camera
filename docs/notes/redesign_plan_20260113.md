@@ -675,6 +675,8 @@
 - 2026-01-14: camera_actionsのtagをカメラ応答に通してshots.csvへ記録。
 - 2026-01-14: camera_actionsのデフォルトtagをkind@t_s形式に調整。
 - 2026-01-14: SequenceSpecのCameraCommandにtagのデフォルトを付与。
+- 2026-01-14: Sequenceタブにcamera_actions/sync_markers件数の表示とログ出力を追加。
+- 2026-01-14: sweep出力のcamera_actions/sync_markers保存失敗を警告表示するよう改善。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

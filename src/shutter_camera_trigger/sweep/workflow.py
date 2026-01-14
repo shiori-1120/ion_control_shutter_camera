@@ -327,8 +327,8 @@ def start_sweep(
                 encoding="utf-8",
             )
             state.spectrum_outputs["camera_actions"] = cam_actions_path
-        except Exception:
-            pass
+        except Exception as e:
+            events.on_warning(f"Failed to write camera_actions.json: {e}")
     if sync_markers:
         try:
             markers_path = out_dir / "sync_markers.json"
@@ -337,6 +337,9 @@ def start_sweep(
                 encoding="utf-8",
             )
             state.spectrum_outputs["sync_markers"] = markers_path
+        except Exception as e:
+            events.on_warning(f"Failed to write sync_markers.json: {e}")
+        try:
             markers_csv = out_dir / "sync_markers.csv"
             with markers_csv.open("w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=["t_s", "label"])
@@ -352,8 +355,8 @@ def start_sweep(
                     except Exception:
                         continue
             state.spectrum_outputs["sync_markers_csv"] = markers_csv
-        except Exception:
-            pass
+        except Exception as e:
+            events.on_warning(f"Failed to write sync_markers.csv: {e}")
 
     try:
         if fig is not None and canvas is not None:

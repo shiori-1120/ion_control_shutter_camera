@@ -14,6 +14,21 @@ def _load_sequence_params(path: Path):
     return read_sequence_json_params(seq_path=path)
 
 
+def _format_sequence_meta(params: Any | None) -> str:
+    if params is None:
+        return "Camera actions: N/A | Sync markers: N/A"
+    return f"Camera actions: {len(params.camera_actions)} | Sync markers: {len(params.sync_markers)}"
+
+
+def _set_sequence_meta(app: Any, params: Any | None) -> None:
+    if getattr(app, "seq_meta_var", None) is None:
+        return
+    try:
+        app.seq_meta_var.set(_format_sequence_meta(params))
+    except Exception:
+        pass
+
+
 def _resolve_sequence_path(app: Any, default_seq_path: Path) -> Path:
     try:
         candidate = getattr(app, "sw_seq_path", None)
@@ -44,6 +59,7 @@ def _refresh_sequence_text(app: Any, *, default_seq_path: Path) -> None:
         app.seq_text.configure(state=tk.DISABLED)
     except Exception:
         pass
+    _set_sequence_meta(app, params)
     if params is not None:
         try:
             app.insert_index_var.set(str(int(params.ao_insert_index)))
@@ -80,6 +96,8 @@ def build_sequence_tab(
     ttk.Entry(row, textvariable=app.insert_index_var, width=6, state="readonly").grid(row=0, column=1, padx=4)
 
     ttk.Label(row, text=bitstring_help).grid(row=0, column=2, sticky=tk.W, padx=(8, 0))
+    app.seq_meta_var = tk.StringVar(value="Camera actions: 0 | Sync markers: 0")
+    ttk.Label(row, textvariable=app.seq_meta_var).grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(4, 0))
 
     btn_row = ttk.Frame(app.seq_tab)
     btn_row.pack(fill=tk.X, pady=(6, 6))
@@ -118,6 +136,7 @@ def build_sequence_tab(
         path = _resolve_sequence_path(app, default_seq_path)
         params = _load_sequence_params(path)
         initial_text = str(params.sequence_text or "")
+        _set_sequence_meta(app, params)
         try:
             app.insert_index_var.set(str(int(params.ao_insert_index)))
         except Exception:
@@ -129,6 +148,7 @@ def build_sequence_tab(
             pass
     except Exception as e:
         initial_text = f"# Error loading sequence JSON\n# {e}\n"
+        _set_sequence_meta(app, None)
     app.seq_text.insert("1.0", initial_text)
     app.seq_text.configure(state=tk.DISABLED)
     app.seq_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)

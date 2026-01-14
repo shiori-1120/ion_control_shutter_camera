@@ -29,6 +29,12 @@ def prepare_session(app: Any, *, default_daq_device: str) -> bool:
     try:
         if getattr(app, "_logger", None):
             app._logger.info("sweep_prepare_done ok=%s", ok)
+            if ok:
+                app._logger.info(
+                    "sweep_sequence_meta camera_actions=%d sync_markers=%d",
+                    len(inputs.camera_actions),
+                    len(inputs.sync_markers),
+                )
     except Exception:
         pass
     return ok
