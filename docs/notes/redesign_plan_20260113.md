@@ -680,6 +680,7 @@
 - 2026-01-14: run_spectrumでもcamera_actions/sync_markers保存失敗を警告表示するよう改善。
 - 2026-01-14: FgDeviceプロトコルにidn()を追加しFGアダプタ統一を補強。
 - 2026-01-14: 未使用のCameraClientを削除。
+- 2026-01-14: Sequenceタブでcamera_actions/sync_markersの要約表示を追加。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

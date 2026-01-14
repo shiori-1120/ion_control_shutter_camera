@@ -20,6 +20,49 @@ def _format_sequence_meta(params: Any | None) -> str:
     return f"Camera actions: {len(params.camera_actions)} | Sync markers: {len(params.sync_markers)}"
 
 
+def _format_t_s(value: Any) -> str:
+    try:
+        return f"{float(value):.6f}"
+    except Exception:
+        return str(value)
+
+
+def _format_camera_actions(params: Any | None, *, limit: int = 3) -> str:
+    if params is None:
+        return "Camera actions: (unknown)"
+    actions = list(params.camera_actions or [])
+    if not actions:
+        return "Camera actions: (none)"
+    parts = []
+    for item in actions[:limit]:
+        kind = str(item.get("kind", "")).strip() or "?"
+        t_s = _format_t_s(item.get("t_s", ""))
+        tag = ""
+        meta = item.get("meta") or {}
+        if isinstance(meta, dict):
+            tag_val = meta.get("tag")
+            if tag_val:
+                tag = f" tag={tag_val}"
+        parts.append(f"{kind}@{t_s}{tag}")
+    suffix = " ..." if len(actions) > limit else ""
+    return f"Camera actions: {', '.join(parts)}{suffix}"
+
+
+def _format_sync_markers(params: Any | None, *, limit: int = 3) -> str:
+    if params is None:
+        return "Sync markers: (unknown)"
+    markers = list(params.sync_markers or [])
+    if not markers:
+        return "Sync markers: (none)"
+    parts = []
+    for item in markers[:limit]:
+        label = str(item.get("label", "")).strip() or "?"
+        t_s = _format_t_s(item.get("t_s", ""))
+        parts.append(f"{label}@{t_s}")
+    suffix = " ..." if len(markers) > limit else ""
+    return f"Sync markers: {', '.join(parts)}{suffix}"
+
+
 def _set_sequence_meta(app: Any, params: Any | None) -> None:
     if getattr(app, "seq_meta_var", None) is None:
         return
@@ -27,6 +70,16 @@ def _set_sequence_meta(app: Any, params: Any | None) -> None:
         app.seq_meta_var.set(_format_sequence_meta(params))
     except Exception:
         pass
+    if getattr(app, "seq_actions_var", None) is not None:
+        try:
+            app.seq_actions_var.set(_format_camera_actions(params))
+        except Exception:
+            pass
+    if getattr(app, "seq_markers_var", None) is not None:
+        try:
+            app.seq_markers_var.set(_format_sync_markers(params))
+        except Exception:
+            pass
 
 
 def _resolve_sequence_path(app: Any, default_seq_path: Path) -> Path:
@@ -98,6 +151,14 @@ def build_sequence_tab(
     ttk.Label(row, text=bitstring_help).grid(row=0, column=2, sticky=tk.W, padx=(8, 0))
     app.seq_meta_var = tk.StringVar(value="Camera actions: 0 | Sync markers: 0")
     ttk.Label(row, textvariable=app.seq_meta_var).grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(4, 0))
+    app.seq_actions_var = tk.StringVar(value="Camera actions: (none)")
+    ttk.Label(row, textvariable=app.seq_actions_var, wraplength=720, justify=tk.LEFT).grid(
+        row=2, column=0, columnspan=3, sticky=tk.W, pady=(2, 0)
+    )
+    app.seq_markers_var = tk.StringVar(value="Sync markers: (none)")
+    ttk.Label(row, textvariable=app.seq_markers_var, wraplength=720, justify=tk.LEFT).grid(
+        row=3, column=0, columnspan=3, sticky=tk.W, pady=(2, 0)
+    )
 
     btn_row = ttk.Frame(app.seq_tab)
     btn_row.pack(fill=tk.X, pady=(6, 6))
