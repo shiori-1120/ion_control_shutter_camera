@@ -21,6 +21,7 @@ from __future__ import annotations
 import queue
 import traceback
 import time
+import os
 from multiprocessing.queues import Queue
 from typing import Any
 
@@ -58,6 +59,7 @@ def daq_worker_mpq_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> Non
             resp_q.put(msg)
         except Exception:
             pass
+    trace_daq = str(os.environ.get("ION_CONTROL_DAQ_TRACE", "")).strip() == "1"
 
     try:
         device = str(cfg.get("device") or "Dev1")
@@ -104,6 +106,9 @@ def daq_worker_mpq_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> Non
                         if not (isinstance(item, (list, tuple)) and len(item) == 2):
                             raise ValueError("do_sequence items must be (value, hold_s)")
                         parsed.append((int(item[0]), float(item[1])))
+
+                    if trace_daq:
+                        log(f"run_sequence_once do_sequence={parsed}")
 
                     run_do_sequence_once(
                         session,

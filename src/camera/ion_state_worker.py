@@ -24,9 +24,11 @@ import queue
 import random
 import time
 import traceback
+
 from pathlib import Path
 from multiprocessing.queues import Queue
 from typing import Any
+import sys
 
 
 def _limit_blas_threads() -> None:
@@ -39,9 +41,57 @@ def _limit_blas_threads() -> None:
 def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> None:
     _limit_blas_threads()
 
+    def log_worker_env():
+        """
+        ワーカープロセスの環境情報を詳細にログ出力する（デバッグ用）
+        """
+        try:
+            log("===== Camera Worker Environment Diagnostics =====")
+            log(f"os.getcwd(): {os.getcwd()}")
+            log(f"sys.executable: {sys.executable}")
+            log(f"sys.argv: {sys.argv}")
+            log(f"sys.path: {sys.path}")
+            log(f"os.environ['PATH']: {os.environ.get('PATH', '')}")
+            log(f"os.environ['PYTHONPATH']: {os.environ.get('PYTHONPATH', '')}")
+            # DLL探索状況
+            dcam_dll = 'dcamapi4.dll'
+            found = False
+            for p in os.environ.get('PATH', '').split(os.pathsep):
+                dll_path = os.path.join(p, dcam_dll)
+                if os.path.exists(dll_path):
+                    log(f"Found {dcam_dll} at: {dll_path}")
+                    found = True
+            if not found:
+                log(f"{dcam_dll} NOT found in PATH.")
+            log("===============================================")
+        except Exception as e:
+            log(f"log_worker_env error: {e}")
+
+
+    import logging
     log_path = cfg.get("log_path")
     run_id = str(cfg.get("run_id") or "")
     _log_file: Any | None = None
+
+    cam_verbose = bool(cfg.get("verbose") or cfg.get("camera_verbose") or False)
+    # ログレベルをDEBUGに設定し、詳細ログをファイルに出す
+    import sys
+    log_handlers = []
+    log_fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    # 標準出力にも出す
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(log_fmt)
+    log_handlers.append(stream_handler)
+    # ファイルにも出す
+    log_file_path = cfg.get('log_path', None)
+    if log_file_path:
+        file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+        file_handler.setFormatter(log_fmt)
+        log_handlers.append(file_handler)
+    logging.basicConfig(
+        level=logging.DEBUG if cam_verbose else logging.INFO,
+        handlers=log_handlers
+    )
 
     def log(msg: str) -> None:
         nonlocal _log_file
@@ -61,8 +111,6 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
         except Exception:
             pass
 
-    cam_verbose = bool(cfg.get("verbose") or cfg.get("camera_verbose") or False)
-
     def log_debug(msg: str) -> None:
         if cam_verbose:
             log(msg)
@@ -76,11 +124,14 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     if str(camera_dir) not in sys.path:
         sys.path.insert(0, str(camera_dir))
 
+
     log(
         f"worker start | pid={os.getpid()} | mode={cfg.get('mode')} | "
         f"exposure_s={cfg.get('exposure_s')} | frame_timeout_s={cfg.get('frame_timeout_s')} | "
         f"bootstrap_n={cfg.get('bootstrap_n')}"
     )
+    # --- 環境情報を初期化直前に出力 ---
+    log_worker_env()
 
     mode = str(cfg.get("mode") or "dry")  # 'dry' | 'real'
 
@@ -203,101 +254,129 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
         except Exception:
             dry_samples = []
 
+
     try:
         if mode == "dry":
             log("mode=dry -> sending ready")
             send({"ok": True, "event": "ready", "mode": "dry", "dry_samples": len(dry_samples)})
 
         elif mode == "real":
-            log("mode=real -> importing camera stack")
-            # Import the real camera/analysis stack only in real mode.
-            import numpy as np
+            try:
+                log("mode=real -> importing camera stack")
+                # Import the real camera/analysis stack only in real mode.
+                import numpy as np
 
-            from .lib.analysis_profiles import generate_rois_from_image
-            from .lib.ControlDevice import Control_qCMOScamera
-            from .lib.image_ops import crop_roi
-            from .lib.thresholding import bootstrap_threshold_from_stream, classify_hysteresis, normalize_count
+                from .lib.analysis_profiles import generate_rois_from_image
+                from .lib.ControlDevice import Control_qCMOScamera
+                from .lib.image_ops import crop_roi
+                from .lib.thresholding import bootstrap_threshold_from_stream, classify_hysteresis, normalize_count
 
-            # store for command loop
-            locals_np = np
-            locals_norm = normalize_count
-            locals_cls = classify_hysteresis
+                # store for command loop
+                locals_np = np
+                locals_norm = normalize_count
+                locals_cls = classify_hysteresis
 
-            log("creating Control_qCMOScamera")
-            cam = Control_qCMOScamera(trigger_cfg=trigger_cfg, verbose=cam_verbose)
-            log("OpenCamera_GetHandle")
-            cam.OpenCamera_GetHandle()
-            # Full frame by default. If subarray is configured, apply it at camera level.
-            log("SetParameters")
-            if subarray_t is not None:
-                xw, yw, xs, ys = map(int, subarray_t)
-                cam.SetParameters(exposure_s, xw, yw, xs, ys)
-                log(f"subarray applied: x={xs} y={ys} w={xw} h={yw}")
-            else:
-                cam.SetParameters(exposure_s)
-            log("StartCapture")
-            cam.StartCapture()
+                log("creating Control_qCMOScamera")
+                cam = Control_qCMOScamera(trigger_cfg=trigger_cfg, verbose=cam_verbose)
+                log("OpenCamera_GetHandle")
+                cam.OpenCamera_GetHandle()
+                # Full frame by default. If subarray is configured, apply it at camera level.
+                log("SetParameters")
+                if subarray_t is not None:
+                    xw, yw, xs, ys = map(int, subarray_t)
+                    cam.SetParameters(exposure_s, xw, yw, xs, ys)
+                    log(f"subarray applied: x={xs} y={ys} w={xw} h={yw}")
+                else:
+                    cam.SetParameters(exposure_s)
+                log("StartCapture")
+                cam.StartCapture()
 
-            # Bootstrap ROI + thresholds if missing
-            frames: list[np.ndarray] = []
-            for i in range(max(1, bootstrap_n)):
-                log_debug(f"bootstrap wait_for_frame_ready {i+1}/{max(1, bootstrap_n)}")
-                ok, err = cam.wait_for_frame_ready(frame_timeout_s)
-                if not ok:
-                    raise RuntimeError(f"Camera timeout during bootstrap: {err}")
-                _, frame = cam.GetLastFrame()
-                frames.append(np.asarray(frame))
+                # diagnostics（だいぐのしす）モード判定
+                if cfg.get("diagnostics_mode", False):
+                    # カメラ画像を取得するだけで、ROIやしきい値処理は行わない
+                    frames: list[np.ndarray] = []
+                    for i in range(max(1, bootstrap_n)):
+                        log_debug(f"diagnostics: wait_for_frame_ready {i+1}/{max(1, bootstrap_n)}")
+                        ok, err = cam.wait_for_frame_ready(frame_timeout_s)
+                        if not ok:
+                            raise RuntimeError(f"Camera timeout during diagnostics: {err}")
+                        _, frame = cam.GetLastFrame()
+                        frames.append(np.asarray(frame))
+                    send({
+                        "ok": True,
+                        "event": "ready",
+                        "mode": "real",
+                        "diagnostics_mode": True,
+                        "frames_captured": len(frames),
+                        "exposure_s": float(exposure_s),
+                    })
+                    log("sent ready (diagnostics mode)")
+                else:
+                    # Bootstrap ROI + thresholds if missing
+                    frames: list[np.ndarray] = []
+                    for i in range(max(1, bootstrap_n)):
+                        log_debug(f"bootstrap wait_for_frame_ready {i+1}/{max(1, bootstrap_n)}")
+                        ok, err = cam.wait_for_frame_ready(frame_timeout_s)
+                        if not ok:
+                            raise RuntimeError(f"Camera timeout during bootstrap: {err}")
+                        _, frame = cam.GetLastFrame()
+                        frames.append(np.asarray(frame))
 
-            if roi_t is None:
-                rois = generate_rois_from_image(np.asarray(frames[-1]), plot=False)
-                if not rois:
-                    raise RuntimeError("Failed to auto-detect ROI from image")
-                # single-ion: pick ROI with max sum
-                best = None
-                best_sum = None
-                for r in rois:
-                    r_t = as_roi_tuple(r)
-                    if r_t is None:
-                        continue
-                    xw, yw, xs, ys = r_t
-                    cropped = crop_roi(frames[-1], (xw, yw, xs, ys))
-                    s = float(np.sum(cropped))
-                    if best_sum is None or s > best_sum:
-                        best_sum = s
-                        best = r_t
-                if best is None:
-                    raise RuntimeError("Failed to select a ROI")
-                roi_t = best
+                    if roi_t is None:
+                        rois = generate_rois_from_image(np.asarray(frames[-1]), plot=False)
+                        if not rois:
+                            raise RuntimeError("Failed to auto-detect ROI from image")
+                        # single-ion: pick ROI with max sum
+                        best = None
+                        best_sum = None
+                        for r in rois:
+                            r_t = as_roi_tuple(r)
+                            if r_t is None:
+                                continue
+                            xw, yw, xs, ys = r_t
+                            cropped = crop_roi(frames[-1], (xw, yw, xs, ys))
+                            s = float(np.sum(cropped))
+                            if best_sum is None or s > best_sum:
+                                best_sum = s
+                                best = r_t
+                        if best is None:
+                            raise RuntimeError("Failed to select a ROI")
+                        roi_t = best
 
-            if (tau_on is None) or (tau_off is None):
-                th = bootstrap_threshold_from_stream(
-                    frames,
-                    roi_t,
-                    bg_roi=bg_roi_t,
-                    exposure_s_list=[exposure_s] * len(frames),
-                    sample_n=min(bootstrap_n, len(frames)),
-                )
-                tau_on = float(th["tau_on"])
-                tau_off = float(th["tau_off"])
+                    if (tau_on is None) or (tau_off is None):
+                        th = bootstrap_threshold_from_stream(
+                            frames,
+                            roi_t,
+                            bg_roi=bg_roi_t,
+                            exposure_s_list=[exposure_s] * len(frames),
+                            sample_n=min(bootstrap_n, len(frames)),
+                        )
+                        tau_on = float(th["tau_on"])
+                        tau_off = float(th["tau_off"])
 
-            send(
-                {
-                    "ok": True,
-                    "event": "ready",
-                    "mode": "real",
-                    "roi": list(roi_t),
-                    "bg_roi": (list(bg_roi_t) if bg_roi_t else None),
-                    "tau_on": float(tau_on),
-                    "tau_off": float(tau_off),
-                    "exposure_s": float(exposure_s),
-                }
-            )
-            log("sent ready")
+                    send(
+                        {
+                            "ok": True,
+                            "event": "ready",
+                            "mode": "real",
+                            "roi": list(roi_t),
+                            "bg_roi": (list(bg_roi_t) if bg_roi_t else None),
+                            "tau_on": float(tau_on),
+                            "tau_off": float(tau_off),
+                            "exposure_s": float(exposure_s),
+                        }
+                    )
+                    log("sent ready")
 
-            # expose to command loop
-            np = locals_np
-            normalize_count = locals_norm
-            classify_hysteresis = locals_cls
+                # expose to command loop
+                np = locals_np
+                normalize_count = locals_norm
+                classify_hysteresis = locals_cls
+            except Exception as e:
+                log("[Camera init exception detected]")
+                log_worker_env()
+                log(f"Exception: {e}\n{traceback.format_exc()}")
+                raise
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -316,6 +395,22 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             if name in ("quit", "close"):
                 log("closing")
                 send({"ok": True, "event": "closing"})
+                # --- ここでカメラリソースを即時解放 ---
+                if cam is not None:
+                    log("cleanup (on close cmd): StopCapture/ReleaseBuf/CloseUninitCamera")
+                    try:
+                        cam.StopCapture()
+                    except Exception:
+                        pass
+                    try:
+                        cam.ReleaseBuf()
+                    except Exception:
+                        pass
+                    try:
+                        cam.CloseUninitCamera()
+                    except Exception:
+                        pass
+                    cam = None
                 break
 
             if name == "set_roi":

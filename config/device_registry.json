@@ -2,10 +2,10 @@
   "version": "1.0",
   "daq": {
     "device": "Dev1",
-    "mode": "dry"
+    "mode": "real"
   },
   "camera": {
-    "mode": "dry",
+    "mode": "real",
     "exposure_ms": 100.0,
     "subarray": {
       "enabled": false,
@@ -24,7 +24,7 @@
     }
   },
   "fg": {
-    "visa_resource": "",
+    "visa_resource": "USB0::0x1AB1::0x0646::DG9R273500535::INSTR\n",
     "amp_mvpp": 790.0,
     "wave": "SIN",
     "offset_v": 0.0,
@@ -39,7 +39,7 @@
     "settle_s": 0.02,
     "update_interval": 1.0
   },
-  "sequence_json_path": "src/shutter_camera_trigger/sequence_examples/minimal_sequence.json",
+  "sequence_json_path": "C:/Users/tanak/\u30c7\u30b9\u30af\u30c8\u30c3\u30d7/kariyama/single_ion_control/src/shutter_camera_trigger/sequence_examples/sequence2.json",
   "io_paths": {
     "logs_root": "logs",
     "output_root": "data/output"

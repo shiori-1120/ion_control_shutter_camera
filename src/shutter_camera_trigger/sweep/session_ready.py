@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
+import os
 
 from ..hardware import DaqQueueDevice, DaqSequenceCommand
 from ..sequence.spec import build_sequence_spec, compile_sequence_spec
@@ -140,6 +141,24 @@ def prepare_sweep_session(
             ao_v_high=5.0,
             ao_v_low=0.0,
         )
+        trig_src = str(trig_cfg.get("source") or "EXTERNAL").strip().upper() or "EXTERNAL"
+        def _timeout_from_env(name: str, default: float) -> float:
+            try:
+                raw = os.environ.get(name, "")
+                if raw is None:
+                    return float(default)
+                raw = str(raw).strip()
+                if not raw:
+                    return float(default)
+                val = float(raw)
+                return float(default) if val <= 0 else float(val)
+            except Exception:
+                return float(default)
+
+        base_ready_timeout = 180.0 if trig_src in ("EXTERNAL", "EXT", "2", "") else 30.0
+        cam_ready_timeout_s = _timeout_from_env("ION_CONTROL_CAMERA_READY_TIMEOUT_S", base_ready_timeout)
+        prime_deadline_s = _timeout_from_env("ION_CONTROL_CAMERA_PRIME_DEADLINE_S", cam_ready_timeout_s)
+
         _ = bootstrap_workers_for_sweep(
             daq_resp_q=daq_resp_q,
             cam_proc=cam_p,
@@ -156,8 +175,8 @@ def prepare_sweep_session(
             ui_pump=ui_pump,
             status_cb=status_cb,
             daq_ready_timeout_s=5.0,
-            cam_ready_timeout_s=30.0,
-            prime_deadline_s=30.0,
+            cam_ready_timeout_s=cam_ready_timeout_s,
+            prime_deadline_s=prime_deadline_s,
         )
         write_last_worker_pids_cb({
             "t_iso": datetime.now().isoformat(timespec="seconds"),

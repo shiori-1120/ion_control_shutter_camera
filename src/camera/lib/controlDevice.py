@@ -2,12 +2,13 @@ import time
 import numpy as np
 import ctypes as c
 import os
+import logging
 from typing import Optional, Tuple
 
-import lib.caio as caio
-from lib.CommonFunction import *
-import lib.dcamapi4 as dcamapi4
-from lib.dcam import Dcam
+from . import caio
+from .CommonFunction import *
+from . import dcamapi4
+from .dcam import Dcam
 
 _CAM_VERBOSE = False
 
@@ -32,7 +33,8 @@ def _legacy_trigger_cfg_from_env() -> dict:
 
 def _vprint(*args, **kwargs):
     if _CAM_VERBOSE:
-        print(*args, **kwargs)
+        msg = ' '.join(str(a) for a in args)
+        logging.debug(msg)
 
 
 def _cfg_str(cfg: Optional[dict], *keys: str, default: str = "") -> str:
@@ -244,6 +246,16 @@ class Control_qCMOScamera():
         # DCAM-APIを初期化 (check return and handle transient enumeration failures)
         init_code: int | None = None
         device_count: int = 0
+
+        import os
+        import sys
+        import logging
+        dll_path = getattr(self.dcam, '__file__', None)
+        logging.info(f"[DCAM INIT] sys.path={sys.path}")
+        logging.info(f"[DCAM INIT] os.environ PATH={os.environ.get('PATH')}")
+        logging.info(f"[DCAM INIT] DLL path={dll_path}")
+        logging.info(f"[DCAM INIT] DCAMAPI4 DLL={getattr(dcamapi4, '__file__', None)}")
+        logging.info(f"[DCAM INIT] DCAMERR.NOCAMERA={getattr(dcamapi4.DCAMERR, 'NOCAMERA', None)}")
         for attempt in range(3):
             paraminit = dcamapi4.DCAMAPI_INIT()
             err = dcamapi4.dcamapi_init(c.byref(paraminit))
@@ -257,10 +269,20 @@ class Control_qCMOScamera():
             except Exception:
                 device_count = 0
 
+            logging.info(f"[DCAM INIT] attempt={attempt} init_code={init_code} device_count={device_count}")
             _vprint('number of connected cameras :', device_count)
 
             # If init itself failed (except ALREADYINITIALIZED), don't retry.
             if init_code is not None and init_code < 0 and init_code != int(dcamapi4.DCAMERR.ALREADYINITIALIZED):
+                if init_code == int(dcamapi4.DCAMERR.NOCAMERA) and attempt < 2:
+                    logging.warning(f"[DCAM INIT] init_code=NOCAMERA; retrying (attempt {attempt + 1}/3)")
+                    try:
+                        dcamapi4.dcamapi_uninit()
+                    except Exception as e:
+                        logging.warning(f"[DCAM INIT] dcamapi_uninit exception: {e}")
+                    time.sleep(0.5)
+                    continue
+                logging.error(f"[DCAM INIT] init_code failure: {init_code}")
                 break
 
             # If no camera detected, uninit and retry once or twice.
@@ -268,13 +290,16 @@ class Control_qCMOScamera():
                 break
             try:
                 dcamapi4.dcamapi_uninit()
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning(f"[DCAM INIT] dcamapi_uninit exception: {e}")
             time.sleep(0.3)
+
+        logging.info(f"[DCAM INIT] final init_code={init_code} device_count={device_count}")
 
         self._device_count = int(device_count)
 
         # Fail fast with an actionable error message.
+
         if init_code is not None and init_code < 0 and init_code != int(dcamapi4.DCAMERR.ALREADYINITIALIZED):
             err_name = None
             try:
@@ -282,14 +307,16 @@ class Control_qCMOScamera():
             except Exception:
                 err_name = None
             suffix = f" ({err_name})" if err_name else ""
+            logging.error(f"[DCAM INIT] dcamapi_init failed: {init_code}{suffix}")
             raise RuntimeError(f"dcamapi_init failed: {init_code}{suffix}")
 
         if self._device_count <= 0:
             # Keep API uninitialized in the no-camera case.
             try:
                 dcamapi4.dcamapi_uninit()
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning(f"[DCAM INIT] dcamapi_uninit exception (no camera): {e}")
+            logging.error("[DCAM INIT] No camera detected by DCAM (device_count=0).")
             raise RuntimeError("No camera detected by DCAM (device_count=0).")
 
     def OpenCamera_GetHandle(self):

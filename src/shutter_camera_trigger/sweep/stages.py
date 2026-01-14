@@ -89,6 +89,10 @@ def run_roi_check_stage(
     canvas: Any,
     prefer_sample_path: str | None = None,
 ) -> RoiCheckResult:
+    import time as _time
+    import logging
+    import gc
+    logging.info("[ROI_CHECK] === run_roi_check_stage: start ===")
     if status_cb is not None:
         try:
             status_cb("ROI: acquiring frame...")
@@ -100,29 +104,94 @@ def run_roi_check_stage(
         except Exception:
             pass
 
+
     cam_device = CameraQueueDevice(cmd_q=cam_cmd_q)
-    cam_device.send_get_frame(1.0, prefer_sample=(str(prefer_sample_path) if prefer_sample_path else None))
-    DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
-        DaqSequenceCommand(
-            do_sequence=pulse_seq,
-            ao_insert_index=-1,
-            ao_width_ms=0.0,
-            ao_rate_hz=float(ao_rate_hz),
-            ao_v_high=5.0,
-            ao_v_low=0.0,
-        )
-    )
-    cam_resp = mpq_get_with_ui(cam_resp_q, 15, "Camera ROI frame")
-    if not cam_resp.get("ok"):
+    daq_device = DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q)
+    frame = None
+    cam_resp = None
+
+    # --- カメラリソース解放・GC・sleepの本質的アプローチをログ出力 ---
+    try:
+        logging.info("[ROI_CHECK] [PRE] Sending camera close command before ROI check.")
+        cam_device.close()
+        _time.sleep(0.2)
+        logging.info("[ROI_CHECK] [PRE] Resetting ROI to full-frame before ROI check.")
+        cam_device.set_roi(None)
+        _time.sleep(0.2)
+        logging.info("[ROI_CHECK] [PRE] Forcing GC and sleep to ensure camera resource release.")
+        gc.collect()
+        _time.sleep(1.0)
+        logging.info("[ROI_CHECK] [PRE] GC collected and slept 1s.")
+    except Exception as e:
+        logging.error(f"[ROI_CHECK] [PRE] Camera pre-initialization failed: {e}")
+
+    # --- worker起動直前のカメラopen/closeテスト (必要時のみ) ---
+    try:
+        import os as _os
+        if _os.environ.get("ION_CONTROL_CAMERA_PRECHECK", "").strip() == "1":
+            from src.camera.lib.ControlDevice import Control_qCMOScamera
+            logging.info("[ROI_CHECK] [PRE] Camera open/close test before worker launch (verifying resource release)...")
+            cam_test = None
+            try:
+                cam_test = Control_qCMOScamera(verbose=True)
+                ok, info = cam_test.check_connection(retries=1, delay=0.2, try_open=True)
+                logging.info(f"[ROI_CHECK] [PRE] Camera open/close test result: ok={ok}, info={info}")
+            except Exception as e:
+                logging.error(f"[ROI_CHECK] [PRE] Camera open/close test failed: {e}")
+            finally:
+                if cam_test is not None:
+                    try:
+                        cam_test.CloseUninitCamera()
+                        del cam_test
+                    except Exception:
+                        pass
+                gc.collect()
+                _time.sleep(0.5)
+        else:
+            logging.info("[ROI_CHECK] [PRE] Skipping camera open/close test (set ION_CONTROL_CAMERA_PRECHECK=1 to enable).")
+    except Exception as e:
+        logging.error(f"[ROI_CHECK] [PRE] Camera open/close test block failed: {e}")
+
+    # --- worker起動直前の状態をログ ---
+    logging.info(f"[ROI_CHECK] [PRE] Just before ROI worker: cam_device={cam_device}, daq_device={daq_device}")
+
+    # --- Main ROI check (single frame, retry TTL until success) ---
+    for attempt in range(int(max_attempt)):
+        try:
+            logging.info(f"[ROI_CHECK] Attempt {attempt + 1}/{int(max_attempt)}: running DAQ sequence and acquiring frame.")
+            daq_device.run_sequence_once(
+                DaqSequenceCommand(
+                    do_sequence=pulse_seq,
+                    ao_insert_index=-1,
+                    ao_width_ms=0.0,
+                    ao_rate_hz=float(ao_rate_hz),
+                    ao_v_high=5.0,
+                    ao_v_low=0.0,
+                )
+            )
+            cam_device.send_get_frame(1.0, prefer_sample=(str(prefer_sample_path) if prefer_sample_path else None))
+            cam_resp = mpq_get_with_ui(cam_resp_q, 15, "Camera ROI frame")
+            if cam_resp.get("ok"):
+                frame = np.asarray(cam_resp.get("frame"))
+                logging.info("[ROI_CHECK] Frame acquired successfully.")
+                break
+            else:
+                logging.warning(f"[ROI_CHECK] Camera response not ok: {cam_resp}")
+        except Exception as e:
+            logging.error(f"[ROI_CHECK] Exception during ROI frame acquisition: {e}")
+        _time.sleep(0.05)
+
+    # --- worker終了直後の状態をログ ---
+    logging.info("[ROI_CHECK] === run_roi_check_stage: end ===")
+    if frame is None or not (cam_resp and cam_resp.get("ok")):
+        logging.error(f"[ROI_CHECK] Camera frame acquisition failed after {max_attempt} attempts.")
         raise RuntimeError(
             format_worker_failure(
-                cam_resp,
+                cam_resp or {},
                 label="Camera frame failed",
                 log_path=cam_log_path,
             )
         )
-
-    frame = np.asarray(cam_resp.get("frame"))
 
     roi: list[int] | None = None
     try:

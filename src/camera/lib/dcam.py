@@ -9,7 +9,7 @@ are subject to change without notice.
 __date__ = '2021-06-30'
 __copyright__ = 'Copyright (C) 2021-2024 Hamamatsu Photonics K.K.'
 
-from lib.dcamapi4 import *
+from .dcamapi4 import *
 # DCAM-API v4 module
 
 import numpy as np
