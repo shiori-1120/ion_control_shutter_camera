@@ -98,11 +98,13 @@ def prepare_sweep_session(
         cam_cfg: dict[str, Any] = {
             "mode": cam_mode,
             "exposure_s": float(cam_exposure_s),
-            "frame_timeout_s": max(1.0, float(cam_exposure_s) * 4.0 + 0.5),
             "bootstrap_n": 10,
             "trigger": dict(trig_cfg),
             "verbose": bool(camera_verbose),
         }
+        trig_src = str(trig_cfg.get("source") or "EXTERNAL").strip().upper() or "EXTERNAL"
+        base_timeout_s = 5.0 if trig_src in ("EXTERNAL", "EXT", "2", "") else 1.0
+        cam_cfg["frame_timeout_s"] = max(base_timeout_s, float(cam_exposure_s) * 4.0 + 0.5)
         subarray_cb(cam_cfg)
         if log_dir is not None:
             cam_cfg["log_path"] = str(Path(log_dir) / "camera_worker.log")
