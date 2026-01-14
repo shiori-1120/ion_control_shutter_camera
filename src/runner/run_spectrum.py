@@ -84,6 +84,107 @@ def _freq_list_from_args(args: argparse.Namespace) -> list[float]:
     return freqs
 
 
+def _build_camera_commands(seq_params, *, default_timeout_s: float) -> list[dict[str, Any]]:
+    seq_spec = build_sequence_spec(
+        do_sequence=seq_params.do_sequence,
+        ao_insert_index=int(seq_params.ao_insert_index),
+        ao_width_ms=float(seq_params.ao_width_ms),
+        ao_rate_hz=5000.0,
+        ao_v_high=5.0,
+        ao_v_low=0.0,
+        camera_actions=seq_params.camera_actions,
+        sync_markers=seq_params.sync_markers,
+    )
+    _, cam_cmds = compile_sequence_spec(seq_spec, default_camera_timeout_s=default_timeout_s)
+    commands: list[dict[str, Any]] = []
+    for cmd in cam_cmds:
+        payload = {
+            "cmd": "get_frame" if str(cmd.kind).lower() == "capture" else "get_state",
+            "timeout_s": float(cmd.timeout_s),
+        }
+        commands.append(
+            {
+                "t_s": float(cmd.meta.get("t_s", 0.0)),
+                "payload": payload,
+                "timeout_s": float(cmd.timeout_s),
+            }
+        )
+    return commands
+
+
+def _run_timed_sequence(
+    *,
+    daq_cmd_q: Queue,
+    daq_resp_q: Queue,
+    cam_cmd_q: Queue,
+    cam_resp_q: Queue,
+    seq_cmd: DaqSequenceCommand,
+    camera_cmds: list[dict[str, Any]],
+    frame_timeout_s: float,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    est_s = 0.0
+    try:
+        est_s = float(sum(float(hold_s) for _, hold_s in seq_cmd.do_sequence))
+    except Exception:
+        est_s = 0.0
+    max_cam_timeout = max([float(cmd.get("timeout_s") or frame_timeout_s) for cmd in camera_cmds], default=frame_timeout_s)
+    overall_timeout = max(5.0, est_s + max_cam_timeout + 2.0)
+
+    pre_cmds = [c for c in camera_cmds if float(c.get("t_s", 0.0)) <= 0.0]
+    post_cmds = [c for c in camera_cmds if float(c.get("t_s", 0.0)) > 0.0]
+    post_cmds.sort(key=lambda c: float(c.get("t_s", 0.0)))
+
+    for cmd in pre_cmds:
+        cam_cmd_q.put(dict(cmd["payload"]))
+
+    t0 = time.monotonic()
+    daq_cmd_q.put(
+        {
+            "cmd": "run_sequence_once",
+            "do_sequence": list(seq_cmd.do_sequence),
+            "insert_index": int(seq_cmd.ao_insert_index),
+            "ao_width_ms": float(seq_cmd.ao_width_ms),
+            "ao_rate_hz": float(seq_cmd.ao_rate_hz),
+            "ao_v_high": float(seq_cmd.ao_v_high),
+            "ao_v_low": float(seq_cmd.ao_v_low),
+        }
+    )
+
+    expected_cam = len(pre_cmds) + len(post_cmds)
+    cam_responses: list[dict[str, Any]] = []
+    daq_resp: dict[str, Any] | None = None
+    post_idx = 0
+
+    while True:
+        now = time.monotonic()
+        while post_idx < len(post_cmds):
+            t_s = float(post_cmds[post_idx].get("t_s", 0.0))
+            if now - t0 < t_s:
+                break
+            cam_cmd_q.put(dict(post_cmds[post_idx]["payload"]))
+            post_idx += 1
+
+        if daq_resp is None:
+            try:
+                daq_resp = daq_resp_q.get_nowait()
+            except queue.Empty:
+                pass
+
+        while len(cam_responses) < expected_cam:
+            try:
+                cam_responses.append(cam_resp_q.get_nowait())
+            except queue.Empty:
+                break
+
+        if daq_resp is not None and len(cam_responses) >= expected_cam:
+            return daq_resp, cam_responses
+
+        if now - t0 > overall_timeout:
+            raise RuntimeError("Timed sequence timeout")
+
+        time.sleep(0.001)
+
+
 def main() -> None:
     _limit_blas_threads()
 
@@ -142,6 +243,7 @@ def main() -> None:
         sync_markers=seq_params.sync_markers,
     )
     seq_cmd, _ = compile_sequence_spec(seq_spec, default_camera_timeout_s=float(args.frame_timeout_s))
+    camera_cmds = _build_camera_commands(seq_params, default_timeout_s=float(args.frame_timeout_s))
 
     out_dir = _make_run_dir()
     (out_dir / "config.json").write_text(
@@ -321,16 +423,28 @@ def main() -> None:
                 if processed >= int(args.n_target):
                     break
 
-                # Arm camera first (waits for next frame), then trigger via DAQ.
-                cam_cmd_q.put({"cmd": "get_state", "timeout_s": float(args.frame_timeout_s)})
-
-                DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(seq_cmd)
-
-                daq_resp = daq_resp_q.get(timeout=10)
-                if not daq_resp.get("ok"):
-                    # DAQ failure: stop early; continuing would desync triggers.
-                    raise RuntimeError(f"DAQ error: {daq_resp}")
-                cam_resp = cam_resp_q.get(timeout=max(2.0, float(args.frame_timeout_s) + 1.0))
+                if camera_cmds:
+                    daq_resp, cam_responses = _run_timed_sequence(
+                        daq_cmd_q=daq_cmd_q,
+                        daq_resp_q=daq_resp_q,
+                        cam_cmd_q=cam_cmd_q,
+                        cam_resp_q=cam_resp_q,
+                        seq_cmd=seq_cmd,
+                        camera_cmds=camera_cmds,
+                        frame_timeout_s=float(args.frame_timeout_s),
+                    )
+                    if not daq_resp.get("ok"):
+                        raise RuntimeError(f"DAQ error: {daq_resp}")
+                    cam_resp = cam_responses[-1] if cam_responses else {"ok": False, "event": "timeout"}
+                else:
+                    # Arm camera first (waits for next frame), then trigger via DAQ.
+                    cam_cmd_q.put({"cmd": "get_state", "timeout_s": float(args.frame_timeout_s)})
+                    DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(seq_cmd)
+                    daq_resp = daq_resp_q.get(timeout=10)
+                    if not daq_resp.get("ok"):
+                        # DAQ failure: stop early; continuing would desync triggers.
+                        raise RuntimeError(f"DAQ error: {daq_resp}")
+                    cam_resp = cam_resp_q.get(timeout=max(2.0, float(args.frame_timeout_s) + 1.0))
 
                 if not cam_resp.get("ok"):
                     # timeout or error -> drop
