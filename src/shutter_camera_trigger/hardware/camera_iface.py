@@ -11,6 +11,13 @@ class FrameResult:
     meta: dict[str, Any]
 
 
+@dataclass
+class CameraCommand:
+    kind: str
+    timeout_s: float
+    meta: dict[str, Any]
+
+
 class CameraDevice(Protocol):
     def open(self, cfg: dict[str, Any]) -> None: ...
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..hardware import DaqQueueDevice, DaqSequenceCommand
+from ..sequence.spec import build_sequence_spec, compile_sequence_spec
 from .session_config import build_daq_sequence_command
 
 
@@ -195,6 +196,18 @@ def prepare_sweep_session(
                 ao_v_high=5.0,
                 ao_v_low=0.0,
             ),
+            camera_commands=compile_sequence_spec(
+                build_sequence_spec(
+                    do_sequence=do_sequence,
+                    ao_insert_index=insert_index,
+                    ao_width_ms=ao_width_ms,
+                    ao_rate_hz=AO_RATE_HZ,
+                    ao_v_high=5.0,
+                    ao_v_low=0.0,
+                    camera_actions=camera_actions,
+                    sync_markers=sync_markers,
+                )
+            )[1],
             camera_actions=camera_actions,
             sync_markers=sync_markers,
             n_target=n_target,

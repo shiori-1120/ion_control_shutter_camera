@@ -24,6 +24,7 @@ from ..gui_support.worker_cleanup import cleanup_stale_workers, write_last_worke
 from ..gui_support.worker_messages import format_worker_failure
 from ..hardware import CameraWorkerDevice, DaqClientDevice, DaqQueueDevice, DaqSequenceCommand
 from ..config.device_registry import resolve_output_root
+from ..sweep.session_config import write_manifest_json
 from ..workers.camera_worker_process import start_camera_worker_process, stop_worker_process
 from ..workers.daq_worker_process import start_daq_worker_process
 
@@ -205,6 +206,10 @@ def camera_snap(
             frame = np.asarray(frame_result.frame)
             npy_path = out_dir / "snap.npy"
             np.save(npy_path, frame)
+            try:
+                write_manifest_json(out_dir=out_dir, run_type="camera_snap", files={"frame": npy_path})
+            except Exception:
+                pass
 
             roi = frame_result.roi
             if roi is None:
@@ -460,6 +465,14 @@ def camera_check(
                         frame_arr = _np.asarray(frame_np)
                         frame_path = str(out_dir / "frame.npy")
                         _np.save(frame_path, frame_arr)
+                        try:
+                            write_manifest_json(
+                                out_dir=out_dir,
+                                run_type="camera_check",
+                                files={"frame": Path(frame_path)},
+                            )
+                        except Exception:
+                            pass
                     except Exception:
                         frame_path = None
                 except Exception:

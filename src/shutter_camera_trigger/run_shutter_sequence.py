@@ -4,6 +4,7 @@ import time
 import nidaqmx
 
 from .config.device_registry import resolve_output_root
+from .sweep.session_config import write_manifest_json
 # 固定の出力先ユーティリティ
 def ensure_output_dir(path: str) -> Path:
     p = Path(path)
@@ -27,7 +28,12 @@ def main():
     # 実機制御コードにシーケンスを渡して処理する
     time.sleep(0.1)
     # 実行結果のログやメタ情報を run_dir に保存する
-    (run_dir / 'log.txt').write_text('sequence executed', encoding='utf-8')
+    log_path = run_dir / "log.txt"
+    log_path.write_text("sequence executed", encoding="utf-8")
+    try:
+        write_manifest_json(out_dir=run_dir, run_type="shutter", files={"log": log_path})
+    except Exception:
+        pass
 
 
 if __name__ == '__main__':

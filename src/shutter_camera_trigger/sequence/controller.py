@@ -8,7 +8,8 @@ from tkinter import messagebox
 from ..daq.guards import require_connected
 
 from ..gui_support.diagnostics import resolve_log_path, set_last_error
-from ..hardware import DaqClientDevice, DaqSequenceCommand
+from ..hardware import DaqClientDevice
+from ..sequence.spec import build_sequence_spec, compile_sequence_spec
 from ..sweep.session_parse import read_sequence_json_params
 
 
@@ -28,9 +29,17 @@ def start_sequence(
             raise FileNotFoundError(f"Sequence JSON not found: {seq_path}")
         require_connected(app)
         params = _load_sequence_params(Path(seq_path))
-        insert_index = int(params.ao_insert_index)
-        width_ms = float(params.ao_width_ms)
-        do_sequence = list(params.do_sequence)
+        seq_spec = build_sequence_spec(
+            do_sequence=params.do_sequence,
+            ao_insert_index=int(params.ao_insert_index),
+            ao_width_ms=float(params.ao_width_ms),
+            ao_rate_hz=float(ao_rate_hz),
+            ao_v_high=5.0,
+            ao_v_low=0.0,
+            camera_actions=params.camera_actions,
+            sync_markers=params.sync_markers,
+        )
+        seq_cmd, _ = compile_sequence_spec(seq_spec)
     except Exception as e:
         messagebox.showerror("Sequence", str(e))
         set_last_error(
@@ -44,7 +53,7 @@ def start_sequence(
     app._seq_running = True
     app._seq_thread = threading.Thread(
         target=sequence_loop,
-        args=(app, do_sequence, insert_index, width_ms, float(ao_rate_hz), int(nm_397)),
+        args=(app, seq_cmd, int(nm_397)),
         daemon=True,
     )
     app._seq_thread.start()
@@ -109,30 +118,20 @@ def poll_sequence_stop(app: Any, *, nm_397: int) -> None:
 
 def sequence_loop(
     app: Any,
-    do_sequence: list[tuple[int, float]],
-    insert_index: int,
-    width_ms: float,
-    ao_rate_hz: float,
+    seq_cmd: Any,
     nm_397: int,
 ) -> None:
     try:
         est_s = 0.0
         try:
-            est_s = float(sum(float(hold_s) for _, hold_s in do_sequence))
+            est_s = float(sum(float(hold_s) for _, hold_s in seq_cmd.do_sequence))
         except Exception:
             est_s = 0.0
         req_timeout = max(5.0, est_s + 2.0)
 
         while app._seq_running:
             DaqClientDevice(app._daq).run_sequence_once(
-                DaqSequenceCommand(
-                    do_sequence=do_sequence,
-                    ao_insert_index=int(insert_index),
-                    ao_width_ms=float(width_ms),
-                    ao_rate_hz=float(ao_rate_hz),
-                    ao_v_high=5.0,
-                    ao_v_low=0.0,
-                )
+                seq_cmd
             )
     except Exception as e:
         err = str(e)

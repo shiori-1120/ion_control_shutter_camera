@@ -27,6 +27,7 @@ from typing import Any
 
 from src.shutter_camera_trigger.config.device_registry import resolve_output_root
 from src.shutter_camera_trigger.hardware import DaqQueueDevice, DaqSequenceCommand
+from src.shutter_camera_trigger.sequence.spec import build_sequence_spec, compile_sequence_spec
 from src.shutter_camera_trigger.sweep.session_parse import read_sequence_json_params
 
 
@@ -130,6 +131,17 @@ def main() -> None:
     do_sequence = list(seq_params.do_sequence)
     insert_index = int(seq_params.ao_insert_index)
     ao_width_ms = float(seq_params.ao_width_ms)
+    seq_spec = build_sequence_spec(
+        do_sequence=do_sequence,
+        ao_insert_index=insert_index,
+        ao_width_ms=ao_width_ms,
+        ao_rate_hz=5000.0,
+        ao_v_high=5.0,
+        ao_v_low=0.0,
+        camera_actions=seq_params.camera_actions,
+        sync_markers=seq_params.sync_markers,
+    )
+    seq_cmd, _ = compile_sequence_spec(seq_spec, default_camera_timeout_s=float(args.frame_timeout_s))
 
     out_dir = _make_run_dir()
     (out_dir / "config.json").write_text(
@@ -312,16 +324,7 @@ def main() -> None:
                 # Arm camera first (waits for next frame), then trigger via DAQ.
                 cam_cmd_q.put({"cmd": "get_state", "timeout_s": float(args.frame_timeout_s)})
 
-                DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
-                    DaqSequenceCommand(
-                        do_sequence=do_sequence,
-                        ao_insert_index=int(insert_index),
-                        ao_width_ms=float(ao_width_ms),
-                        ao_rate_hz=5000.0,
-                        ao_v_high=5.0,
-                        ao_v_low=0.0,
-                    )
-                )
+                DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(seq_cmd)
 
                 daq_resp = daq_resp_q.get(timeout=10)
                 if not daq_resp.get("ok"):

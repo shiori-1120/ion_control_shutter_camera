@@ -659,6 +659,10 @@
 - 2026-01-14: Sequence JSONのcamera_actions/sync_markers対応を追加。
 - 2026-01-14: sweep config.jsonへupdate_interval/camera_actions/sync_markersを保存。
 
+- 2026-01-14: run_shutter_sequenceにmanifest.json出力を追加。
+- 2026-01-14: camera_check/camera_snapの出力にmanifest.jsonを追加。
+- 2026-01-14: SequenceSpecのデータ型とコンパイルヘルパーを追加。
+- 2026-01-14: SequenceSpecコンパイルをrun_spectrum/sequence実行に適用。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming
