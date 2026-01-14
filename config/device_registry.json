@@ -8,11 +8,11 @@
     "mode": "real",
     "exposure_ms": 100.0,
     "subarray": {
-      "enabled": false,
-      "x": 0,
-      "y": 0,
-      "width": 0,
-      "height": 0
+      "enabled": true,
+      "x": 3372,
+      "y": 992,
+      "width": 596,
+      "height": 292
     },
     "verbose": false,
     "trigger": {
