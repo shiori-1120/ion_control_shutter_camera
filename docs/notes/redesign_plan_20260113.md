@@ -666,6 +666,10 @@
 - 2026-01-14: run_spectrumでcamera_actionsのタイミング送信をサポート。
 - 2026-01-14: sweepのspectrumでcamera_actionsのタイミング送信をサポート。
 - 2026-01-14: sweep出力にcamera_actions/sync_markersのJSONを保存。
+- 2026-01-14: run_spectrumの出力にcamera_actions/sync_markers/manifest.jsonを追加。
+- 2026-01-14: run_spectrumのconfig.jsonにcamera_actions/sync_markersを含めた。
+- 2026-01-14: camera_actions複数応答時は最後の成功応答を採用。
+- 2026-01-14: sync_markersをCSV出力し、manifestに追加。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

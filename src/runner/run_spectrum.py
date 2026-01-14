@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from src.shutter_camera_trigger.config.device_registry import resolve_output_root
+from src.shutter_camera_trigger.sweep.session_config import write_manifest_json
 from src.shutter_camera_trigger.hardware import DaqQueueDevice, DaqSequenceCommand
 from src.shutter_camera_trigger.sequence.spec import build_sequence_spec, compile_sequence_spec
 from src.shutter_camera_trigger.sweep.session_parse import read_sequence_json_params
@@ -246,7 +247,8 @@ def main() -> None:
     camera_cmds = _build_camera_commands(seq_params, default_timeout_s=float(args.frame_timeout_s))
 
     out_dir = _make_run_dir()
-    (out_dir / "config.json").write_text(
+    config_path = out_dir / "config.json"
+    config_path.write_text(
         json.dumps(
             {
                 "visa_resource": args.visa_resource,
@@ -259,6 +261,8 @@ def main() -> None:
                 "sequence_json": args.sequence_json,
                 "insert_index": insert_index,
                 "ao_width_ms": ao_width_ms,
+                "camera_actions": list(seq_params.camera_actions),
+                "sync_markers": list(seq_params.sync_markers),
                 "camera_mode": args.camera_mode,
                 "exposure_s": args.exposure_s,
                 "frame_timeout_s": args.frame_timeout_s,
@@ -280,6 +284,36 @@ def main() -> None:
         ),
         encoding="utf-8",
     )
+    camera_actions_path = None
+    if seq_params.camera_actions:
+        camera_actions_path = out_dir / "camera_actions.json"
+        camera_actions_path.write_text(
+            json.dumps(seq_params.camera_actions, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    sync_markers_path = None
+    if seq_params.sync_markers:
+        sync_markers_path = out_dir / "sync_markers.json"
+        sync_markers_path.write_text(
+            json.dumps(seq_params.sync_markers, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    sync_markers_csv = None
+    if seq_params.sync_markers:
+        sync_markers_csv = out_dir / "sync_markers.csv"
+        with sync_markers_csv.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["t_s", "label"])
+            writer.writeheader()
+            for marker in seq_params.sync_markers:
+                try:
+                    writer.writerow(
+                        {
+                            "t_s": float(marker.get("t_s", 0.0)),
+                            "label": str(marker.get("label", "")),
+                        }
+                    )
+                except Exception:
+                    continue
 
     shots_path = out_dir / "shots.csv"
     spec_path = out_dir / "spectrum.csv"
@@ -374,6 +408,7 @@ def main() -> None:
         raise RuntimeError(f"Camera worker failed: {cam_ready}")
 
     rig = None
+    idn_path = None
     if not args.no_fg:
         # Rigol DG control
         from src.lib.instruments.rigol_dg import RigolDG, RigolDgConfig
@@ -385,7 +420,8 @@ def main() -> None:
         except Exception:
             idn = "(IDN failed)"
 
-        (out_dir / "idn.txt").write_text(str(idn) + "\n", encoding="utf-8")
+        idn_path = out_dir / "idn.txt"
+        idn_path.write_text(str(idn) + "\n", encoding="utf-8")
         rig.output(True)
 
     with shots_path.open("w", newline="", encoding="utf-8") as f_shots, spec_path.open(
@@ -435,7 +471,13 @@ def main() -> None:
                     )
                     if not daq_resp.get("ok"):
                         raise RuntimeError(f"DAQ error: {daq_resp}")
-                    cam_resp = cam_responses[-1] if cam_responses else {"ok": False, "event": "timeout"}
+                    if cam_responses:
+                        cam_resp = next(
+                            (resp for resp in reversed(cam_responses) if resp.get("ok")),
+                            cam_responses[-1],
+                        )
+                    else:
+                        cam_resp = {"ok": False, "event": "timeout"}
                 else:
                     # Arm camera first (waits for next frame), then trigger via DAQ.
                     cam_cmd_q.put({"cmd": "get_state", "timeout_s": float(args.frame_timeout_s)})
@@ -498,6 +540,23 @@ def main() -> None:
 
     # Give workers time to exit
     time.sleep(0.2)
+    try:
+        files: dict[str, Path] = {
+            "config": config_path,
+            "shots": shots_path,
+            "spectrum": spec_path,
+        }
+        if camera_actions_path is not None:
+            files["camera_actions"] = camera_actions_path
+        if sync_markers_path is not None:
+            files["sync_markers"] = sync_markers_path
+        if sync_markers_csv is not None:
+            files["sync_markers_csv"] = sync_markers_csv
+        if idn_path is not None:
+            files["idn"] = idn_path
+        write_manifest_json(out_dir=out_dir, run_type="spectrum", files=files)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

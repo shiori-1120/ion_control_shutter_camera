@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import csv
 import json
 from pathlib import Path
 from typing import Any
@@ -336,6 +337,21 @@ def start_sweep(
                 encoding="utf-8",
             )
             state.spectrum_outputs["sync_markers"] = markers_path
+            markers_csv = out_dir / "sync_markers.csv"
+            with markers_csv.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=["t_s", "label"])
+                writer.writeheader()
+                for marker in sync_markers:
+                    try:
+                        writer.writerow(
+                            {
+                                "t_s": float(marker.get("t_s", 0.0)),
+                                "label": str(marker.get("label", "")),
+                            }
+                        )
+                    except Exception:
+                        continue
+            state.spectrum_outputs["sync_markers_csv"] = markers_csv
         except Exception:
             pass
 
