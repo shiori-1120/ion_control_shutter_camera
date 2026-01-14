@@ -679,6 +679,7 @@
 - 2026-01-14: sweep出力のcamera_actions/sync_markers保存失敗を警告表示するよう改善。
 - 2026-01-14: run_spectrumでもcamera_actions/sync_markers保存失敗を警告表示するよう改善。
 - 2026-01-14: FgDeviceプロトコルにidn()を追加しFGアダプタ統一を補強。
+- 2026-01-14: 未使用のCameraClientを削除。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming
@@ -710,4 +711,3 @@
 ### 直接legacy参照が残る箇所（棚卸し）
 - shutter_guiがDaqClientを直接保持（GUI側の即時操作用）
 - DaqClientDeviceがDaqClientをラップ（GUI側用途）
-- CameraClientは未使用（削除候補/要確認）
