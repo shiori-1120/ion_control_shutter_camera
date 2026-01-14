@@ -574,14 +574,16 @@
 ---
 ## 現状UI/設定との差分整理（フェーズ1）
 ### UIに存在するがDeviceRegistryに未定義
-- camera_trigger_delay_s: 現在トップバーにDelay(s)があるが、設計案では固定トリガのみで未定義。
-- dry_image_dir: 現在トップバーに入力があるが、設計案では削除方針。
 - ao_width(ms)入力: トップバーのAO widthはSequenceSpec側へ統合する前提で未定義。
 - Sequenceタブの生テキスト編集: SequenceSpec(JSON)一本化の方針とは未整合。
 
+### 差分の扱い方針（整理）
+- ao_width(ms): Sequence JSONの値を表示専用で反映し、編集はJSON側に集約する（現状のread-onlyを維持）。
+- Sequenceタブの生テキスト: JSONのread-only表示として継続、編集はJSONファイルで行う。
+
 ### DeviceRegistryにあるがUIに未露出
-- io_paths.logs_root / output_root: UIには未表示（configに固定でOK）。
-- ui.show_debug_fields / camera_verbose_additional_only: 既存UIは常時表示。
+- io_paths.logs_root / output_root: Diagnosticsで表示のみ（編集はconfig側）。
+- ui.show_debug_fields / camera_verbose_additional_only: UIに直接は露出せず内部フラグとして扱う。
 
 ### UI内で重複/分散している設定
 - DAQ device/mode: Top barのdevice_var/device_mode_varとSweepタブのsw_device/sw_daq_modeが重複。
@@ -682,6 +684,7 @@
 - 2026-01-14: 未使用のCameraClientを削除。
 - 2026-01-14: Sequenceタブでcamera_actions/sync_markersの要約表示を追加。
 - 2026-01-14: Diagnosticsタブにログ/出力パスの表示を追加。
+- 2026-01-14: UI/DeviceRegistry差分リストから不要項目（trigger_delay/dry_image_dir）を整理。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming
