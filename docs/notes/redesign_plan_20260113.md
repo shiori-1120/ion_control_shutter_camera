@@ -665,6 +665,7 @@
 - 2026-01-14: SequenceSpecコンパイルをrun_spectrum/sequence実行に適用。
 - 2026-01-14: run_spectrumでcamera_actionsのタイミング送信をサポート。
 - 2026-01-14: sweepのspectrumでcamera_actionsのタイミング送信をサポート。
+- 2026-01-14: sweep出力にcamera_actions/sync_markersのJSONを保存。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any
 
@@ -293,6 +294,8 @@ def start_sweep(
     ao_width_ms = float(state.session["ao_width_ms"])
     seq_cmd = state.session.get("seq_cmd")
     camera_commands = state.session.get("camera_commands") or []
+    camera_actions = state.session.get("camera_actions") or []
+    sync_markers = state.session.get("sync_markers") or []
 
     n_target = int(state.session["n_target"])
     max_attempt = int(state.session["max_attempt"])
@@ -315,6 +318,26 @@ def start_sweep(
     state.freqs = freqs
     state.results = []
     state.spectrum_outputs = {}
+    if camera_actions:
+        try:
+            cam_actions_path = out_dir / "camera_actions.json"
+            cam_actions_path.write_text(
+                json.dumps(list(camera_actions), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            state.spectrum_outputs["camera_actions"] = cam_actions_path
+        except Exception:
+            pass
+    if sync_markers:
+        try:
+            markers_path = out_dir / "sync_markers.json"
+            markers_path.write_text(
+                json.dumps(list(sync_markers), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            state.spectrum_outputs["sync_markers"] = markers_path
+        except Exception:
+            pass
 
     try:
         if fig is not None and canvas is not None:
