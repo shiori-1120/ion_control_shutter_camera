@@ -2,7 +2,10 @@
 
 import tkinter as tk
 from typing import Any, Callable
-from tkinter import ttk
+from tkinter import messagebox, ttk
+
+from ..gui_support.validators import parse_camera_subarray
+from ..hardware import CameraQueueDevice
 
 from ..gui_support.output_state import set_output_state
 
@@ -134,8 +137,39 @@ def build_top_bar(
     ttk.Label(sub, text="H").grid(row=0, column=7, sticky=tk.W)
     ttk.Entry(sub, textvariable=app.camera_sub_h_var, width=8).grid(row=0, column=8, sticky=tk.W, padx=(2, 10))
 
+    def _apply_subarray() -> None:
+        try:
+            sub_t = parse_camera_subarray(app)
+        except Exception as e:
+            messagebox.showerror("Subarray", f"Invalid subarray: {e}")
+            return
+        cam_cmd_q = None
+        cam_resp_q = None
+        proc = getattr(app, "_cam_worker_proc", None)
+        if proc is not None and getattr(proc, "is_alive", lambda: False)():
+            cam_cmd_q = getattr(app, "_cam_worker_cmd_q", None)
+            cam_resp_q = getattr(app, "_cam_worker_resp_q", None)
+        if not (cam_cmd_q and cam_resp_q):
+            state = getattr(app, "_sweep_state", None)
+            cam_cmd_q = state.queues.get("cam_cmd") if getattr(state, "queues", None) else None
+            cam_resp_q = state.queues.get("cam_resp") if getattr(state, "queues", None) else None
+        if not (cam_cmd_q and cam_resp_q):
+            messagebox.showwarning("Subarray", "Camera worker is not running. Start camera check or sweep first.")
+            return
+        try:
+            CameraQueueDevice(cmd_q=cam_cmd_q).set_subarray(list(sub_t) if sub_t else None)
+            resp = cam_resp_q.get(timeout=5)
+            if not isinstance(resp, dict) or not resp.get("ok"):
+                raise RuntimeError(resp.get("error", "Camera subarray update failed"))
+        except Exception as e:
+            messagebox.showerror("Subarray", f"Failed to apply subarray: {e}")
+            return
+        app.status_var.set("Subarray applied")
+
+    ttk.Button(sub, text="Apply", command=_apply_subarray).grid(row=0, column=9, sticky=tk.W, padx=6)
+
     try:
-        sub.grid_columnconfigure(9, weight=1)
+        sub.grid_columnconfigure(10, weight=1)
     except Exception:
         pass
 

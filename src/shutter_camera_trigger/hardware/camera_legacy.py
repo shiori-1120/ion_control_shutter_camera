@@ -61,6 +61,10 @@ class CameraQueueDevice:
     def set_threshold(self, tau_on: float, tau_off: float) -> None:
         self._cmd_q.put({"cmd": "set_threshold", "tau_on": float(tau_on), "tau_off": float(tau_off)})
 
+    def set_subarray(self, subarray: list[int] | None) -> None:
+        payload = list(subarray) if subarray is not None else None
+        self._cmd_q.put({"cmd": "set_subarray", "subarray": payload})
+
     def close(self) -> None:
         try:
             self._cmd_q.put({"cmd": "close"})
