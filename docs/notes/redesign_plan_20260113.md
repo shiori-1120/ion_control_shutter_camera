@@ -276,6 +276,7 @@
 ## 検証プラン
 - Dry:
   - 同じSequenceSpecで処理パイプラインを検証
+  - sweep_workflow_smoketest.py 実行済（prepare/stopのdry確認）
 - Real:
   - 接続と取得ログでデータが取れていることを確認
 - 共通:
@@ -323,10 +324,10 @@
   - Error: {label} | {message}
   - Log: {log_path}
 
-## 確認したいこと
-- GUI上部タブに集約すべき設定項目は何か
-- ログ保存先とローテーション方針
-- 厳密なリアルタイムが必要なシーケンスはどれか
+## 確認したいこと（未決定）
+- GUI上部タブに集約すべき設定項目は何か（暫定は「Setupタブ項目」に記載）
+- ログ保存先とローテーション方針（現状: 日付ディレクトリ + ローテーション未実装）
+- 厳密なリアルタイムが必要なシーケンスはどれか（現状: DAQ/TTLはハードタイミング、追加要件は未確定）
 
 ---
 ## DeviceRegistry スキーマ（フェーズ1・設計）
@@ -641,10 +642,10 @@
 - 失敗時の例外種別/スタックトレース/直前コマンド
 
 ### 実装タスク（フェーズ2）
-- logging初期化ユーティリティ（run_id/handlersを統一）
-- GUIログパネル実装（Text+Queue）
-- worker側にrun_id伝搬（cfgに追加）
-- 重要ログの追加（camera/daq/fg/sweep）
+- logging初期化ユーティリティ（run_id/handlersを統一）: 実装済
+- GUIログパネル実装（Text+Queue）: 実装済
+- worker側にrun_id伝搬（cfgに追加）: 実装済
+- 重要ログの追加（camera/daq/fg/sweep）: 主要イベントは実装済（詳細ログの追加余地あり）
 
 ---
 ## 進捗メモ
@@ -688,6 +689,7 @@
 - 2026-01-14: Camera check開始時のログを追加。
 - 2026-01-14: Camera snap開始時のログを追加。
 - 2026-01-14: フェーズ3/5の設計・実装整理を完了（残タスク更新）。
+- 2026-01-14: sweep_workflow_smoketest.pyのdry実行を確認。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

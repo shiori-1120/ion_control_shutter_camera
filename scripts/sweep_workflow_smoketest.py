@@ -49,6 +49,7 @@ def main() -> None:
         on_input_error=lambda msg: print(f"[input] {msg}"),
         on_plot_reset=lambda: print("[plot] reset"),
         on_plot_update=lambda *_: None,
+        on_state_change=lambda prev, next_state: print(f"[state] {prev}->{next_state}"),
     )
     io = SweepIO(
         toggle_controls=lambda enable: print(f"[ui] controls={enable}"),
@@ -79,6 +80,7 @@ def main() -> None:
         ROI_MAX_ATTEMPT=1,
         log_dir=None,
         run_id=None,
+        output_root=None,
     )
 
     inputs = SweepInput(
@@ -86,6 +88,8 @@ def main() -> None:
         do_sequence=[(0, 0.001)],
         insert_index=-1,
         ao_width_ms=0.0,
+        camera_actions=[],
+        sync_markers=[],
         n_target=1,
         max_attempt=1,
         settle_s=0.0,

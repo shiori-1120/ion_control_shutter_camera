@@ -30,5 +30,7 @@
 - myenv で import と py_compile が通ること
 
 ## 残タスク
-- 手動検証: sweep/camera_check/camera_snapの実機/ドライでログと出力を確認
+- 手動検証: sweep/camera_check/camera_snapの実機でログと出力を確認
+- 手動検証: 例外時の安全停止（ALL_OFF）を実機で確認
+- 未決定事項の確定: 上部タブ集約項目/ログローテーション/厳密RT要件
 
