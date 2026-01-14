@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import queue
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +25,7 @@ def run_spectrum_stage(
     insert_index: int,
     ao_width_ms: float,
     seq_cmd: DaqSequenceCommand | None,
+    camera_commands: list[Any] | None,
     n_target: int,
     max_attempt: int,
     settle_s: float,
@@ -72,6 +74,113 @@ def run_spectrum_stage(
         except Exception:
             pass
 
+    def _build_camera_schedule(
+        commands: list[Any], *, default_timeout_s: float
+    ) -> list[dict[str, Any]]:
+        schedule: list[dict[str, Any]] = []
+        for cmd in commands:
+            try:
+                kind = str(getattr(cmd, "kind", cmd.get("kind", ""))).lower()
+            except Exception:
+                kind = ""
+            try:
+                meta = dict(getattr(cmd, "meta", cmd.get("meta", {})) or {})
+            except Exception:
+                meta = {}
+            try:
+                t_s = float(meta.get("t_s") if "t_s" in meta else getattr(cmd, "meta").get("t_s"))
+            except Exception:
+                try:
+                    t_s = float(getattr(cmd, "t_s", 0.0))
+                except Exception:
+                    t_s = 0.0
+            try:
+                timeout_s = float(getattr(cmd, "timeout_s", meta.get("timeout_s", default_timeout_s)))
+            except Exception:
+                timeout_s = float(default_timeout_s)
+            payload = {
+                "cmd": "get_frame" if kind == "capture" else "get_state",
+                "timeout_s": float(timeout_s),
+            }
+            schedule.append(
+                {
+                    "t_s": float(t_s),
+                    "payload": payload,
+                    "timeout_s": float(timeout_s),
+                }
+            )
+        return schedule
+
+    def _run_timed_sequence(
+        *,
+        camera_schedule: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        est_s = 0.0
+        try:
+            est_s = float(sum(float(hold_s) for _, hold_s in seq_cmd_local.do_sequence))
+        except Exception:
+            est_s = 0.0
+        max_cam_timeout = max(
+            [float(cmd.get("timeout_s") or 0.0) for cmd in camera_schedule],
+            default=0.0,
+        )
+        overall_timeout = max(5.0, est_s + max_cam_timeout + 2.0)
+
+        pre_cmds = [c for c in camera_schedule if float(c.get("t_s", 0.0)) <= 0.0]
+        post_cmds = [c for c in camera_schedule if float(c.get("t_s", 0.0)) > 0.0]
+        post_cmds.sort(key=lambda c: float(c.get("t_s", 0.0)))
+
+        for cmd in pre_cmds:
+            cam_cmd_q.put(dict(cmd["payload"]))
+
+        t0 = time.monotonic()
+        daq_cmd_q.put(
+            {
+                "cmd": "run_sequence_once",
+                "do_sequence": list(seq_cmd_local.do_sequence),
+                "insert_index": int(seq_cmd_local.ao_insert_index),
+                "ao_width_ms": float(seq_cmd_local.ao_width_ms),
+                "ao_rate_hz": float(seq_cmd_local.ao_rate_hz),
+                "ao_v_high": float(seq_cmd_local.ao_v_high),
+                "ao_v_low": float(seq_cmd_local.ao_v_low),
+            }
+        )
+
+        expected_cam = len(pre_cmds) + len(post_cmds)
+        cam_responses: list[dict[str, Any]] = []
+        daq_resp: dict[str, Any] | None = None
+        post_idx = 0
+
+        while True:
+            now = time.monotonic()
+            while post_idx < len(post_cmds):
+                t_s = float(post_cmds[post_idx].get("t_s", 0.0))
+                if now - t0 < t_s:
+                    break
+                cam_cmd_q.put(dict(post_cmds[post_idx]["payload"]))
+                post_idx += 1
+
+            if daq_resp is None:
+                try:
+                    daq_resp = daq_resp_q.get_nowait()
+                except queue.Empty:
+                    pass
+
+            while len(cam_responses) < expected_cam:
+                try:
+                    cam_responses.append(cam_resp_q.get_nowait())
+                except queue.Empty:
+                    break
+
+            if daq_resp is not None and len(cam_responses) >= expected_cam:
+                return daq_resp, cam_responses
+
+            if now - t0 > overall_timeout:
+                raise RuntimeError("Timed sequence timeout")
+
+            _pump()
+            time.sleep(0.001)
+
     with shots_path.open("w", newline="", encoding="utf-8") as f_shots, spec_path.open(
         "w", newline="", encoding="utf-8"
     ) as f_spec:
@@ -101,6 +210,11 @@ def run_spectrum_stage(
         spec_writer.writeheader()
 
         cam_device = CameraQueueDevice(cmd_q=cam_cmd_q)
+        camera_schedule = (
+            _build_camera_schedule(camera_commands, default_timeout_s=5.0)
+            if camera_commands
+            else []
+        )
         for step_idx, freq in enumerate(freqs):
             if should_stop():
                 break
@@ -121,14 +235,22 @@ def run_spectrum_stage(
                 if processed >= int(n_target):
                     break
 
-                cam_device.send_get_state(1.0)
-                try:
-                    DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
-                        seq_cmd_local
-                    )
-                except Exception as e:
-                    raise RuntimeError(f"DAQ error: {e}")
-                cam_resp = mpq_get_with_ui(cam_resp_q, 5, "Camera response")
+                if camera_schedule:
+                    daq_resp, cam_responses = _run_timed_sequence(camera_schedule=camera_schedule)
+                    if not daq_resp.get("ok"):
+                        raise RuntimeError(f"DAQ error: {daq_resp}")
+                    cam_resp = cam_responses[-1] if cam_responses else {"ok": False, "event": "timeout"}
+                else:
+                    cam_device.send_get_state(1.0)
+                    try:
+                        DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
+                            seq_cmd_local
+                        )
+                    except Exception as e:
+                        raise RuntimeError(f"DAQ error: {e}")
+                    cam_resp = mpq_get_with_ui(cam_resp_q, 5, "Camera response")
+                    if not cam_resp.get("ok"):
+                        continue
                 if not cam_resp.get("ok"):
                     continue
 

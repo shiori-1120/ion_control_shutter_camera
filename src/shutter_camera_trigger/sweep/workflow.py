@@ -292,6 +292,7 @@ def start_sweep(
     insert_index = int(state.session["insert_index"])
     ao_width_ms = float(state.session["ao_width_ms"])
     seq_cmd = state.session.get("seq_cmd")
+    camera_commands = state.session.get("camera_commands") or []
 
     n_target = int(state.session["n_target"])
     max_attempt = int(state.session["max_attempt"])
@@ -331,6 +332,7 @@ def start_sweep(
             insert_index=int(insert_index),
             ao_width_ms=float(ao_width_ms),
             seq_cmd=seq_cmd,
+            camera_commands=camera_commands,
             n_target=int(n_target),
             max_attempt=int(max_attempt),
             settle_s=float(settle_s),
