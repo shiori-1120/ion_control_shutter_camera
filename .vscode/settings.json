@@ -1,9 +1,10 @@
 {
     "terminal.integrated.profiles.windows": {
-    "Miniforge Prompt": {
-        "path": "%windir%\\System32\\cmd.exe",
-        "args": ["/K", "C:\\Users\\tanak\\miniforge3\\Scripts\\activate.bat"]
-    }
+        "Miniforge Prompt": {
+            "path": "C:\\Users\\tanak\\miniforge3\\Scripts\\activate.bat",
+            "args": []
+        },
+        // ...他のプロファイル...
     },
     "terminal.integrated.defaultProfile.windows": "Miniforge Prompt"
 }   

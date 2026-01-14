@@ -158,7 +158,8 @@ class App(tk.Tk):
         self._plot_placeholder: ttk.Label | None = None
         self._plot_fig = None
 
-        self._build_ui()
+
+        self._build_main_layout()
 
         # Restore persisted camera trigger preferences (if any).
         try:
@@ -178,13 +179,22 @@ class App(tk.Tk):
         )
         build_log_panel(self)
 
-    def _build_ui(self) -> None:
-        # Menu bar (Help -> open usage doc)
+
+    def _build_main_layout(self) -> None:
+        # メニューバー
         menubar = tk.Menu(self)
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="Open usage doc", command=lambda: open_usage_doc(self, source_file=__file__))
         menubar.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menubar)
+
+        # メイン横並びフレーム
+        main_frame = ttk.Frame(self)
+        main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # 左: Notebook (従来のUI)
+        left_frame = ttk.Frame(main_frame)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         init_ui_state(
             self,
@@ -194,7 +204,7 @@ class App(tk.Tk):
             default_seq_path="src/shutter_camera_trigger/sequence_examples/minimal_sequence.json",
         )
         load_device_registry_ui(self, self._device_registry_path)
-        nb = ttk.Notebook(self)
+        nb = ttk.Notebook(left_frame)
         nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.setup_tab = ttk.Frame(nb, padding=10)
@@ -261,6 +271,14 @@ class App(tk.Tk):
         self._build_sweep_tab()
         self._build_camera_tab()
         self._build_diagnostics_tab()
+
+        # 右: ログパネル
+        from .gui_support.log_panel import build_log_panel
+        log_panel_frame = ttk.Frame(main_frame)
+        log_panel_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        # app._log_panel_parent を使ってbuild_log_panelに親を渡す
+        self._log_panel_parent = log_panel_frame
+        build_log_panel(self)
 
     def _build_camera_tab(self) -> None:
         build_camera_tab(self)

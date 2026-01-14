@@ -1,11 +1,11 @@
-{
+﻿{
   "version": "1.0",
   "daq": {
     "device": "Dev1",
-    "mode": "dry"
+    "mode": "real"
   },
   "camera": {
-    "mode": "dry",
+    "mode": "real",
     "exposure_ms": 100.0,
     "subarray": {
       "enabled": false,
@@ -24,7 +24,7 @@
     }
   },
   "fg": {
-    "visa_resource": "",
+    "visa_resource": "USB0::0x1AB1::0x0646::DG9R273500535::INSTR\n",
     "amp_mvpp": 790.0,
     "wave": "SIN",
     "offset_v": 0.0,

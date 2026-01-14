@@ -106,8 +106,8 @@ try:
 finally:
 
     stop_time = time.time()
-    print("measurement-id", meas_id)
-    JSON["measurement-id.take-one-shot"] = meas_id
+    # print("measurement-id", meas_id)
+    # JSON["measurement-id.take-one-shot"] = meas_id
     writeJSON(JSON)
 
     print("計測時間：", stop_time - start_time, "秒")
