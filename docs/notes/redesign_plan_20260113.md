@@ -670,6 +670,9 @@
 - 2026-01-14: run_spectrumのconfig.jsonにcamera_actions/sync_markersを含めた。
 - 2026-01-14: camera_actions複数応答時は最後の成功応答を採用。
 - 2026-01-14: sync_markersをCSV出力し、manifestに追加。
+- 2026-01-14: camera_actionsのタイミング処理を共通ヘルパーに整理。
+- 2026-01-14: camera_actions応答選択を共通ヘルパーへ集約。
+- 2026-01-14: camera_actionsのtagをカメラ応答に通してshots.csvへ記録。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

@@ -311,6 +311,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 continue
 
             name = cmd.get("cmd")
+            cmd_tag = cmd.get("tag")
             log_debug(f"cmd={name}")
             if name in ("quit", "close"):
                 log("closing")
@@ -404,18 +405,19 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                                         from .lib.image_ops import crop_roi
 
                                         frame = crop_roi(frame, subarray_t)
-                                    send(
-                                        {
-                                            "ok": True,
-                                            "event": "frame",
-                                            "frame": frame,
-                                            "bright": True,
-                                            "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
-                                            "tau_on": None,
-                                            "tau_off": None,
-                                            "sample": str(p),
-                                        }
-                                    )
+                                    resp = {
+                                        "ok": True,
+                                        "event": "frame",
+                                        "frame": frame,
+                                        "bright": True,
+                                        "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
+                                        "tau_on": None,
+                                        "tau_off": None,
+                                        "sample": str(p),
+                                    }
+                                    if cmd_tag is not None:
+                                        resp["tag"] = cmd_tag
+                                    send(resp)
                                     continue
                         except Exception:
                             pass
@@ -454,18 +456,19 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                                 from .lib.image_ops import crop_roi
 
                                 frame = crop_roi(frame, subarray_t)
-                            send(
-                                {
-                                    "ok": True,
-                                    "event": "frame",
-                                    "frame": frame,
-                                    "bright": bool(bright_label),
-                                    "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
-                                    "tau_on": None,
-                                    "tau_off": None,
-                                    "sample": sample_name,
-                                }
-                            )
+                            resp = {
+                                "ok": True,
+                                "event": "frame",
+                                "frame": frame,
+                                "bright": bool(bright_label),
+                                "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
+                                "tau_on": None,
+                                "tau_off": None,
+                                "sample": sample_name,
+                            }
+                            if cmd_tag is not None:
+                                resp["tag"] = cmd_tag
+                            send(resp)
                             continue
                         # synthetic fallback
                         import numpy as _np  # local import
@@ -479,7 +482,18 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                             from .lib.image_ops import crop_roi
 
                             frame = crop_roi(frame, subarray_t)
-                        send({"ok": True, "event": "frame", "frame": frame, "bright": is_bright, "S_norm": float(_np.mean(frame)), "tau_on": None, "tau_off": None})
+                        resp = {
+                            "ok": True,
+                            "event": "frame",
+                            "frame": frame,
+                            "bright": is_bright,
+                            "S_norm": float(_np.mean(frame)),
+                            "tau_on": None,
+                            "tau_off": None,
+                        }
+                        if cmd_tag is not None:
+                            resp["tag"] = cmd_tag
+                        send(resp)
                         continue
 
                     if dry_samples:
@@ -522,18 +536,19 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                                 bright = bool(label_bright)
                         except Exception:
                             bright = bool(label_bright)
-                        send(
-                            {
-                                "ok": True,
-                                "event": "state",
-                                "bright": bool(bright),
-                                "label_bright": bool(label_bright),
-                                "S_norm": s_norm,
-                                "tau_on": float(tau_on) if tau_on is not None else None,
-                                "tau_off": float(tau_off) if tau_off is not None else None,
-                                "sample": name,
-                            }
-                        )
+                        resp = {
+                            "ok": True,
+                            "event": "state",
+                            "bright": bool(bright),
+                            "label_bright": bool(label_bright),
+                            "S_norm": s_norm,
+                            "tau_on": float(tau_on) if tau_on is not None else None,
+                            "tau_off": float(tau_off) if tau_off is not None else None,
+                            "sample": name,
+                        }
+                        if cmd_tag is not None:
+                            resp["tag"] = cmd_tag
+                        send(resp)
                         continue
                     # simple synthetic fallback
                     s_norm = float(random.gauss(150.0, 25.0))
@@ -541,7 +556,19 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                         s_norm = float(random.gauss(50.0, 15.0))
                     s_norm = float(max(0.0, min(255.0, s_norm)))
                     bright = bool(s_norm > 100.0)
-                    send({"ok": True, "event": "state", "bright": bright, "label_bright": None, "S_norm": s_norm, "tau_on": None, "tau_off": None, "sample": None})
+                    resp = {
+                        "ok": True,
+                        "event": "state",
+                        "bright": bright,
+                        "label_bright": None,
+                        "S_norm": s_norm,
+                        "tau_on": None,
+                        "tau_off": None,
+                        "sample": None,
+                    }
+                    if cmd_tag is not None:
+                        resp["tag"] = cmd_tag
+                    send(resp)
                     continue
 
                 if cam is None:
@@ -552,7 +579,10 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 ok, err = cam.wait_for_frame_ready(timeout_s)
                 if not ok:
                     log(f"frame_timeout err={err}")
-                    send({"ok": False, "event": "timeout", "error": str(err)})
+                    resp = {"ok": False, "event": "timeout", "error": str(err)}
+                    if cmd_tag is not None:
+                        resp["tag"] = cmd_tag
+                    send(resp)
                     continue
 
                 _, frame = cam.GetLastFrame()
@@ -581,34 +611,39 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                             prev_state = bool(bright)
 
                 if name == "get_frame":
-                    send(
-                        {
-                            "ok": True,
-                            "event": "frame",
-                            "frame": frame_np,
-                            "roi": list(roi_t) if roi_t else None,
-                            "bg_roi": list(bg_roi_t) if bg_roi_t else None,
-                            "bright": bright,
-                            "S_norm": S_norm,
-                            "tau_on": float(tau_on) if tau_on is not None else None,
-                            "tau_off": float(tau_off) if tau_off is not None else None,
-                            "exposure_s": float(exposure_s),
-                        }
-                    )
+                    resp = {
+                        "ok": True,
+                        "event": "frame",
+                        "frame": frame_np,
+                        "roi": list(roi_t) if roi_t else None,
+                        "bg_roi": list(bg_roi_t) if bg_roi_t else None,
+                        "bright": bright,
+                        "S_norm": S_norm,
+                        "tau_on": float(tau_on) if tau_on is not None else None,
+                        "tau_off": float(tau_off) if tau_off is not None else None,
+                        "exposure_s": float(exposure_s),
+                    }
+                    if cmd_tag is not None:
+                        resp["tag"] = cmd_tag
+                    send(resp)
                 else:
-                    send(
-                        {
-                            "ok": True,
-                            "event": "state",
-                            "bright": bool(bright) if bright is not None else False,
-                            "S_norm": S_norm,
-                            "tau_on": float(tau_on) if tau_on is not None else None,
-                            "tau_off": float(tau_off) if tau_off is not None else None,
-                        }
-                    )
+                    resp = {
+                        "ok": True,
+                        "event": "state",
+                        "bright": bool(bright) if bright is not None else False,
+                        "S_norm": S_norm,
+                        "tau_on": float(tau_on) if tau_on is not None else None,
+                        "tau_off": float(tau_off) if tau_off is not None else None,
+                    }
+                    if cmd_tag is not None:
+                        resp["tag"] = cmd_tag
+                    send(resp)
 
             except Exception as e:
-                send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
+                resp = {"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)}
+                if cmd_tag is not None:
+                    resp["tag"] = cmd_tag
+                send(resp)
 
     except Exception as e:
         log(f"FATAL: {e}\n{traceback.format_exc(limit=12)}")
