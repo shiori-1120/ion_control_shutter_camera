@@ -70,9 +70,6 @@ class DaqQueueDevice(DaqDevice):
                 "do_sequence": list(spec.do_sequence),
                 "insert_index": int(spec.ao_insert_index),
                 "ao_width_ms": float(spec.ao_width_ms),
-                "ao_rate_hz": float(spec.ao_rate_hz),
-                "ao_v_high": float(spec.ao_v_high),
-                "ao_v_low": float(spec.ao_v_low),
             },
             timeout=5.0,
         )
