@@ -13,6 +13,7 @@ def prepare_session(app: Any, *, default_daq_device: str) -> bool:
             app._logger.info("sweep_prepare_start")
     except Exception:
         pass
+    app._sweep_preparing = True
     inputs = collect_sweep_input(
         app,
         default_daq_device=default_daq_device,
@@ -24,8 +25,12 @@ def prepare_session(app: Any, *, default_daq_device: str) -> bool:
                 app._logger.error("sweep_prepare_failed")
         except Exception:
             pass
+        app._sweep_preparing = False
         return False
-    ok = app._sweep_ctrl.prepare_session(app._sweep_state, inputs)
+    try:
+        ok = app._sweep_ctrl.prepare_session(app._sweep_state, inputs)
+    finally:
+        app._sweep_preparing = False
     try:
         if getattr(app, "_logger", None):
             app._logger.info("sweep_prepare_done ok=%s", ok)

@@ -536,6 +536,8 @@
 
 ### 遷移（現行実装）
 - idle -> prepared: prepare_session()
+- idle -> preparing: prepare_session()開始時
+- preparing -> prepared: prepare_session()完了
 - prepared -> roi_done: roi_check()でROI検出
 - roi_done -> threshold_done: threshold_check()で適用
 - threshold_done -> running: start_sweep()
@@ -549,6 +551,9 @@
 - threshold_check: prepared/roi_done/threshold_doneのみ許可（ROI未設定はエラー）
 - start_sweep: threshold_doneのみ許可
 - stop_sweep: idle以外は許可
+
+### TODO（次段の改善）
+- SweepPhaseに`PREPARING`を追加して、prepare中の状態を明示する（UI/ガード/ログ/履歴を含めて整理）。
 
 ### イベント（UI向け）
 - on_status(text): 進捗/状態ラベル
@@ -690,6 +695,7 @@
 - 2026-01-14: Camera snap開始時のログを追加。
 - 2026-01-14: フェーズ3/5の設計・実装整理を完了（残タスク更新）。
 - 2026-01-14: sweep_workflow_smoketest.pyのdry実行を確認。
+- 2026-01-14: prepare中の停止判定を緩和し、dryでprepareが止まらないよう修正。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

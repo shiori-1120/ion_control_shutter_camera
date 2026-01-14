@@ -33,4 +33,5 @@
 - 手動検証: sweep/camera_check/camera_snapの実機でログと出力を確認
 - 手動検証: 例外時の安全停止（ALL_OFF）を実機で確認
 - 未決定事項の確定: 上部タブ集約項目/ログローテーション/厳密RT要件
+- TODO: SweepPhaseにPREPARINGを追加してprepare中の状態を明示（UI/ログ/ガード整理）
 

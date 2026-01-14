@@ -15,6 +15,7 @@ class SweepSessionReady:
     ok: bool
     session: dict[str, Any] | None
     workers: Any | None
+    error: str | None = None
 
 
 def prepare_sweep_session(
@@ -177,12 +178,13 @@ def prepare_sweep_session(
             ui_pump=ui_pump,
         )
         if not roi_ok:
+            error_msg = "ROI bootstrap failed"
             try:
-                show_error_cb("Sweep", "ROI bootstrap failed")
+                show_error_cb("Sweep", error_msg)
             except Exception:
                 pass
             stop_sweep_cb(clean_only=True)
-            return SweepSessionReady(ok=False, session=None, workers=None)
+            return SweepSessionReady(ok=False, session=None, workers=None, error=error_msg)
         session_dict = build_sweep_session_dict(
             freqs=freqs,
             do_sequence=do_sequence,
@@ -224,11 +226,12 @@ def prepare_sweep_session(
             cam_exposure_s=float(cam_exposure_s),
             seq_path=str(seq_path),
         )
-        return SweepSessionReady(ok=True, session=session_dict, workers=workers)
+        return SweepSessionReady(ok=True, session=session_dict, workers=workers, error=None)
     except Exception as e:
+        error_msg = f"Worker init failed ({type(e).__name__}): {e}"
         try:
-            show_error_cb("Sweep", f"Worker init failed ({type(e).__name__}): {e}")
+            show_error_cb("Sweep", error_msg)
         except Exception:
             pass
         stop_sweep_cb(clean_only=True)
-        return SweepSessionReady(ok=False, session=None, workers=None)
+        return SweepSessionReady(ok=False, session=None, workers=None, error=error_msg)

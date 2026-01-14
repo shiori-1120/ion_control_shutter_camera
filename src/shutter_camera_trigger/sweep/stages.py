@@ -328,6 +328,7 @@ def run_threshold_stage(
             pass
 
     from src.camera.lib.image_ops import crop_roi
+    cam_device = CameraQueueDevice(cmd_q=cam_cmd_q)
 
     for attempt_idx in range(int(max_attempt)):
         if len(samples) >= int(n_target):
@@ -336,14 +337,14 @@ def run_threshold_stage(
         cam_device.send_get_frame(float(shot_timeout_s))
         try:
             DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
-            DaqSequenceCommand(
-                do_sequence=do_sequence,
-                ao_insert_index=-1,
-                ao_width_ms=0.0,
-                ao_rate_hz=float(ao_rate_hz),
-                ao_v_high=5.0,
-                ao_v_low=0.0,
-            )
+                DaqSequenceCommand(
+                    do_sequence=do_sequence,
+                    ao_insert_index=-1,
+                    ao_width_ms=0.0,
+                    ao_rate_hz=float(ao_rate_hz),
+                    ao_v_high=5.0,
+                    ao_v_low=0.0,
+                )
             )
         except Exception as e:
             raise RuntimeError(f"DAQ error: {e}")
