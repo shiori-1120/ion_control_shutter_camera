@@ -706,3 +706,8 @@
 - DAQ: mpq/queue worker -> DaqQueueDevice
 - Camera: ion_state_worker -> CameraWorkerDevice/CameraQueueDevice
 - FG: RigolDG -> RigolFgDevice（run_spectrumもRigolFgDeviceへ統一）
+
+### 直接legacy参照が残る箇所（棚卸し）
+- shutter_guiがDaqClientを直接保持（GUI側の即時操作用）
+- DaqClientDeviceがDaqClientをラップ（GUI側用途）
+- CameraClientは未使用（削除候補/要確認）

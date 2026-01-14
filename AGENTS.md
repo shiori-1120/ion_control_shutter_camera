@@ -34,4 +34,5 @@
 - フェーズ5: SequenceSpec分離の仕上げ（sync_markers活用範囲の最終確認）
 - camera_actions/sync_markersの出力確認（警告ログは実装済）
 - 既存UIとDeviceRegistryの差分整理の最終確認
+- CameraClient未使用の扱い決定（削除 or 今後利用）
 
