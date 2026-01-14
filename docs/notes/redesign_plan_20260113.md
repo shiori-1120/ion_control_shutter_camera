@@ -687,6 +687,7 @@
 - 2026-01-14: UI/DeviceRegistry差分リストから不要項目（trigger_delay/dry_image_dir）を整理。
 - 2026-01-14: FG接続時にidnをログへ記録。
 - 2026-01-14: DAQ接続/切断のログを追加。
+- 2026-01-14: Camera check開始時のログを追加。
 ## Adapter移行状況（暫定）
 ### DaqClientDevice（GUI側）
 - camera_tab: snap/TTL/priming

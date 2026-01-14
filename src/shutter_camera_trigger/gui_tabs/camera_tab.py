@@ -303,6 +303,16 @@ def camera_check(
 
     trig_cfg = parse_camera_trigger_cfg(app)
     trig_src = str(trig_cfg.get("source") or "EXTERNAL").strip().upper() or "EXTERNAL"
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info(
+                "camera_check_start mode=%s exposure_s=%.4f trig_src=%s",
+                mode,
+                float(exposure_s),
+                trig_src,
+            )
+    except Exception:
+        pass
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = _resolve_output_root(app) / "camera_check" / ts
