@@ -104,7 +104,11 @@ def prepare_session(
         format_worker_failure=io.format_worker_failure,
     )
     if not result.ok or result.session is None or result.workers is None:
-        io.set_last_error_cb("Sweep", "Prepare session failed", None)
+        err = result.error or "Prepare session failed"
+        io.set_last_error_cb("Sweep", err, None)
+        _set_phase(state, events, SweepPhase.IDLE)
+        io.toggle_controls(True)
+        io.refresh_buttons()
         return False
 
     state.session = result.session
@@ -438,8 +442,8 @@ def stop_sweep(
 
     io.toggle_controls(True)
     events.on_status("Idle" if clean_only else "Stopped")
-    io.refresh_buttons()
     _set_phase(state, events, SweepPhase.IDLE)
+    io.refresh_buttons()
 
     if state.out_dir and fig is not None:
         try:

@@ -28,7 +28,8 @@ def mpq_get_with_ui(
     """Queue.get(timeout=...) that keeps the Tk UI responsive."""
     deadline = time.time() + float(timeout)
     while True:
-        if app._sweep_state.phase in {SweepPhase.IDLE, SweepPhase.STOPPING, SweepPhase.ERROR}:
+        preparing = bool(getattr(app, "_sweep_preparing", False))
+        if (not preparing) and app._sweep_state.phase in {SweepPhase.IDLE, SweepPhase.STOPPING, SweepPhase.ERROR}:
             raise RuntimeError("Stopped")
         try:
             return q.get_nowait()
