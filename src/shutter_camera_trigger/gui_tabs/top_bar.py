@@ -32,7 +32,7 @@ def build_top_bar(
     )
 
     ttk.Label(daq, text="AO width").grid(row=0, column=4, sticky=tk.W)
-    ttk.Entry(daq, textvariable=app.width_var, width=10, state="readonly").grid(
+    ttk.Entry(daq, textvariable=app.width_var, width=10).grid(
         row=0, column=5, sticky=tk.W, padx=5
     )
     ttk.Label(daq, text="ms").grid(row=0, column=6, sticky=tk.W)

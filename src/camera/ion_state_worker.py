@@ -24,6 +24,7 @@ import queue
 import random
 import time
 import traceback
+import threading
 from pathlib import Path
 from multiprocessing.queues import Queue
 from typing import Any
@@ -99,6 +100,13 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     prev_state: bool | None = None
 
     cam: Any | None = None
+    acq_stop = threading.Event()
+    acq_thread: threading.Thread | None = None
+    frame_cv = threading.Condition()
+    latest_frame: Any | None = None
+    latest_frame_ts: float | None = None
+    latest_frame_seq = -1
+    last_frame_error: str | None = None
 
     def _to_uint8_image(arr: Any) -> Any:
         """Convert arbitrary array-like image to uint8 in [0,255] for dry-mode tests."""
@@ -238,6 +246,31 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             log("StartCapture")
             cam.StartCapture()
 
+            def _store_frame(frame_any: Any) -> None:
+                nonlocal latest_frame, latest_frame_ts, last_frame_error, latest_frame_seq
+                with frame_cv:
+                    latest_frame = frame_any
+                    latest_frame_ts = time.time()
+                    latest_frame_seq += 1
+                    last_frame_error = None
+                    frame_cv.notify_all()
+
+            def _store_error(err_msg: str) -> None:
+                nonlocal last_frame_error
+                with frame_cv:
+                    last_frame_error = err_msg
+                    frame_cv.notify_all()
+
+            def _wait_latest(timeout_s: float, *, min_seq: int) -> tuple[Any | None, str | None]:
+                deadline = time.time() + float(timeout_s)
+                with frame_cv:
+                    while latest_frame is None or latest_frame_seq < int(min_seq):
+                        remaining = deadline - time.time()
+                        if remaining <= 0:
+                            return None, last_frame_error
+                        frame_cv.wait(timeout=remaining)
+                    return latest_frame, last_frame_error
+
             # Bootstrap ROI + thresholds if missing
             frames: list[np.ndarray] = []
             for i in range(max(1, bootstrap_n)):
@@ -298,6 +331,25 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             np = locals_np
             normalize_count = locals_norm
             classify_hysteresis = locals_cls
+
+            def _acq_loop() -> None:
+                log("acq_thread start")
+                while not acq_stop.is_set():
+                    try:
+                        ok, err = cam.wait_for_frame_ready(frame_timeout_s)
+                        if not ok:
+                            _store_error(str(err))
+                            continue
+                        _, frame = cam.GetLastFrame()
+                        frame_np = np.asarray(frame) if np is not None else frame
+                        _store_frame(frame_np)
+                    except Exception as e:
+                        _store_error(str(e))
+                        time.sleep(0.001)
+                log("acq_thread stop")
+
+            acq_thread = threading.Thread(target=_acq_loop, daemon=True)
+            acq_thread.start()
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -574,19 +626,16 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 if cam is None:
                     raise RuntimeError("Camera worker is not configured")
 
-                # Wait for next frame
-                log_debug("wait_for_frame_ready")
-                ok, err = cam.wait_for_frame_ready(timeout_s)
-                if not ok:
-                    log(f"frame_timeout err={err}")
-                    resp = {"ok": False, "event": "timeout", "error": str(err)}
+                with frame_cv:
+                    prev_seq = int(latest_frame_seq)
+                frame_np, last_err = _wait_latest(timeout_s, min_seq=prev_seq + 1)
+                if frame_np is None:
+                    log(f"frame_timeout err={last_err}")
+                    resp = {"ok": False, "event": "timeout", "error": str(last_err or "timeout")}
                     if cmd_tag is not None:
                         resp["tag"] = cmd_tag
                     send(resp)
                     continue
-
-                _, frame = cam.GetLastFrame()
-                frame_np = np.asarray(frame) if np is not None else frame
 
                 # ROI/threshold might not be ready yet in edge cases.
                 S_norm: float | None = None
@@ -652,6 +701,12 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
         try:
             if cam is not None:
                 log("cleanup: StopCapture/ReleaseBuf/CloseUninitCamera")
+                acq_stop.set()
+                try:
+                    if acq_thread is not None:
+                        acq_thread.join(timeout=1.0)
+                except Exception:
+                    pass
                 try:
                     cam.StopCapture()
                 except Exception:

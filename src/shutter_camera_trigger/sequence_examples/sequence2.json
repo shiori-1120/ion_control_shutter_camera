@@ -1,0 +1,27 @@
+{
+  "ao_width_ms": 15.0,
+  "ao_insert_index": 1,
+  "sequence_text": "0001 0.005  # 冷却\n0000 0.115  # 729\n0101 0.005  # 397, CAM\n1001 0.005  # 854\n\n\n\n\n",
+  "do_sequence": [
+    {
+      "value": 1,
+      "hold_s": 0.005
+    },
+    {
+      "value": 0,
+      "hold_s": 0.001
+    },
+        {
+      "value": 0,
+      "hold_s": 0.015
+    },
+    {
+      "value": 5,
+      "hold_s": 0.110
+    },
+    {
+      "value": 9,
+      "hold_s": 0.005
+    }
+  ]
+}

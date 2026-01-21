@@ -30,10 +30,36 @@ def start_sequence(
             raise FileNotFoundError(f"Sequence JSON not found: {seq_path}")
         require_connected(app)
         params = _load_sequence_params(Path(seq_path))
+        ao_insert_index = int(params.ao_insert_index)
+        ao_width_ms = float(params.ao_width_ms)
+        try:
+            raw = str(getattr(app, "insert_index_var", None).get() or "").strip()
+        except Exception:
+            raw = ""
+        if raw:
+            try:
+                ao_insert_index = int(float(raw))
+            except Exception as e:
+                raise ValueError(f"Invalid AO insert index: {raw!r}") from e
+            if ao_insert_index < -1 or ao_insert_index >= len(params.do_sequence):
+                raise ValueError(
+                    f"AO insert index must be -1..{len(params.do_sequence) - 1} (got {ao_insert_index})"
+                )
+        try:
+            raw_width = str(getattr(app, "width_var", None).get() or "").strip()
+        except Exception:
+            raw_width = ""
+        if raw_width:
+            try:
+                ao_width_ms = float(raw_width)
+            except Exception as e:
+                raise ValueError(f"Invalid AO width (ms): {raw_width!r}") from e
+            if ao_width_ms < 0:
+                raise ValueError("AO width (ms) must be >= 0")
         seq_spec = build_sequence_spec(
             do_sequence=params.do_sequence,
-            ao_insert_index=int(params.ao_insert_index),
-            ao_width_ms=float(params.ao_width_ms),
+            ao_insert_index=int(ao_insert_index),
+            ao_width_ms=float(ao_width_ms),
             ao_rate_hz=float(ao_rate_hz),
             ao_v_high=5.0,
             ao_v_low=0.0,
