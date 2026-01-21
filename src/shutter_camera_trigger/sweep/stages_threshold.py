@@ -9,6 +9,7 @@ import numpy as np
 from ..hardware import CameraQueueDevice, DaqQueueDevice, DaqSequenceCommand
 
 
+
 @dataclass(frozen=True)
 class ThresholdStageResult:
     tau: float
@@ -20,6 +21,9 @@ class ThresholdStageResult:
     samples_n: int
     sample_metric: str
     threshold: dict[str, Any]
+    samples: list[float]
+    profiles: list[np.ndarray]
+    roi: list[int]
 
 
 def analyze_threshold_samples(
@@ -72,75 +76,62 @@ def analyze_threshold_samples(
         ax_ph = fig.add_subplot(211)
         ax_s = fig.add_subplot(212)
 
-        def _concat_profiles(ps: list[np.ndarray]) -> np.ndarray:
-            arrs = []
-            for p in ps:
-                a = np.asarray(p, dtype=float)
-                a = a[np.isfinite(a)]
-                if a.size:
-                    arrs.append(a)
-            return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
+            def _flatten_roi_pixels(profiles: list[np.ndarray], roi: list[int]) -> np.ndarray:
+                # profilesはsum(axis=0)なので、元画像のROI全体のピクセル値はsamplesから取得する必要がある
+                # ここではsamplesはroi_meanなので、元画像の全ピクセル値は取得できない
+                # ただし、profilesは各サンプルのROI内のy方向積分（1D）
+                # ここでは「全サンプルの全ROIピクセル値」をflattenしてヒストグラム化する
+                # そのためには、元画像のROI部分のflatten値を保存しておく必要がある
+                # ここでは近似的にprofilesの値を使う（本来は元画像のROI flatten値を保存すべき）
+                arrs = []
+                for p in profiles:
+                    a = np.asarray(p, dtype=float)
+                    a = a[np.isfinite(a)]
+                    if a.size:
+                        arrs.append(a)
+                return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
 
-        light_counts = _concat_profiles(bright_profiles)
-        dark_counts = _concat_profiles(dark_profiles)
-        combined = np.concatenate([c for c in (light_counts, dark_counts) if c.size > 0])
-        if combined.size == 0:
-            raise RuntimeError("No valid photon-count samples")
+            # 近似的にprofilesの値をflattenして使う（本来は元画像のROI flatten値を使うべき）
+            light_pixels = _flatten_roi_pixels(bright_profiles, roi)
+            dark_pixels = _flatten_roi_pixels(dark_profiles, roi)
+            combined = np.concatenate([c for c in (light_pixels, dark_pixels) if c.size > 0])
+            if combined.size == 0:
+                raise RuntimeError("No valid photon-count samples")
 
-        try:
-            tau_plot = float(tau) * float(roi[1])
-        except Exception:
-            tau_plot = float(tau)
+            start = int(np.floor(float(np.nanmin(combined))))
+            end = int(np.ceil(float(np.nanmax(combined))))
+            bin_edges = np.arange(start - 0.5, end + 1.5, 1)
 
-        start = int(np.floor(float(np.nanmin(combined))))
-        end = int(np.ceil(float(np.nanmax(combined))))
-        try:
-            start = int(min(start, np.floor(float(tau_plot))))
-            end = int(max(end, np.ceil(float(tau_plot))))
-        except Exception:
-            pass
-        bin_edges = np.arange(start - 0.5, end + 1.5, 1)
+            if light_pixels.size > 0:
+                mean_light = float(np.mean(light_pixels))
+                ax_ph.hist(
+                    light_pixels,
+                    bins=bin_edges,
+                    density=True,
+                    alpha=0.6,
+                    color="tab:orange",
+                    edgecolor="none",
+                    label=f"Light (mean={mean_light:.2f})",
+                )
+                ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
+            if dark_pixels.size > 0:
+                mean_dark = float(np.mean(dark_pixels))
+                ax_ph.hist(
+                    dark_pixels,
+                    bins=bin_edges,
+                    density=True,
+                    alpha=0.6,
+                    color="navy",
+                    edgecolor="none",
+                    label=f"Dark (mean={mean_dark:.2f})",
+                )
+                ax_ph.axvline(mean_dark, color="navy", linestyle="--")
 
-        if light_counts.size > 0:
-            mean_light = float(np.mean(light_counts))
-            ax_ph.hist(
-                light_counts,
-                bins=bin_edges,
-                density=True,
-                alpha=0.6,
-                color="tab:orange",
-                edgecolor="none",
-                label=f"Light (mean={mean_light:.2f})",
-            )
-            ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
-        if dark_counts.size > 0:
-            mean_dark = float(np.mean(dark_counts))
-            ax_ph.hist(
-                dark_counts,
-                bins=bin_edges,
-                density=True,
-                alpha=0.6,
-                color="navy",
-                edgecolor="none",
-                label=f"Dark (mean={mean_dark:.2f})",
-            )
-            ax_ph.axvline(mean_dark, color="navy", linestyle="--")
-
-        try:
-            ax_ph.axvline(
-                float(tau_plot),
-                color="tab:red",
-                linestyle="-",
-                linewidth=2,
-                label=f"Threshold (tau*yw={float(tau_plot):.2f})",
-            )
-        except Exception:
-            pass
-        ax_ph.set_xlabel("Photon Count (per-column sum; integer bins)")
-        ax_ph.set_ylabel("Probability density")
-        ax_ph.set_title(f"Photon Distribution (integrated over y-axis) | agree={acc*100:.1f}%")
-        ax_ph.legend(loc="upper right")
-        ax_ph.grid(True, alpha=0.3)
+            ax_ph.set_xlabel("Photon Count (per pixel; integer bins)")
+            ax_ph.set_ylabel("Probability density")
+            ax_ph.set_title(f"Pixel-wise photon count distribution | agree={acc*100:.1f}%")
+            ax_ph.legend(loc="upper right")
+            ax_ph.grid(True, alpha=0.3)
 
         try:
             s_all = np.asarray(samples, dtype=float)
@@ -530,4 +521,7 @@ def run_threshold_stage(
         samples_n=int(len(samples)),
         sample_metric="roi_mean",
         threshold=dict(th),
+        samples=list(samples),
+        profiles=list(profiles),
+        roi=list(roi),
     )

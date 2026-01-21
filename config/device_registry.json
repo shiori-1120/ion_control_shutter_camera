@@ -9,10 +9,10 @@
     "exposure_ms": 100.0,
     "subarray": {
       "enabled": true,
-      "x": 3372,
-      "y": 992,
-      "width": 596,
-      "height": 292
+      "x": 2628,
+      "y": 1240,
+      "width": 328,
+      "height": 132
     },
     "verbose": false,
     "trigger": {
@@ -34,8 +34,8 @@
     "no_fg": true
   },
   "sweep_defaults": {
-    "n_target": 50,
-    "max_attempt": 100,
+    "n_target": 1000,
+    "max_attempt": 1000,
     "settle_s": 0.02,
     "update_interval": 1.0
   },

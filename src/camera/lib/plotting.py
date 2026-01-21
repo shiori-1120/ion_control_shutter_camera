@@ -117,7 +117,7 @@ def plot_photon_distribution(light_images: list | None = None,
         plt.axvline(mean_dark, color='navy', linestyle='--')
     plt.xlabel('Photon Count (integer bins)')
     plt.ylabel('Probability density')
-    plt.title('Photon Distribution (integrated over y-axis)')
+    plt.title('Pixel-wise photon count distribution')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
