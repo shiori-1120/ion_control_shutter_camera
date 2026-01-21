@@ -1,42 +1,4 @@
-"""Plot ion blinking vs time from TIFF frames.
-
-Goal:
-    For a TIFF frame sequence where ions are aligned horizontally (along X),
-    compute per-frame 1D profiles by vertical integration (sum over Y), then
-    stack them over time to make a kymograph:
-
-        X-axis: time [s]
-        Y-axis: position [px]
-        color : integrated intensity [a.u.]
-
-Supported inputs:
-  - A folder containing .tif/.tiff frames (sorted by filename)
-  - A single TIFF file (single-page or multi-page)
-
-Usage (PowerShell):
-    # Folder input, dt inferred from TIFF exposure metadata if present,
-    # otherwise assumes 100 ms exposure (dt=0.1s)
-    python plot_tiff_intensity_time.py path\to\tiff_folder
-
-    # Explicit FPS (dt = 1/fps)
-    python plot_tiff_intensity_time.py path\to\tiff_folder --fps 10
-
-    # Explicit dt [s]
-    python plot_tiff_intensity_time.py path\to\tiff_folder --dt 0.1
-
-    # Restrict ROI and x-range (useful to isolate ion chain area)
-    python plot_tiff_intensity_time.py path\to\tiff_folder --roi 0:352,0:1008 --x-range 200:800
-
-Outputs:
-    - PNG kymograph next to the input.
-    - Optionally NPY (profiles) and CSV (time-integrated trace).
-
-Notes:
-    - "縦に積算" is implemented as sum over axis=0 (Y).
-    - If you want a single trace, use --save-csv (sums over X per frame).
-"""
-
-from __future__ import annotations
+    from __future__ import annotations
 
 import argparse
 import json

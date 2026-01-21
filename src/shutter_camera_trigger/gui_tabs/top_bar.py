@@ -4,6 +4,7 @@ import tkinter as tk
 from typing import Any, Callable
 from tkinter import ttk
 
+from ..gui_support.output_state import set_output_state
 
 def build_top_bar(
     app: Any,
@@ -14,6 +15,7 @@ def build_top_bar(
     fg_connect_cb: Callable[[], None],
     fg_disconnect_cb: Callable[[], None],
     pick_seq_json_cb: Callable[[], None],
+    output_defs: list[tuple[str, int]] | None = None,
 ) -> None:
     top = ttk.Frame(parent or app, padding=10)
     top.pack(side=tk.TOP, fill=tk.X)
@@ -138,6 +140,19 @@ def build_top_bar(
         pass
 
     app.status_var = tk.StringVar(value="Disconnected")
-    ttk.Label(top, textvariable=app.status_var).grid(row=6, column=0, sticky=tk.W, pady=(4, 0))
+    outputs = ttk.LabelFrame(top, text="Outputs")
+    outputs.grid(row=6, column=0, sticky=tk.W + tk.E, pady=(0, 6))
+    app._output_lamps = []
+    app._lamp_on_color = "#4caf50"
+    app._lamp_off_color = "#444444"
+    if output_defs:
+        for idx, (label, mask) in enumerate(output_defs):
+            lamp = tk.Label(outputs, text=" ", width=2, relief=tk.SUNKEN, bg=app._lamp_off_color)
+            lamp.grid(row=0, column=idx * 2, sticky=tk.W, padx=(6 if idx == 0 else 2, 2), pady=4)
+            ttk.Label(outputs, text=label).grid(row=0, column=idx * 2 + 1, sticky=tk.W, padx=(0, 8))
+            app._output_lamps.append((int(mask), lamp))
+    set_output_state(app, None)
+
+    ttk.Label(top, textvariable=app.status_var).grid(row=7, column=0, sticky=tk.W, pady=(4, 0))
 
     top.grid_columnconfigure(0, weight=1)

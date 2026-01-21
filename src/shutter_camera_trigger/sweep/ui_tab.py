@@ -41,6 +41,8 @@ def build_sweep_tab(
     roi_max_attempt: int,
     roi_check_cb: Callable[[], None],
     threshold_check_cb: Callable[[], None],
+    threshold_override_replot_cb: Callable[[], None],
+    threshold_override_apply_cb: Callable[[], None],
     start_sweep_cb: Callable[[], None],
     stop_sweep_cb: Callable[[], None],
 ) -> None:
@@ -142,6 +144,26 @@ def build_sweep_tab(
     app.sw_status = tk.StringVar(value="Idle")
     ttk.Label(btn_row, textvariable=app.sw_status).pack(side=tk.LEFT, padx=12)
 
+    thr_override = ttk.LabelFrame(app.sweep_tab, text="Threshold override")
+    thr_override.pack(fill=tk.X, pady=(0, 8))
+    ttk.Label(thr_override, text="tau (roi_mean)").grid(row=0, column=0, sticky=tk.W)
+    app.sw_thr_tau_var = tk.StringVar(value="")
+    ttk.Entry(thr_override, textvariable=app.sw_thr_tau_var, width=12).grid(row=0, column=1, padx=4)
+    app.sw_thr_replot_btn = ttk.Button(
+        thr_override,
+        text="Replot",
+        command=threshold_override_replot_cb,
+        state=tk.DISABLED,
+    )
+    app.sw_thr_replot_btn.grid(row=0, column=2, padx=4)
+    app.sw_thr_apply_btn = ttk.Button(
+        thr_override,
+        text="Apply",
+        command=threshold_override_apply_cb,
+        state=tk.DISABLED,
+    )
+    app.sw_thr_apply_btn.grid(row=0, column=3, padx=4)
+
     try:
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
         from matplotlib.figure import Figure
@@ -191,6 +213,7 @@ def build_sweep_tab(
                 format_threshold_prompt(th, acc, tau),
                 parent=app,
             ),
+            update_threshold_ui=lambda tau, tau_on, tau_off: app.sw_thr_tau_var.set(f"{float(tau):.3g}"),
             join_with_ui=lambda proc, timeout: join_with_ui(app, proc, timeout=timeout),
             set_last_error_cb=lambda label, message, log_path: set_last_error(
                 app,

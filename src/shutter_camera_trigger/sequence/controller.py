@@ -9,6 +9,7 @@ from ..daq.guards import require_connected
 
 from ..gui_support.diagnostics import resolve_log_path, set_last_error
 from ..hardware import DaqClientDevice
+from ..gui_support.output_state import set_output_state
 from ..sequence.spec import build_sequence_spec, compile_sequence_spec
 from ..sweep.session_parse import read_sequence_json_params
 
@@ -68,7 +69,9 @@ def sequence_stopped_ui(app: Any, *, nm_397: int) -> None:
     app.stop_btn.configure(state=tk.DISABLED)
     if app._daq.connected:
         try:
-            DaqClientDevice(app._daq).set_do(int(nm_397))
+            value = int(nm_397)
+            DaqClientDevice(app._daq).set_do(value)
+            set_output_state(app, value)
         except Exception:
             pass
         app.status_var.set(f"Connected: {app._daq_device} ({app._daq_mode})")

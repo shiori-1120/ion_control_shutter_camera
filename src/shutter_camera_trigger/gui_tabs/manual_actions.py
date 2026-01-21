@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..hardware import DaqClientDevice
+from ..gui_support.output_state import set_output_state
 
 from ..daq.guards import require_connected
 from ..gui_support.diagnostics import resolve_log_path, set_last_error
@@ -23,7 +24,9 @@ def all_off(app: Any, *, all_off: int, nm_397: int) -> None:
             )
         except Exception:
             do_all_off = False
-        DaqClientDevice(app._daq).set_do(int(all_off if do_all_off else nm_397))
+        value = int(all_off if do_all_off else nm_397)
+        DaqClientDevice(app._daq).set_do(value)
+        set_output_state(app, value)
     except Exception as e:
         messagebox.showerror("DO error", str(e))
         set_last_error(
@@ -53,7 +56,14 @@ def apply_manual(
             value |= nm_729
         if app.v_854.get():
             value |= nm_854
+        if not getattr(app, "_seq_running", False):
+            value |= nm_397
+            try:
+                app.v_397.set(True)
+            except Exception:
+                pass
         DaqClientDevice(app._daq).set_do(int(value))
+        set_output_state(app, int(value))
     except Exception as e:
         messagebox.showerror("Manual apply error", str(e))
         set_last_error(

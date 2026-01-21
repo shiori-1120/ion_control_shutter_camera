@@ -15,6 +15,7 @@ import numpy as np
 
 from ..gui_support.image_utils import robust_gray_limits
 from ..gui_support.diagnostics import set_last_error
+from ..gui_support.output_state import set_output_state
 from ..gui_support.validators import (
     apply_subarray_to_cam_cfg,
     parse_camera_trigger_cfg,
@@ -278,6 +279,12 @@ def camera_snap(
                 pass
         finally:
             try:
+                if app._daq.connected:
+                    DaqClientDevice(app._daq).set_do(int(nm_397))
+                    app.after(0, lambda: set_output_state(app, int(nm_397)))
+            except Exception:
+                pass
+            try:
                 cam_device.close()
             except Exception:
                 pass
@@ -520,6 +527,12 @@ def camera_check(
             ui_kind = "error"
         finally:
             prime_stop.set()
+            try:
+                if app._daq.connected:
+                    DaqClientDevice(app._daq).set_do(int(nm_397))
+                    app.after(0, lambda: set_output_state(app, int(nm_397)))
+            except Exception:
+                pass
             try:
                 cam_device.close()
             except Exception:

@@ -19,7 +19,7 @@ def build_manual_tab(
     if app.manual_tab is None:
         return
 
-    app.v_397 = tk.BooleanVar(value=False)
+    app.v_397 = tk.BooleanVar(value=True)
     app.v_397s = tk.BooleanVar(value=False)
     app.v_729 = tk.BooleanVar(value=False)
     app.v_854 = tk.BooleanVar(value=False)
@@ -27,7 +27,9 @@ def build_manual_tab(
     ttk.Label(app.manual_tab, text="Manual shutter control", font=("", 11, "bold")).grid(
         row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 8)
     )
-    ttk.Checkbutton(app.manual_tab, text="397 (line0)", variable=app.v_397).grid(row=1, column=0, sticky=tk.W)
+    ttk.Checkbutton(app.manual_tab, text="397 (line0, normally on)", variable=app.v_397).grid(
+        row=1, column=0, sticky=tk.W
+    )
     ttk.Checkbutton(app.manual_tab, text="397 SIG (line1)", variable=app.v_397s).grid(row=2, column=0, sticky=tk.W)
     ttk.Checkbutton(app.manual_tab, text="Camera trigger (line2)", variable=app.v_729).grid(row=3, column=0, sticky=tk.W)
     ttk.Checkbutton(app.manual_tab, text="854 (line3)", variable=app.v_854).grid(row=4, column=0, sticky=tk.W)

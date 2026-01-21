@@ -11,11 +11,13 @@ from .model import SweepDeps, SweepEvents, SweepInput, SweepIO, SweepPhase, Swee
 _MSG_NEED_ROI = "Run '1) ROI check' first."
 _MSG_NEED_ROI_SET = "ROI is not set. Run '1) ROI check' first."
 _MSG_NEED_THRESH = "Run '1) ROI check' and '2) Threshold' first."
+_MSG_NEED_THRESH_DATA = "Run '2) Threshold' first."
 from .roi_threshold_flow import run_roi_check_flow, run_threshold_flow
 from .session_config import write_manifest_json
 from .session_ready import prepare_sweep_session
 from .spectrum_flow import run_spectrum_flow
 from .spectrum_ui import save_spectrum_plot
+from .stages import analyze_threshold_samples
 
 
 def prepare_session(
@@ -112,6 +114,12 @@ def prepare_session(
         return False
 
     state.session = result.session
+    state.threshold_samples = []
+    state.threshold_profiles = []
+    state.threshold_roi = None
+    state.threshold_tau = None
+    state.threshold_tau_on = None
+    state.threshold_tau_off = None
     _set_phase(state, events, SweepPhase.PREPARED)
 
     workers = result.workers
@@ -255,6 +263,16 @@ def threshold_check(
             out_dir=state.out_dir,
             confirm_apply_cb=io.confirm_threshold,
         )
+        state.threshold_samples = list(r.samples)
+        state.threshold_profiles = list(r.profiles)
+        state.threshold_roi = list(r.roi)
+        state.threshold_tau = float(r.tau)
+        state.threshold_tau_on = float(r.tau_on)
+        state.threshold_tau_off = float(r.tau_off)
+        try:
+            io.update_threshold_ui(float(r.tau), float(r.tau_on), float(r.tau_off))
+        except Exception:
+            pass
         if applied:
             acc = float(r.agreement)
             events.on_status(f"Threshold applied ({acc*100:.1f}%). Next: 3) Start spectrum")
@@ -262,6 +280,7 @@ def threshold_check(
             io.refresh_buttons()
         else:
             events.on_status("Threshold plotted (not applied). Apply to continue.")
+            io.refresh_buttons()
 
     except Exception as e:
         events.on_error("Sweep", str(e))
@@ -418,6 +437,87 @@ def start_sweep(
         stop_sweep(state=state, events=events, io=io, deps=deps, clean_only=True, fig=fig)
 
 
+def override_threshold(
+    *,
+    state: SweepState,
+    fig: Any,
+    canvas: Any,
+    tau: float,
+    apply: bool,
+    events: SweepEvents,
+    io: SweepIO,
+    deps: SweepDeps,
+) -> None:
+    if state.phase not in {SweepPhase.PREPARED, SweepPhase.ROI_DONE, SweepPhase.THRESHOLD_DONE} or not state.session:
+        events.on_error("Sweep", _MSG_NEED_ROI)
+        io.set_last_error_cb("Sweep", _MSG_NEED_ROI, None)
+        return
+
+    if not state.threshold_samples or not state.threshold_profiles or not state.threshold_roi:
+        events.on_error("Sweep", _MSG_NEED_THRESH_DATA)
+        io.set_last_error_cb("Sweep", _MSG_NEED_THRESH_DATA, None)
+        return
+
+    if fig is None or canvas is None:
+        return
+
+    cam_cmd_q = state.queues.get("cam_cmd")
+    cam_resp_q = state.queues.get("cam_resp")
+    if not (cam_cmd_q and cam_resp_q):
+        return
+
+    tau_f = float(tau)
+    tau_on = float(tau_f)
+    tau_off = float(tau_f)
+    threshold_meta = {"mode": "MANUAL", "tau": tau_f, "tau_on": tau_on, "tau_off": tau_off}
+
+    try:
+        analysis = analyze_threshold_samples(
+            samples=list(state.threshold_samples),
+            profiles=list(state.threshold_profiles),
+            roi=list(state.threshold_roi),
+            tau=tau_f,
+            tau_on=tau_on,
+            tau_off=tau_off,
+            fig=fig,
+            canvas=canvas,
+            out_dir=state.out_dir if apply else None,
+            out_name="threshold_override.json" if apply else None,
+            threshold_meta=threshold_meta,
+        )
+        acc = float(analysis.get("agreement", 0.0))
+        state.threshold_tau = tau_f
+        state.threshold_tau_on = tau_on
+        state.threshold_tau_off = tau_off
+        if state.session is not None:
+            state.session["threshold_override"] = dict(threshold_meta)
+            state.session["threshold_override"]["agreement"] = acc
+        try:
+            io.update_threshold_ui(tau_f, tau_on, tau_off)
+        except Exception:
+            pass
+
+        if apply:
+            from ..hardware import CameraQueueDevice
+
+            CameraQueueDevice(cmd_q=cam_cmd_q).set_threshold(float(tau_on), float(tau_off))
+            ack = deps.mpq_get_with_ui(cam_resp_q, timeout=5, label="Camera set_threshold")
+            if not ack.get("ok"):
+                raise RuntimeError(f"set_threshold failed: {ack}")
+            events.on_status(f"Threshold applied (override, agree={acc*100:.1f}%). Next: 3) Start spectrum")
+            _set_phase(state, events, SweepPhase.THRESHOLD_DONE)
+            io.refresh_buttons()
+        else:
+            events.on_status(f"Threshold plotted (override, agree={acc*100:.1f}%). Apply to continue.")
+            io.refresh_buttons()
+    except Exception as e:
+        events.on_error("Sweep", str(e))
+        _set_phase(state, events, SweepPhase.ERROR)
+        events.on_status("Error (threshold override)")
+        io.refresh_buttons()
+        io.set_last_error_cb("Sweep", str(e), None)
+
+
 def stop_sweep(
     *,
     state: SweepState,
@@ -439,6 +539,12 @@ def stop_sweep(
     )
 
     state.session = None
+    state.threshold_samples = []
+    state.threshold_profiles = []
+    state.threshold_roi = None
+    state.threshold_tau = None
+    state.threshold_tau_on = None
+    state.threshold_tau_off = None
 
     io.toggle_controls(True)
     events.on_status("Idle" if clean_only else "Stopped")

@@ -1,7 +1,7 @@
 nidaqmx-python-master/
 .venv
 .github
-src/AGENTS.md
+AGENTS.md
 
 # Python caches
 __pycache__/

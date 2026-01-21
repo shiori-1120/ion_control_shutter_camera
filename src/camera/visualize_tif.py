@@ -36,7 +36,7 @@ except Exception:
         convert_folder_tif_to_npy = None  # type: ignore
 
 # Defaults (no CLI flags)
-DEFAULT_FPS: int = 20
+DEFAULT_FPS: int = 10
 DEFAULT_PMIN: float = 1.0
 DEFAULT_PMAX: float = 99.0
 DEFAULT_GLOBAL_SCALE: bool = False  # per-frame scaling by default

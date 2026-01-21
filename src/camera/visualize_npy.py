@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # Run: python src\camera\visualize_npy.py "C:\\path\\to\\output\\YYYYMMDD_HHMMSS\\raw-data"
-"""
+r"""
 visualize_npy.py
 
 目的: raw-data フォルダにある .npy フレームを一括で PNG 画像化し、同セッションの plots フォルダへ保存する。
 スタイルは initial_preparation.py の show_npy_2d に合わせ、軸ラベル・1/99パーセンタイルでの表示範囲を使用。
 
 使い方（PowerShell）:
-    python src\camera\visualize_npy.py C:\path\to\...\output\YYYYMMDD_HHMMSS\raw-data
+    python src\camera\visualize_npy.py C:\Users\shiori\Desktop\ion_control_shutter_camera\data\output\camera_check\20260114_122305
 
 依存: numpy, matplotlib
 """
@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from typing import List
 
 # initial_preparation のプロット関数を使用（同一ディレクトリ内）
-from initial_preparation import show_npy_2d
+from .initial_preparation import show_npy_2d
 
 
 def load_array(path: str):
