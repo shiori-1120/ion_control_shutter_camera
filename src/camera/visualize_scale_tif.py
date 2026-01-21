@@ -11,7 +11,7 @@ TITLE_FONT_SIZE = BASE_FONT_SIZE + 4
 SCALEBAR_FONT_SIZE = BASE_FONT_SIZE
 
 # ファイルパス
-filePath = "C:\Users\shiori\Desktop\ion_control_shutter_camera\output\20251225\2025_1225_160504data.tif"
+filePath = r"C:/Users/shiori/Desktop/ion_control_shutter_camera/output/20251225/2025_1225_160504data.tif"
 
 # トリミング範囲 [y_start:y_end, x_start:x_end]
 CROP_Y_START = 100      
