@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import os
 import queue
-import random
 import time
 import traceback
 import threading
@@ -29,49 +28,22 @@ from pathlib import Path
 from multiprocessing.queues import Queue
 from typing import Any
 
-
-def _limit_blas_threads() -> None:
-    # Safety for online operation: avoid NumPy/SciPy consuming all cores and starving DAQ.
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+from .worker_commands import handle_roi_threshold_cmd
+from .worker_dry import handle_dry_command, load_dry_samples
+from .worker_logging import setup_worker_logging
+from .worker_real import init_real_camera
+from .worker_utils import as_roi_tuple, limit_blas_threads
 
 
 def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> None:
-    _limit_blas_threads()
+    limit_blas_threads()
 
-    log_path = cfg.get("log_path")
-    run_id = str(cfg.get("run_id") or "")
-    _log_file: Any | None = None
-
-    def log(msg: str) -> None:
-        nonlocal _log_file
-        if not log_path:
-            return
-        try:
-            if _log_file is None:
-                p = Path(str(log_path))
-                p.parent.mkdir(parents=True, exist_ok=True)
-                _log_file = open(p, "a", encoding="utf-8")
-            ts = time.strftime("%Y-%m-%d %H:%M:%S")
-            prefix = f"[{ts}]"
-            if run_id:
-                prefix = f"{prefix} {run_id}"
-            _log_file.write(f"{prefix} {msg}\n")
-            _log_file.flush()
-        except Exception:
-            pass
-
-    cam_verbose = bool(cfg.get("verbose") or cfg.get("camera_verbose") or False)
-
-    def log_debug(msg: str) -> None:
-        if cam_verbose:
-            log(msg)
+    log, log_debug, log_worker_env, close_log, cam_verbose = setup_worker_logging(cfg)
 
     # The legacy camera stack expects `import lib.*` to resolve to src/camera/lib.
     # When running as a module from repo root, we need to prepend src/camera to sys.path.
-    import sys
     from pathlib import Path
+    import sys
 
     camera_dir = Path(__file__).resolve().parent
     if str(camera_dir) not in sys.path:
@@ -82,6 +54,7 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
         f"exposure_s={cfg.get('exposure_s')} | frame_timeout_s={cfg.get('frame_timeout_s')} | "
         f"bootstrap_n={cfg.get('bootstrap_n')}"
     )
+    log_worker_env()
 
     mode = str(cfg.get("mode") or "dry")  # 'dry' | 'real'
 
@@ -98,7 +71,6 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     log(f"trigger_cfg={trigger_cfg} | cam_verbose={cam_verbose}")
 
     prev_state: bool | None = None
-
     cam: Any | None = None
     acq_stop = threading.Event()
     acq_thread: threading.Thread | None = None
@@ -107,50 +79,6 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
     latest_frame_ts: float | None = None
     latest_frame_seq = -1
     last_frame_error: str | None = None
-
-    def _to_uint8_image(arr: Any) -> Any:
-        """Convert arbitrary array-like image to uint8 in [0,255] for dry-mode tests."""
-        try:
-            import numpy as _np
-
-            x = _np.asarray(arr)
-            if x.size == 0:
-                return x.astype(_np.uint8)
-
-            # If already uint8, keep.
-            if x.dtype == _np.uint8:
-                return x
-
-            # Handle float images in [0,1]
-            x_f = x.astype(float)
-            finite = x_f[_np.isfinite(x_f)]
-            if finite.size == 0:
-                return _np.zeros_like(x_f, dtype=_np.uint8)
-
-            vmin = float(finite.min())
-            vmax = float(finite.max())
-
-            if 0.0 <= vmin and vmax <= 1.0:
-                y = _np.clip(x_f, 0.0, 1.0) * 255.0
-                return _np.asarray(_np.rint(y), dtype=_np.uint8)
-
-            # If already roughly in [0,255], just clip.
-            if -1.0 <= vmin and vmax <= 256.0:
-                y = _np.clip(x_f, 0.0, 255.0)
-                return _np.asarray(_np.rint(y), dtype=_np.uint8)
-
-            # Otherwise, normalize robustly (percentiles) then scale to [0,255].
-            p1 = float(_np.percentile(finite, 1))
-            p99 = float(_np.percentile(finite, 99))
-            if not _np.isfinite(p1) or not _np.isfinite(p99) or abs(p99 - p1) < 1e-12:
-                y = _np.clip(x_f, 0.0, 255.0)
-                return _np.asarray(_np.rint(y), dtype=_np.uint8)
-
-            y = (x_f - p1) / (p99 - p1)
-            y = _np.clip(y, 0.0, 1.0) * 255.0
-            return _np.asarray(_np.rint(y), dtype=_np.uint8)
-        except Exception:
-            return arr
 
     # Imported lazily (real mode only)
     np = None  # type: ignore
@@ -163,53 +91,11 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
         except Exception:
             pass
 
-    def as_roi_tuple(x: Any) -> tuple[int, int, int, int] | None:
-        if x is None:
-            return None
-        if isinstance(x, (list, tuple)) and len(x) == 4:
-            return (int(x[0]), int(x[1]), int(x[2]), int(x[3]))
-        return None
-
     roi_t = as_roi_tuple(roi)
     bg_roi_t = as_roi_tuple(bg_roi)
     subarray_t = as_roi_tuple(cfg.get("subarray"))
 
-    dry_samples: list[tuple[Any, bool, str]] = []
-    dry_dir = cfg.get("dry_image_dir")
-    if dry_dir:
-        try:
-            import numpy as np
-
-            try:
-                from PIL import Image  # type: ignore
-            except Exception:
-                Image = None  # type: ignore
-
-            base = Path(dry_dir)
-            if base.exists() and base.is_dir():
-                def load_img(p: Path) -> Any:
-                    if p.suffix.lower() == ".npy":
-                        return np.load(p)
-                    if Image is None:
-                        raise RuntimeError("Pillow not available to load image")
-                    return np.asarray(Image.open(p).convert("L"))
-
-                def try_load(stem: str, is_bright: bool) -> None:
-                    for ext in ("png", "jpg", "jpeg", "bmp", "tif", "tiff", "npy"):
-                        for candidate in base.glob(f"{stem}*.{ext}"):
-                            try:
-                                arr = load_img(candidate)
-                                dry_samples.append((arr, is_bright, candidate.name))
-                                return
-                            except Exception:
-                                continue
-
-                try_load("bright", True)
-                # Used for dry ROI check (should look bright).
-                try_load("roi_test", True)
-                try_load("dark", False)
-        except Exception:
-            dry_samples = []
+    dry_samples = load_dry_samples(cfg.get("dry_image_dir"))
 
     try:
         if mode == "dry":
@@ -368,57 +254,69 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             if name in ("quit", "close"):
                 log("closing")
                 send({"ok": True, "event": "closing"})
+                if cam is not None:
+                    log("cleanup (on close cmd): StopCapture/ReleaseBuf/CloseUninitCamera")
+                    try:
+                        cam.StopCapture()
+                    except Exception:
+                        pass
+                    try:
+                        cam.ReleaseBuf()
+                    except Exception:
+                        pass
+                    try:
+                        cam.CloseUninitCamera()
+                    except Exception:
+                        pass
+                    cam = None
                 break
 
-            if name == "set_roi":
-                try:
-                    roi_new = as_roi_tuple(cmd.get("roi"))
-                    if roi_new is None:
-                        raise ValueError("set_roi requires roi=[xw,yw,xs,ys]")
-                    roi_t = roi_new
-                    prev_state = None
-                    send({"ok": True, "event": "roi", "roi": list(roi_t)})
-                    log(f"set_roi {roi_t}")
-                except Exception as e:
-                    log(f"set_roi error {type(e).__name__}: {e}")
-                    send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
+            handled, resp, state = handle_roi_threshold_cmd(
+                name,
+                cmd,
+                roi_t=roi_t,
+                bg_roi_t=bg_roi_t,
+                tau_on=tau_on,
+                tau_off=tau_off,
+                prev_state=prev_state,
+                log=log,
+            )
+            if handled:
+                roi_t, bg_roi_t, tau_on, tau_off, prev_state = state
+                if resp is not None:
+                    send(resp)
                 continue
 
-            if name == "set_bg_roi":
+            if name == "set_subarray":
                 try:
-                    bg_new = as_roi_tuple(cmd.get("bg_roi"))
-                    bg_roi_t = bg_new
-                    prev_state = None
-                    send({"ok": True, "event": "bg_roi", "bg_roi": (list(bg_roi_t) if bg_roi_t else None)})
-                    log(f"set_bg_roi {bg_roi_t}")
+                    sub_new = as_roi_tuple(cmd.get("subarray"))
+                    if mode == "dry":
+                        subarray_t = sub_new
+                        send({"ok": True, "event": "subarray", "subarray": (list(subarray_t) if subarray_t else None)})
+                        log(f"set_subarray (dry) {subarray_t}")
+                        continue
+                    if cam is None:
+                        raise RuntimeError("Camera worker is not configured")
+                    log(f"set_subarray {sub_new}")
+                    try:
+                        cam.StopCapture()
+                    except Exception:
+                        pass
+                    try:
+                        cam.ReleaseBuf()
+                    except Exception:
+                        pass
+                    if sub_new is not None:
+                        xw, yw, xs, ys = map(int, sub_new)
+                        cam.SetParameters(exposure_s, xw, yw, xs, ys)
+                        subarray_t = (xw, yw, xs, ys)
+                    else:
+                        cam.SetParameters(exposure_s)
+                        subarray_t = None
+                    cam.StartCapture()
+                    send({"ok": True, "event": "subarray", "subarray": (list(subarray_t) if subarray_t else None)})
                 except Exception as e:
-                    log(f"set_bg_roi error {type(e).__name__}: {e}")
-                    send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
-                continue
-
-            if name == "set_threshold":
-                try:
-                    tau_on_new = cmd.get("tau_on")
-                    tau_off_new = cmd.get("tau_off")
-                    tau_new = cmd.get("tau")
-
-                    if tau_new is not None:
-                        tau = float(tau_new)
-                        # Hysteresis disabled: use a single threshold.
-                        tau_on_new = float(tau)
-                        tau_off_new = float(tau)
-
-                    if tau_on_new is None or tau_off_new is None:
-                        raise ValueError("set_threshold requires tau or (tau_on and tau_off)")
-
-                    tau_on = float(tau_on_new)
-                    tau_off = float(tau_off_new)
-                    prev_state = None
-
-                    send({"ok": True, "event": "threshold", "tau_on": float(tau_on), "tau_off": float(tau_off)})
-                    log(f"set_threshold tau_on={tau_on} tau_off={tau_off}")
-                except Exception as e:
-                    log(f"set_threshold error {type(e).__name__}: {e}")
+                    log(f"set_subarray error {type(e).__name__}: {e}")
                     send({"ok": False, "event": "error", "error": str(e), "traceback": traceback.format_exc(limit=8)})
                 continue
 
@@ -431,195 +329,17 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
             try:
                 if mode == "dry":
-                    if name == "get_frame":
-                        # Force a specific sample if requested (useful for ROI check).
-                        # This works even when dry_image_dir is not configured.
-                        try:
-                            prefer = cmd.get("prefer_sample")
-                            if isinstance(prefer, str) and prefer.strip():
-                                p = Path(prefer)
-                                if p.exists() and p.is_file():
-                                    import numpy as _np  # local import
-
-                                    arr: Any
-                                    if p.suffix.lower() == ".npy":
-                                        arr = _np.load(p)
-                                    else:
-                                        try:
-                                            from PIL import Image  # type: ignore
-
-                                            arr = _np.asarray(Image.open(p).convert("L"))
-                                        except Exception:
-                                            arr = _np.load(p)
-                                    frame = _to_uint8_image(arr)
-                                    frame = _np.asarray(frame)
-                                    if subarray_t is not None:
-                                        from .lib.image_ops import crop_roi
-
-                                        frame = crop_roi(frame, subarray_t)
-                                    resp = {
-                                        "ok": True,
-                                        "event": "frame",
-                                        "frame": frame,
-                                        "bright": True,
-                                        "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
-                                        "tau_on": None,
-                                        "tau_off": None,
-                                        "sample": str(p),
-                                    }
-                                    if cmd_tag is not None:
-                                        resp["tag"] = cmd_tag
-                                    send(resp)
-                                    continue
-                        except Exception:
-                            pass
-
-                        # Best-effort: return a representative sample frame.
-                        if dry_samples:
-                            import numpy as _np  # local import
-
-                            prefer = cmd.get("prefer_sample")
-                            pick = None
-                            if isinstance(prefer, str) and prefer.strip():
-                                prefer_path = Path(prefer)
-                                prefer_name = prefer_path.name.lower()
-                                prefer_stem = prefer_path.stem.lower()
-                                for a, b, n in dry_samples:
-                                    if not isinstance(n, str):
-                                        continue
-                                    n_l = n.lower()
-                                    if n_l == prefer_name:
-                                        pick = (a, b, n)
-                                        break
-                                    try:
-                                        if Path(n_l).stem == prefer_stem:
-                                            pick = (a, b, n)
-                                            break
-                                    except Exception:
-                                        continue
-
-                            if pick is None:
-                                pick = random.choice(dry_samples)
-
-                            arr, bright_label, sample_name = pick
-                            frame = _to_uint8_image(arr)
-                            frame = _np.asarray(frame)
-                            if subarray_t is not None:
-                                from .lib.image_ops import crop_roi
-
-                                frame = crop_roi(frame, subarray_t)
-                            resp = {
-                                "ok": True,
-                                "event": "frame",
-                                "frame": frame,
-                                "bright": bool(bright_label),
-                                "S_norm": float(_np.mean(frame)) if frame.size else 0.0,
-                                "tau_on": None,
-                                "tau_off": None,
-                                "sample": sample_name,
-                            }
-                            if cmd_tag is not None:
-                                resp["tag"] = cmd_tag
-                            send(resp)
-                            continue
-                        # synthetic fallback
-                        import numpy as _np  # local import
-
-                        is_bright = (random.random() < 0.5)
-                        base = 180.0 if is_bright else 40.0
-                        noise = _np.random.normal(loc=0.0, scale=18.0, size=(256, 256))
-                        frame_f = base + noise
-                        frame = _np.asarray(_np.clip(_np.rint(frame_f), 0, 255), dtype=_np.uint8)
-                        if subarray_t is not None:
-                            from .lib.image_ops import crop_roi
-
-                            frame = crop_roi(frame, subarray_t)
-                        resp = {
-                            "ok": True,
-                            "event": "frame",
-                            "frame": frame,
-                            "bright": is_bright,
-                            "S_norm": float(_np.mean(frame)),
-                            "tau_on": None,
-                            "tau_off": None,
-                        }
-                        if cmd_tag is not None:
-                            resp["tag"] = cmd_tag
-                        send(resp)
-                        continue
-
-                    if dry_samples:
-                        import numpy as np  # local import; used only when samples exist
-                        from .lib.image_ops import crop_roi
-
-                        arr, bright_label, name = random.choice(dry_samples)
-                        label_bright = bool(bright_label)
-                        try:
-                            frame = np.asarray(_to_uint8_image(arr))
-                            if subarray_t is not None:
-                                frame = crop_roi(frame, subarray_t)
-                            if roi_t is not None:
-                                xw, yw, xs, ys = map(int, roi_t)
-                                crop = crop_roi(frame, (xw, yw, xs, ys))
-                                s_norm = float(np.mean(crop)) if getattr(crop, "size", 0) else float(np.mean(frame))
-                            else:
-                                s_norm = float(np.mean(frame)) if frame.size else float(random.gauss(120.0, 30.0))
-                        except Exception:
-                            s_norm = float(random.gauss(120.0, 30.0))
-
-                        # If a threshold has been applied (Step 2), classify using it.
-                        # This keeps dry mode consistent with the sweep logic.
-                        bright: bool
-                        try:
-                            if (tau_on is not None) and (tau_off is not None):
-                                # If hysteresis is disabled (tau_on==tau_off), use a simple threshold.
-                                if abs(float(tau_on) - float(tau_off)) < 1e-12:
-                                    bright = bool(float(s_norm) > float(tau_on))
-                                else:
-                                    # Simple hysteresis (no external deps in dry mode).
-                                    if prev_state is None:
-                                        prev_state = bool(float(s_norm) > float(tau_on))
-                                    if prev_state:
-                                        prev_state = bool(float(s_norm) > float(tau_off))
-                                    else:
-                                        prev_state = bool(float(s_norm) > float(tau_on))
-                                    bright = bool(prev_state)
-                            else:
-                                bright = bool(label_bright)
-                        except Exception:
-                            bright = bool(label_bright)
-                        resp = {
-                            "ok": True,
-                            "event": "state",
-                            "bright": bool(bright),
-                            "label_bright": bool(label_bright),
-                            "S_norm": s_norm,
-                            "tau_on": float(tau_on) if tau_on is not None else None,
-                            "tau_off": float(tau_off) if tau_off is not None else None,
-                            "sample": name,
-                        }
-                        if cmd_tag is not None:
-                            resp["tag"] = cmd_tag
-                        send(resp)
-                        continue
-                    # simple synthetic fallback
-                    s_norm = float(random.gauss(150.0, 25.0))
-                    if random.random() < 0.5:
-                        s_norm = float(random.gauss(50.0, 15.0))
-                    s_norm = float(max(0.0, min(255.0, s_norm)))
-                    bright = bool(s_norm > 100.0)
-                    resp = {
-                        "ok": True,
-                        "event": "state",
-                        "bright": bright,
-                        "label_bright": None,
-                        "S_norm": s_norm,
-                        "tau_on": None,
-                        "tau_off": None,
-                        "sample": None,
-                    }
-                    if cmd_tag is not None:
-                        resp["tag"] = cmd_tag
+                    resp, prev_state = handle_dry_command(
+                        name=name,
+                        cmd=cmd,
+                        dry_samples=dry_samples,
+                        subarray_t=subarray_t,
+                        roi_t=roi_t,
+                        bg_roi_t=bg_roi_t,
+                        tau_on=tau_on,
+                        tau_off=tau_off,
+                        prev_state=prev_state,
+                    )
                     send(resp)
                     continue
 
@@ -637,14 +357,15 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                     send(resp)
                     continue
 
-                # ROI/threshold might not be ready yet in edge cases.
+
+                _, frame = cam.GetLastFrame()
+                frame_np = np.asarray(frame) if np is not None else frame
                 S_norm: float | None = None
                 bright: bool | None = None
                 if (normalize_count is not None) and (roi_t is not None):
                     norm = normalize_count(frame_np, roi_t, bg_roi=bg_roi_t, exposure_s=exposure_s)
                     S_norm = float(norm["S_norm"])
                     if (tau_on is not None) and (tau_off is not None):
-                        # If tau_on==tau_off, treat it as a simple threshold (no hysteresis).
                         if abs(float(tau_on) - float(tau_off)) < 1e-12:
                             bright = bool(S_norm > float(tau_on))
                             prev_state = bool(bright)
@@ -722,8 +443,4 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
         except Exception:
             pass
 
-        try:
-            if _log_file is not None:
-                _log_file.close()
-        except Exception:
-            pass
+        close_log()

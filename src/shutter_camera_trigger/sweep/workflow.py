@@ -158,10 +158,11 @@ def roi_check(
         return
 
     try:
+        # ROIチェック時は397nmを必ずON（ビット0=1）
         pulse_seq = [
-            (deps.NM_397, deps.ROI_IDLE_S),
-            (deps.NM_397 | deps.CAMERA_TRIGGER, deps.ROI_PULSE_S),
-            (deps.NM_397, deps.ROI_IDLE_S),
+            (0b0001, deps.ROI_IDLE_S),
+            (0b0001 | deps.CAMERA_TRIGGER, deps.ROI_PULSE_S),
+            (0b0001, deps.ROI_IDLE_S),
         ]
         prefer_sample = None
         try:
@@ -188,6 +189,7 @@ def roi_check(
             canvas=canvas,
             prefer_sample_path=prefer_sample,
             session=state.session,
+            max_attempt=deps.ROI_MAX_ATTEMPT,
         )
         roi = r.roi
 

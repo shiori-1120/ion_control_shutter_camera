@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..gui_support.validators import parse_fg_amp_vpp_safe
+from ..gui_support.camera_worker_manager import stop_camera_worker
 from .input import collect_sweep_input
 from .model import SweepPhase
 
@@ -11,6 +12,10 @@ def prepare_session(app: Any, *, default_daq_device: str) -> bool:
     try:
         if getattr(app, "_logger", None):
             app._logger.info("sweep_prepare_start")
+    except Exception:
+        pass
+    try:
+        stop_camera_worker(app)
     except Exception:
         pass
     app._sweep_preparing = True

@@ -23,6 +23,7 @@ def run_roi_check_flow(
     fig: Any,
     canvas: Any,
     session: dict[str, Any] | None,
+    max_attempt: int,
     prefer_sample_path: str | None = None,
 ) -> RoiCheckResult:
     r: RoiCheckResult = run_roi_check_stage(
@@ -39,6 +40,7 @@ def run_roi_check_flow(
         status_cb=status_cb,
         fig=fig,
         canvas=canvas,
+        max_attempt=max_attempt,
         prefer_sample_path=prefer_sample_path,
     )
 
@@ -96,7 +98,6 @@ def run_threshold_flow(
         n_target=int(n_target),
         max_attempt=int(max_attempt),
         cam_exposure_s=float(cam_exposure_s),
-        ao_rate_hz=ao_rate_hz,
         mpq_get_with_ui=mpq_get_with_ui,
         ui_pump=ui_pump,
         status_cb=status_cb,

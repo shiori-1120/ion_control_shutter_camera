@@ -27,8 +27,11 @@ def build_log_panel(app: Any) -> None:
     if ctx is None or ctx.gui_queue is None:
         return
 
-    panel = ttk.Frame(app)
-    panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
+
+    # 親Frameを指定できるように
+    parent = getattr(app, "_log_panel_parent", app)
+    panel = ttk.Frame(parent)
+    panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 0), pady=(0, 0))
 
     controls = ttk.Frame(panel)
     controls.pack(side=tk.TOP, fill=tk.X)
@@ -49,7 +52,8 @@ def build_log_panel(app: Any) -> None:
         state="readonly",
     ).pack(side=tk.LEFT, padx=6)
 
-    text = tk.Text(panel, height=8, wrap=tk.NONE)
+
+    text = tk.Text(panel, height=16, wrap=tk.NONE)
     text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     yscroll = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=text.yview)
