@@ -90,7 +90,7 @@ def analyze_waveform(filepath, threshold=1.8):
 
 if __name__ == '__main__':
     # ユーザーがアップロードしたファイル名を指定
-    csv_file = 'C:\\Users\\karishio\\Desktop\\single_ion_control\\src\\waveform\\output\\20251107_114825_waveform.csv'
+    csv_file = 'C:\\Users\\tanak\\デスクトップ\\kariyama\\single_ion_control\\src\\waveform\\output\\20260121_150714_waveform.csv'
     # HIGH/LOWを判定するしきい値を設定 (データに合わせて調整してください)
     voltage_threshold = 1.8
     analyze_waveform(csv_file, voltage_threshold)

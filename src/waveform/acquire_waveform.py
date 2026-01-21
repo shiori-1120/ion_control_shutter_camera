@@ -8,7 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from src.lib.utils.config import load_yaml, ConfigError, resolve_visa_from_profiles
 
-DEFAULT_VISA = 'TCPIP::192.168.1.16::INSTR'
+DEFAULT_VISA = 'USB0::0x0699::0x03A2::C040073::INSTR'
 
 # 設定ファイルの読み込み（存在しない場合はデフォルト）
 def load_waveform_config():

@@ -136,7 +136,7 @@ def _parse_sync_markers(seq_data: dict) -> list[dict[str, Any]]:
 def read_sequence_json_params(*, seq_path: Path) -> SequenceJsonParams:
     """Read sequence JSON and return text + AO params used by the GUI."""
 
-    seq_data = json.loads(Path(seq_path).read_text(encoding="utf-8"))
+    seq_data = json.loads(Path(seq_path).read_text(encoding="utf-8-sig"))
     if not isinstance(seq_data, dict):
         raise ValueError("sequence-json must be a JSON object")
 

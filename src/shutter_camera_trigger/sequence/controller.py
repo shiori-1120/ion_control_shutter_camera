@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 from typing import Any
 from tkinter import messagebox
+import tkinter as tk
 
 from ..daq.guards import require_connected
 

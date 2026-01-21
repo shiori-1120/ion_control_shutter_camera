@@ -1,10 +1,19 @@
-﻿{
+{
   "ao_width_ms": 15.0,
   "ao_insert_index": 0,
   "do_sequence": [
-    { "value": 0, "hold_s": 0.0001 },
-    { "value": 5, "hold_s": 0.1150 },
-    { "value": 8, "hold_s": 0.0050 }
+    {
+      "value": 1,
+      "hold_s": 0.005
+    },
+    {
+      "value": 5,
+      "hold_s": 0.105
+    },
+    {
+      "value": 9,
+      "hold_s": 0.005
+    }
   ],
-  "sequence_text": "0000 0.0001  # index 0: Pre-Clock Wait (Insert AO here)\n0101 0.1150  # index 1: Detection (397 + Camera)\n1000 0.0050  # index 2: Reset (854 only)\n"
+  "sequence_text": "0001 0.005  # 冷却\n0101 0.105  # 397, CAM\n1001 0.005  # 854\n\n\n\n"
 }

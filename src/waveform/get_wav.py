@@ -9,8 +9,8 @@ import pandas as pd
 from pprint import pprint
 import argparse # コマンドライン引数を扱うために追加
 
-# python oscilloscope_tool.py --mode acquire
-# python oscilloscope_tool.py --mode analyze --file ../output/waveform_4ch_20231027_103000.csv
+# python get_wav.py --mode acquire
+# python get_wav.py --mode analyze --file ../output/waveform_4ch_20231027_103000.csv
 
 
 def _find_crossings(time, voltage, threshold):

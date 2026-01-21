@@ -284,7 +284,7 @@ def _save_sequence_text(app: Any, *, default_seq_path: Path) -> None:
         return
 
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     except Exception as e:
         messagebox.showerror("Sequence", f"Failed to read JSON: {e}")
         return

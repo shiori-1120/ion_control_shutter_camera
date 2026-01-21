@@ -232,6 +232,8 @@ def run_do_sequence_once(
         session.set_do(int(do_value))
         wait_s(float(hold_s))
         if insert_index >= 0 and idx == int(insert_index):
+            # AOパルス中はDOを全OFF
+            session.set_do(ALL_OFF)
             session.pulse_ao_once()
+            # AOパルス後は次のシーケンスに進む（DO値は次のループでセットされる）
 
-    session.set_do(ALL_OFF)
