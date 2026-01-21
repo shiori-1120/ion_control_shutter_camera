@@ -5,6 +5,7 @@ from typing import Any
 from .workers import start_daq_worker, stop_daq_worker
 from ..gui_support.diagnostics import resolve_log_path, set_last_error
 from ..hardware import DaqClientDevice
+from ..gui_support.output_state import set_output_state
 
 
 def connect_daq(app: Any, *, default_daq_device: str, nm_397: int) -> None:
@@ -16,7 +17,9 @@ def connect_daq(app: Any, *, default_daq_device: str, nm_397: int) -> None:
         app._daq_mode = mode
 
         try:
-            DaqClientDevice(app._daq).set_do(int(nm_397))
+            value = int(nm_397)
+            DaqClientDevice(app._daq).set_do(value)
+            set_output_state(app, value)
         except Exception:
             pass
 
@@ -55,7 +58,9 @@ def disconnect_daq(app: Any, *, all_off: int) -> None:
     try:
         if app._daq.connected:
             try:
-                DaqClientDevice(app._daq).set_do(int(all_off))
+                value = int(all_off)
+                DaqClientDevice(app._daq).set_do(value)
+                set_output_state(app, value)
             except Exception:
                 pass
         stop_daq_worker(app)

@@ -65,26 +65,35 @@ def refresh_sweep_buttons(app: Any) -> None:
     try:
         state = app._sweep_state
         phase = state.phase
+        has_thr_cache = bool(getattr(state, "threshold_samples", []))
         if phase is SweepPhase.IDLE:
             app.sw_stop_btn.configure(state="disabled")
             app.sw_roi_btn.configure(state="normal")
             app.sw_thr_btn.configure(state="disabled")
             app.sw_start_btn.configure(state="disabled")
+            app.sw_thr_replot_btn.configure(state="disabled")
+            app.sw_thr_apply_btn.configure(state="disabled")
         elif phase in {SweepPhase.PREPARED, SweepPhase.ROI_DONE, SweepPhase.THRESHOLD_DONE}:
             app.sw_stop_btn.configure(state="normal")
             app.sw_roi_btn.configure(state="normal")
             app.sw_thr_btn.configure(state="normal")
             app.sw_start_btn.configure(state=("normal" if phase is SweepPhase.THRESHOLD_DONE else "disabled"))
+            app.sw_thr_replot_btn.configure(state=("normal" if has_thr_cache else "disabled"))
+            app.sw_thr_apply_btn.configure(state=("normal" if has_thr_cache else "disabled"))
         elif phase is SweepPhase.RUNNING:
             app.sw_stop_btn.configure(state="normal")
             app.sw_roi_btn.configure(state="disabled")
             app.sw_thr_btn.configure(state="disabled")
             app.sw_start_btn.configure(state="disabled")
+            app.sw_thr_replot_btn.configure(state="disabled")
+            app.sw_thr_apply_btn.configure(state="disabled")
         else:
             app.sw_stop_btn.configure(state="disabled")
             app.sw_roi_btn.configure(state="disabled")
             app.sw_thr_btn.configure(state="disabled")
             app.sw_start_btn.configure(state="disabled")
+            app.sw_thr_replot_btn.configure(state="disabled")
+            app.sw_thr_apply_btn.configure(state="disabled")
     except Exception:
         pass
 
@@ -96,6 +105,8 @@ def toggle_sweep_controls(app: Any, enable: bool) -> None:
             app.sw_thr_btn.configure(state="disabled")
             app.sw_start_btn.configure(state="disabled")
             app.sw_stop_btn.configure(state="disabled")
+            app.sw_thr_replot_btn.configure(state="disabled")
+            app.sw_thr_apply_btn.configure(state="disabled")
         except Exception:
             pass
     else:
@@ -104,6 +115,8 @@ def toggle_sweep_controls(app: Any, enable: bool) -> None:
             app.sw_thr_btn.configure(state="disabled")
             app.sw_start_btn.configure(state="disabled")
             app.sw_stop_btn.configure(state="normal")
+            app.sw_thr_replot_btn.configure(state="disabled")
+            app.sw_thr_apply_btn.configure(state="disabled")
         except Exception:
             pass
 

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Any
+import json
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -123,6 +124,200 @@ def _refresh_sequence_text(app: Any, *, default_seq_path: Path) -> None:
                 app.width_var.set(str(float(params.ao_width_ms)))
         except Exception:
             pass
+        try:
+            if getattr(app, "seq_plot_win", None) is not None:
+                _render_sequence_plot(app, params=params)
+        except Exception:
+            pass
+
+
+def _resolve_insert_index(app: Any, *, fallback: int, max_index: int) -> int:
+    try:
+        raw = str(getattr(app, "insert_index_var", None).get() or "").strip()
+    except Exception:
+        return int(fallback)
+    if not raw:
+        return int(fallback)
+    try:
+        value = int(float(raw))
+    except Exception:
+        return int(fallback)
+    if value < -1 or value > int(max_index):
+        return int(fallback)
+    return int(value)
+
+
+def _resolve_ao_width_ms(app: Any, *, fallback: float) -> float:
+    try:
+        raw = str(getattr(app, "width_var", None).get() or "").strip()
+    except Exception:
+        return float(fallback)
+    if not raw:
+        return float(fallback)
+    try:
+        value = float(raw)
+    except Exception:
+        return float(fallback)
+    if value < 0:
+        return float(fallback)
+    return float(value)
+
+
+def _render_sequence_plot(app: Any, *, params: Any) -> None:
+    try:
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from matplotlib.figure import Figure
+    except Exception as e:
+        messagebox.showerror("Sequence", f"matplotlib not available: {e}")
+        return
+
+    win = getattr(app, "seq_plot_win", None)
+    if win is None or not bool(getattr(win, "winfo_exists", lambda: False)()):
+        win = tk.Toplevel(app)
+        win.title("Sequence visualization")
+        app.seq_plot_win = win
+        app.seq_plot_fig = Figure(figsize=(7.6, 3.4), dpi=100)
+        app.seq_plot_ax = app.seq_plot_fig.add_subplot(111)
+        app.seq_plot_canvas = FigureCanvasTkAgg(app.seq_plot_fig, master=win)
+        app.seq_plot_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    fig = app.seq_plot_fig
+    ax = app.seq_plot_ax
+    fig.clear()
+    ax = fig.add_subplot(111)
+    app.seq_plot_ax = ax
+
+    do_sequence = list(params.do_sequence or [])
+    ao_insert_index = _resolve_insert_index(
+        app,
+        fallback=int(params.ao_insert_index),
+        max_index=max(-1, len(do_sequence) - 1),
+    )
+    ao_width_ms = _resolve_ao_width_ms(app, fallback=float(params.ao_width_ms))
+    ao_width_s = float(ao_width_ms) / 1000.0
+
+    bit_names = ["397", "397 SIG", "CAM", "854"]
+    bit_intervals: dict[int, list[tuple[float, float]]] = {i: [] for i in range(4)}
+    t = 0.0
+    for value, hold_s in do_sequence:
+        hold = float(hold_s)
+        for bit in range(4):
+            if int(value) & (1 << bit):
+                bit_intervals[bit].append((t, hold))
+        t += hold
+
+    ao_intervals: list[tuple[float, float]] = []
+    if ao_insert_index >= 0 and ao_width_s > 0:
+        try:
+            t_ao = sum(float(hold_s) for _, hold_s in do_sequence[: ao_insert_index + 1])
+            ao_intervals = [(float(t_ao), float(ao_width_s))]
+        except Exception:
+            ao_intervals = []
+
+    rows = [("854", 3), ("CAM", 2), ("397 SIG", 1), ("397", 0)]
+    y_positions = []
+    y_labels = []
+    y = 0.0
+    height = 0.8
+
+    for label, bit in rows:
+        intervals = bit_intervals.get(bit, [])
+        if intervals:
+            ax.broken_barh(intervals, (y, height), facecolors="tab:blue")
+        y_positions.append(y + height / 2.0)
+        y_labels.append(label)
+        y += 1.2
+
+    ao_row_y = y
+    if ao_intervals:
+        ax.broken_barh(ao_intervals, (ao_row_y, height), facecolors="tab:red")
+    y_positions.append(ao_row_y + height / 2.0)
+    y_labels.append("AO")
+
+    total_s = float(t)
+    max_t = max(total_s, (ao_intervals[0][0] + ao_intervals[0][1]) if ao_intervals else total_s)
+    ax.set_xlim(0.0, max(0.001, max_t))
+    ax.set_ylim(-0.2, ao_row_y + height + 0.4)
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(y_labels)
+    ax.set_xlabel("Time (s)")
+    ax.set_title(
+        f"Sequence timeline (total={total_s:.6f}s, ao_index={ao_insert_index}, ao_width_ms={ao_width_ms:.3g})"
+    )
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+    app.seq_plot_canvas.draw()
+
+
+def _show_sequence_plot(app: Any, *, default_seq_path: Path) -> None:
+    path = _resolve_sequence_path(app, default_seq_path)
+    try:
+        params = _load_sequence_params(path)
+    except Exception as e:
+        messagebox.showerror("Sequence", str(e))
+        return
+    _render_sequence_plot(app, params=params)
+
+
+def _save_sequence_text(app: Any, *, default_seq_path: Path) -> None:
+    if getattr(app, "seq_text", None) is None:
+        return
+    path = _resolve_sequence_path(app, default_seq_path)
+    if not path:
+        messagebox.showerror("Sequence", "Sequence path is empty.")
+        return
+    try:
+        raw_text = app.seq_text.get("1.0", tk.END)
+    except Exception:
+        messagebox.showerror("Sequence", "Failed to read sequence text.")
+        return
+    try:
+        from ..gui_support.sequence_text import SequenceParseOptions, parse_do_sequence_text
+
+        bits = int(getattr(app, "seq_bits", 4))
+        do_sequence = parse_do_sequence_text(
+            raw_text,
+            options=SequenceParseOptions(bits=bits, strict_bitstring_length=False),
+        )
+    except Exception as e:
+        messagebox.showerror("Sequence", str(e))
+        return
+
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception as e:
+        messagebox.showerror("Sequence", f"Failed to read JSON: {e}")
+        return
+
+    try:
+        data["sequence_text"] = str(raw_text)
+        data["do_sequence"] = [{"value": int(v), "hold_s": float(s)} for v, s in do_sequence]
+        try:
+            raw_idx = str(getattr(app, "insert_index_var", None).get() or "").strip()
+        except Exception:
+            raw_idx = ""
+        if raw_idx:
+            ao_idx = int(float(raw_idx))
+            if ao_idx < -1 or ao_idx >= len(do_sequence):
+                raise ValueError(f"AO insert index must be -1..{len(do_sequence) - 1}")
+            data["ao_insert_index"] = int(ao_idx)
+        try:
+            raw_width = str(getattr(app, "width_var", None).get() or "").strip()
+        except Exception:
+            raw_width = ""
+        if raw_width:
+            data["ao_width_ms"] = float(raw_width)
+    except Exception as e:
+        messagebox.showerror("Sequence", str(e))
+        return
+
+    try:
+        Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        messagebox.showerror("Sequence", f"Failed to write JSON: {e}")
+        return
+
+    _refresh_sequence_text(app, default_seq_path=default_seq_path)
 
 
 def build_sequence_tab(
@@ -146,7 +341,7 @@ def build_sequence_tab(
 
     ttk.Label(row, text="AO insert index").grid(row=0, column=0, sticky=tk.W)
     app.insert_index_var = tk.StringVar(value="1")
-    ttk.Entry(row, textvariable=app.insert_index_var, width=6, state="readonly").grid(row=0, column=1, padx=4)
+    ttk.Entry(row, textvariable=app.insert_index_var, width=6).grid(row=0, column=1, padx=4)
 
     ttk.Label(row, text=bitstring_help).grid(row=0, column=2, sticky=tk.W, padx=(8, 0))
     app.seq_meta_var = tk.StringVar(value="Camera actions: 0 | Sync markers: 0")
@@ -186,11 +381,21 @@ def build_sequence_tab(
         text="Reload JSON",
         command=lambda: _refresh_sequence_text(app, default_seq_path=default_seq_path),
     ).pack(side=tk.LEFT, padx=4)
+    ttk.Button(
+        btn_row,
+        text="Save JSON",
+        command=lambda: _save_sequence_text(app, default_seq_path=default_seq_path),
+    ).pack(side=tk.LEFT, padx=4)
+    ttk.Button(
+        btn_row,
+        text="Visualize",
+        command=lambda: _show_sequence_plot(app, default_seq_path=default_seq_path),
+    ).pack(side=tk.LEFT, padx=4)
 
     text_row = ttk.Frame(app.seq_tab)
     text_row.pack(fill=tk.BOTH, expand=True)
 
-    ttk.Label(app.seq_tab, text="Sequence JSON (read-only view)").pack(anchor=tk.W, pady=(6, 4))
+    ttk.Label(app.seq_tab, text="Sequence JSON").pack(anchor=tk.W, pady=(6, 4))
 
     app.seq_text = tk.Text(text_row, height=14, wrap=tk.NONE)
     try:
@@ -211,12 +416,13 @@ def build_sequence_tab(
         initial_text = f"# Error loading sequence JSON\n# {e}\n"
         _set_sequence_meta(app, None)
     app.seq_text.insert("1.0", initial_text)
-    app.seq_text.configure(state=tk.DISABLED)
     app.seq_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     yscroll = ttk.Scrollbar(text_row, orient=tk.VERTICAL, command=app.seq_text.yview)
     yscroll.pack(side=tk.RIGHT, fill=tk.Y)
     app.seq_text.configure(yscrollcommand=yscroll.set)
+
+    app.seq_bits = int(seq_bits)
 
     try:
         text_row.grid_columnconfigure(0, weight=1)

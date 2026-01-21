@@ -23,7 +23,8 @@ import os
 import queue
 import time
 import traceback
-
+import threading
+from pathlib import Path
 from multiprocessing.queues import Queue
 from typing import Any
 
@@ -71,6 +72,13 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
 
     prev_state: bool | None = None
     cam: Any | None = None
+    acq_stop = threading.Event()
+    acq_thread: threading.Thread | None = None
+    frame_cv = threading.Condition()
+    latest_frame: Any | None = None
+    latest_frame_ts: float | None = None
+    latest_frame_seq = -1
+    last_frame_error: str | None = None
 
     # Imported lazily (real mode only)
     np = None  # type: ignore
@@ -95,32 +103,139 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
             send({"ok": True, "event": "ready", "mode": "dry", "dry_samples": len(dry_samples)})
 
         elif mode == "real":
-            try:
-                init = init_real_camera(
-                    cfg=cfg,
-                    roi_t=roi_t,
-                    bg_roi_t=bg_roi_t,
-                    tau_on=tau_on,
-                    tau_off=tau_off,
-                    subarray_t=subarray_t,
-                    log=log,
-                    log_debug=log_debug,
+            log("mode=real -> importing camera stack")
+            # Import the real camera/analysis stack only in real mode.
+            import numpy as np
+
+            from .lib.analysis_profiles import generate_rois_from_image
+            from .lib.ControlDevice import Control_qCMOScamera
+            from .lib.image_ops import crop_roi
+            from .lib.thresholding import bootstrap_threshold_from_stream, classify_hysteresis, normalize_count
+
+            # store for command loop
+            locals_np = np
+            locals_norm = normalize_count
+            locals_cls = classify_hysteresis
+
+            log("creating Control_qCMOScamera")
+            cam = Control_qCMOScamera(trigger_cfg=trigger_cfg, verbose=cam_verbose)
+            log("OpenCamera_GetHandle")
+            cam.OpenCamera_GetHandle()
+            # Full frame by default. If subarray is configured, apply it at camera level.
+            log("SetParameters")
+            if subarray_t is not None:
+                xw, yw, xs, ys = map(int, subarray_t)
+                cam.SetParameters(exposure_s, xw, yw, xs, ys)
+                log(f"subarray applied: x={xs} y={ys} w={xw} h={yw}")
+            else:
+                cam.SetParameters(exposure_s)
+            log("StartCapture")
+            cam.StartCapture()
+
+            def _store_frame(frame_any: Any) -> None:
+                nonlocal latest_frame, latest_frame_ts, last_frame_error, latest_frame_seq
+                with frame_cv:
+                    latest_frame = frame_any
+                    latest_frame_ts = time.time()
+                    latest_frame_seq += 1
+                    last_frame_error = None
+                    frame_cv.notify_all()
+
+            def _store_error(err_msg: str) -> None:
+                nonlocal last_frame_error
+                with frame_cv:
+                    last_frame_error = err_msg
+                    frame_cv.notify_all()
+
+            def _wait_latest(timeout_s: float, *, min_seq: int) -> tuple[Any | None, str | None]:
+                deadline = time.time() + float(timeout_s)
+                with frame_cv:
+                    while latest_frame is None or latest_frame_seq < int(min_seq):
+                        remaining = deadline - time.time()
+                        if remaining <= 0:
+                            return None, last_frame_error
+                        frame_cv.wait(timeout=remaining)
+                    return latest_frame, last_frame_error
+
+            # Bootstrap ROI + thresholds if missing
+            frames: list[np.ndarray] = []
+            for i in range(max(1, bootstrap_n)):
+                log_debug(f"bootstrap wait_for_frame_ready {i+1}/{max(1, bootstrap_n)}")
+                ok, err = cam.wait_for_frame_ready(frame_timeout_s)
+                if not ok:
+                    raise RuntimeError(f"Camera timeout during bootstrap: {err}")
+                _, frame = cam.GetLastFrame()
+                frames.append(np.asarray(frame))
+
+            if roi_t is None:
+                rois = generate_rois_from_image(np.asarray(frames[-1]), plot=False)
+                if not rois:
+                    raise RuntimeError("Failed to auto-detect ROI from image")
+                # single-ion: pick ROI with max sum
+                best = None
+                best_sum = None
+                for r in rois:
+                    r_t = as_roi_tuple(r)
+                    if r_t is None:
+                        continue
+                    xw, yw, xs, ys = r_t
+                    cropped = crop_roi(frames[-1], (xw, yw, xs, ys))
+                    s = float(np.sum(cropped))
+                    if best_sum is None or s > best_sum:
+                        best_sum = s
+                        best = r_t
+                if best is None:
+                    raise RuntimeError("Failed to select a ROI")
+                roi_t = best
+
+            if (tau_on is None) or (tau_off is None):
+                th = bootstrap_threshold_from_stream(
+                    frames,
+                    roi_t,
+                    bg_roi=bg_roi_t,
+                    exposure_s_list=[exposure_s] * len(frames),
+                    sample_n=min(bootstrap_n, len(frames)),
                 )
-                cam = init["cam"]
-                roi_t = init["roi_t"]
-                bg_roi_t = init["bg_roi_t"]
-                tau_on = init["tau_on"]
-                tau_off = init["tau_off"]
-                np = init["np"]
-                normalize_count = init["normalize_count"]
-                classify_hysteresis = init["classify_hysteresis"]
-                send(init["ready_msg"])
-                log("sent ready")
-            except Exception as e:
-                log("[Camera init exception detected]")
-                log_worker_env()
-                log(f"Exception: {e}\n{traceback.format_exc()}")
-                raise
+                tau_on = float(th["tau_on"])
+                tau_off = float(th["tau_off"])
+
+            send(
+                {
+                    "ok": True,
+                    "event": "ready",
+                    "mode": "real",
+                    "roi": list(roi_t),
+                    "bg_roi": (list(bg_roi_t) if bg_roi_t else None),
+                    "tau_on": float(tau_on),
+                    "tau_off": float(tau_off),
+                    "exposure_s": float(exposure_s),
+                }
+            )
+            log("sent ready")
+
+            # expose to command loop
+            np = locals_np
+            normalize_count = locals_norm
+            classify_hysteresis = locals_cls
+
+            def _acq_loop() -> None:
+                log("acq_thread start")
+                while not acq_stop.is_set():
+                    try:
+                        ok, err = cam.wait_for_frame_ready(frame_timeout_s)
+                        if not ok:
+                            _store_error(str(err))
+                            continue
+                        _, frame = cam.GetLastFrame()
+                        frame_np = np.asarray(frame) if np is not None else frame
+                        _store_frame(frame_np)
+                    except Exception as e:
+                        _store_error(str(e))
+                        time.sleep(0.001)
+                log("acq_thread stop")
+
+            acq_thread = threading.Thread(target=_acq_loop, daemon=True)
+            acq_thread.start()
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -231,19 +346,20 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
                 if cam is None:
                     raise RuntimeError("Camera worker is not configured")
 
-                log_debug("wait_for_frame_ready")
-                ok, err = cam.wait_for_frame_ready(timeout_s)
-                if not ok:
-                    log(f"frame_timeout err={err}")
-                    resp = {"ok": False, "event": "timeout", "error": str(err)}
+                with frame_cv:
+                    prev_seq = int(latest_frame_seq)
+                frame_np, last_err = _wait_latest(timeout_s, min_seq=prev_seq + 1)
+                if frame_np is None:
+                    log(f"frame_timeout err={last_err}")
+                    resp = {"ok": False, "event": "timeout", "error": str(last_err or "timeout")}
                     if cmd_tag is not None:
                         resp["tag"] = cmd_tag
                     send(resp)
                     continue
 
+
                 _, frame = cam.GetLastFrame()
                 frame_np = np.asarray(frame) if np is not None else frame
-
                 S_norm: float | None = None
                 bright: bool | None = None
                 if (normalize_count is not None) and (roi_t is not None):
@@ -306,6 +422,12 @@ def ion_state_worker_main(cmd_q: Queue, resp_q: Queue, cfg: dict[str, Any]) -> N
         try:
             if cam is not None:
                 log("cleanup: StopCapture/ReleaseBuf/CloseUninitCamera")
+                acq_stop.set()
+                try:
+                    if acq_thread is not None:
+                        acq_thread.join(timeout=1.0)
+                except Exception:
+                    pass
                 try:
                     cam.StopCapture()
                 except Exception:

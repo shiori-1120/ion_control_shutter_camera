@@ -84,6 +84,53 @@ def threshold_check(app: Any) -> None:
         pass
 
 
+def _parse_threshold_tau(app: Any) -> float | None:
+    var = getattr(app, "sw_thr_tau_var", None)
+    s = (var.get() if var is not None else "").strip()
+    if not s:
+        try:
+            app._sweep_events.on_input_error("Threshold tau is empty.")
+        except Exception:
+            pass
+        return None
+    try:
+        return float(s)
+    except Exception:
+        try:
+            app._sweep_events.on_input_error(f"Invalid threshold tau: {s!r}")
+        except Exception:
+            pass
+        return None
+
+
+def threshold_replot_override(app: Any) -> None:
+    tau = _parse_threshold_tau(app)
+    if tau is None:
+        return
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info("sweep_threshold_override_replot tau=%s", tau)
+    except Exception:
+        pass
+    if app.sw_fig is None or app.sw_canvas is None:
+        return
+    app._sweep_ctrl.override_threshold(app._sweep_state, fig=app.sw_fig, canvas=app.sw_canvas, tau=tau, apply=False)
+
+
+def threshold_apply_override(app: Any) -> None:
+    tau = _parse_threshold_tau(app)
+    if tau is None:
+        return
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info("sweep_threshold_override_apply tau=%s", tau)
+    except Exception:
+        pass
+    if app.sw_fig is None or app.sw_canvas is None:
+        return
+    app._sweep_ctrl.override_threshold(app._sweep_state, fig=app.sw_fig, canvas=app.sw_canvas, tau=tau, apply=True)
+
+
 def start_sweep(
     app: Any,
     *,

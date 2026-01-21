@@ -26,6 +26,12 @@ class SweepState:
     out_dir: Path | None = None
     session: dict[str, Any] | None = None
     spectrum_outputs: dict[str, Path] = field(default_factory=dict)
+    threshold_samples: list[float] = field(default_factory=list)
+    threshold_profiles: list[Any] = field(default_factory=list)
+    threshold_roi: list[int] | None = None
+    threshold_tau: float | None = None
+    threshold_tau_on: float | None = None
+    threshold_tau_off: float | None = None
 
 
 @dataclass(frozen=True)
@@ -94,5 +100,6 @@ class SweepIO:
     write_last_worker_pids_cb: Callable[[dict], None]
     format_worker_failure: Callable[..., str]
     confirm_threshold: Callable[[dict[str, Any], float, float], bool]
+    update_threshold_ui: Callable[[float, float, float], None]
     join_with_ui: Callable[[Any, float], None]
     set_last_error_cb: Callable[[str, str, str | None], None]

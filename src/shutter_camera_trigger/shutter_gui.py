@@ -38,7 +38,14 @@ from .gui_support.ui_state import init_ui_state
 from .gui_support.validators import parse_fg_amp_vpp_safe
 from .gui_support.docs import open_usage_doc
 from .sweep.ui_tab import build_sweep_tab
-from .sweep.ui_actions import roi_check, start_sweep, stop_sweep, threshold_check
+from .sweep.ui_actions import (
+    roi_check,
+    start_sweep,
+    stop_sweep,
+    threshold_check,
+    threshold_apply_override,
+    threshold_replot_override,
+)
 from .gui_tabs.camera_tab import build_camera_tab, camera_check, camera_snap
 from .gui_tabs.diagnostics_tab import build_diagnostics_tab
 from .gui_tabs.sequence_tab import build_sequence_tab
@@ -129,6 +136,7 @@ class App(tk.Tk):
         self._seq_thread: threading.Thread | None = None
         self._seq_running = False
         self._seq_stop_polling = False
+        self._last_do_value: int | None = None
 
         self._fg_handle = None
         self._fg_resource: str | None = None
@@ -231,6 +239,12 @@ class App(tk.Tk):
             ),
             fg_disconnect_cb=lambda: disconnect_fg(self),
             pick_seq_json_cb=lambda: pick_seq_json(self),
+            output_defs=[
+                ("397", NM_397),
+                ("397 SIG", NM_397_SIG),
+                ("CAM", CAMERA_TRIGGER),
+                ("854", NM_854),
+            ],
         )
 
         ttk.Label(self.run_tab, text="Run controls", font=("", 11, "bold")).pack(anchor=tk.W, pady=(0, 2))
@@ -311,6 +325,8 @@ class App(tk.Tk):
             roi_max_attempt=ROI_MAX_ATTEMPT,
             roi_check_cb=lambda: roi_check(self, default_daq_device=DEFAULT_DAQ_DEVICE),
             threshold_check_cb=lambda: threshold_check(self),
+            threshold_override_replot_cb=lambda: threshold_replot_override(self),
+            threshold_override_apply_cb=lambda: threshold_apply_override(self),
             start_sweep_cb=lambda: start_sweep(
                 self,
                 default_daq_device=DEFAULT_DAQ_DEVICE,

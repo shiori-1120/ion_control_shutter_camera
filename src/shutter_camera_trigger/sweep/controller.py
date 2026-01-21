@@ -7,7 +7,7 @@ from .model import SweepDeps, SweepEvents, SweepInput, SweepIO, SweepPhase, Swee
 _MSG_BUSY = "Sweep is busy. Stop the current run first."
 _MSG_NEED_ROI = "Run '1) ROI check' first."
 _MSG_NEED_THRESH = "Run '1) ROI check' and '2) Threshold' first."
-from .workflow import prepare_session, roi_check, start_sweep, stop_sweep, threshold_check
+from .workflow import prepare_session, roi_check, start_sweep, stop_sweep, threshold_check, override_threshold
 
 
 class SweepController:
@@ -56,6 +56,24 @@ class SweepController:
             state=state,
             fig=fig,
             canvas=canvas,
+            events=self._events,
+            io=self._io,
+            deps=self._deps,
+        )
+
+    def override_threshold(self, state: SweepState, *, fig: Any, canvas: Any, tau: float, apply: bool) -> None:
+        if not self._require_phase(
+            state,
+            allowed={SweepPhase.PREPARED, SweepPhase.ROI_DONE, SweepPhase.THRESHOLD_DONE},
+            message=_MSG_NEED_ROI,
+        ):
+            return
+        override_threshold(
+            state=state,
+            fig=fig,
+            canvas=canvas,
+            tau=float(tau),
+            apply=bool(apply),
             events=self._events,
             io=self._io,
             deps=self._deps,
