@@ -36,7 +36,7 @@ except Exception:
         convert_folder_tif_to_npy = None  # type: ignore
 
 # Defaults (no CLI flags)
-DEFAULT_FPS: int = 10
+DEFAULT_FPS: int = 14
 DEFAULT_PMIN: float = 1.0
 DEFAULT_PMAX: float = 99.0
 DEFAULT_GLOBAL_SCALE: bool = False  # per-frame scaling by default
@@ -257,7 +257,7 @@ def _load_tiff_folder(folder: str) -> np.ndarray:
     frames: List[np.ndarray] = []
     for n in names:
         p = os.path.join(folder, n)
-        img = iio.imread(p)
+        img = iio.imread(p, plugin="tifffile")
         frames.append(np.asarray(img))
     # Stack along first axis
     # Broadcast grayscale to shape (N,H,W)

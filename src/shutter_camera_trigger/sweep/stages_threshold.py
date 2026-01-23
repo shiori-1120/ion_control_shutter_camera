@@ -75,118 +75,122 @@ def analyze_threshold_samples(
         fig.clear()
         ax_ph = fig.add_subplot(211)
         ax_s = fig.add_subplot(212)
+    except Exception:
+        # 例外時の処理（必要に応じて修正）
+        pass
 
-            def _flatten_roi_pixels(profiles: list[np.ndarray], roi: list[int]) -> np.ndarray:
-                # profilesはsum(axis=0)なので、元画像のROI全体のピクセル値はsamplesから取得する必要がある
-                # ここではsamplesはroi_meanなので、元画像の全ピクセル値は取得できない
-                # ただし、profilesは各サンプルのROI内のy方向積分（1D）
-                # ここでは「全サンプルの全ROIピクセル値」をflattenしてヒストグラム化する
-                # そのためには、元画像のROI部分のflatten値を保存しておく必要がある
-                # ここでは近似的にprofilesの値を使う（本来は元画像のROI flatten値を保存すべき）
-                arrs = []
-                for p in profiles:
-                    a = np.asarray(p, dtype=float)
-                    a = a[np.isfinite(a)]
-                    if a.size:
-                        arrs.append(a)
-                return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
+    def _flatten_roi_pixels(profiles: list[np.ndarray], roi: list[int]) -> np.ndarray:
+        # profilesはsum(axis=0)なので、元画像のROI全体のピクセル値はsamplesから取得する必要がある
+        # ここではsamplesはroi_meanなので、元画像の全ピクセル値は取得できない
+        # ただし、profilesは各サンプルのROI内のy方向積分（1D）
+        # ここでは「全サンプルの全ROIピクセル値」をflattenしてヒストグラム化する
+        # そのためには、元画像のROI部分のflatten値を保存しておく必要がある
+        # ここでは近似的にprofilesの値を使う（本来は元画像のROI flatten値を保存すべき）
+        arrs = []
+        for p in profiles:
+            a = np.asarray(p, dtype=float)
+            a = a[np.isfinite(a)]
+            if a.size:
+                arrs.append(a)
+        return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
 
-            # 近似的にprofilesの値をflattenして使う（本来は元画像のROI flatten値を使うべき）
-            light_pixels = _flatten_roi_pixels(bright_profiles, roi)
-            dark_pixels = _flatten_roi_pixels(dark_profiles, roi)
-            combined = np.concatenate([c for c in (light_pixels, dark_pixels) if c.size > 0])
-            if combined.size == 0:
-                raise RuntimeError("No valid photon-count samples")
+    # 近似的にprofilesの値をflattenして使う（本来は元画像のROI flatten値を使うべき）
+    light_pixels = _flatten_roi_pixels(bright_profiles, roi)
+    dark_pixels = _flatten_roi_pixels(dark_profiles, roi)
+    combined = np.concatenate([c for c in (light_pixels, dark_pixels) if c.size > 0])
+    if combined.size == 0:
+        raise RuntimeError("No valid photon-count samples")
 
-            start = int(np.floor(float(np.nanmin(combined))))
-            end = int(np.ceil(float(np.nanmax(combined))))
-            bin_edges = np.arange(start - 0.5, end + 1.5, 1)
+    start = int(np.floor(float(np.nanmin(combined))))
+    end = int(np.ceil(float(np.nanmax(combined))))
+    bin_edges = np.arange(start - 0.5, end + 1.5, 1)
 
-            if light_pixels.size > 0:
-                mean_light = float(np.mean(light_pixels))
-                ax_ph.hist(
-                    light_pixels,
-                    bins=bin_edges,
-                    density=True,
-                    alpha=0.6,
-                    color="tab:orange",
-                    edgecolor="none",
-                    label=f"Light (mean={mean_light:.2f})",
-                )
-                ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
-            if dark_pixels.size > 0:
-                mean_dark = float(np.mean(dark_pixels))
-                ax_ph.hist(
-                    dark_pixels,
-                    bins=bin_edges,
-                    density=True,
-                    alpha=0.6,
-                    color="navy",
-                    edgecolor="none",
-                    label=f"Dark (mean={mean_dark:.2f})",
-                )
-                ax_ph.axvline(mean_dark, color="navy", linestyle="--")
+    if light_pixels.size > 0:
+        mean_light = float(np.mean(light_pixels))
+        ax_ph.hist(
+            light_pixels,
+            bins=bin_edges,
+            density=True,
+            alpha=0.6,
+            color="tab:orange",
+            edgecolor="none",
+            label=f"Light (mean={mean_light:.2f})",
+        )
+        ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
+    if dark_pixels.size > 0:
+        mean_dark = float(np.mean(dark_pixels))
+        ax_ph.hist(
+            dark_pixels,
+            bins=bin_edges,
+            density=True,
+            alpha=0.6,
+            color="navy",
+            edgecolor="none",
+            label=f"Dark (mean={mean_dark:.2f})",
+        )
+        ax_ph.axvline(mean_dark, color="navy", linestyle="--")
 
-            ax_ph.set_xlabel("Photon Count (per pixel; integer bins)")
-            ax_ph.set_ylabel("Probability density")
-            ax_ph.set_title(f"Pixel-wise photon count distribution | agree={acc*100:.1f}%")
-            ax_ph.legend(loc="upper right")
-            ax_ph.grid(True, alpha=0.3)
+    ax_ph.set_xlabel("Photon Count (per pixel; integer bins)")
+    ax_ph.set_ylabel("Probability density")
+    ax_ph.set_title(f"Pixel-wise photon count distribution | agree={acc*100:.1f}%")
+    ax_ph.legend(loc="upper right")
+    ax_ph.grid(True, alpha=0.3)
 
+    try:
+        s_all = np.asarray(samples, dtype=float)
+        s_all = s_all[np.isfinite(s_all)]
+    except Exception:
+        s_all = np.asarray([], dtype=float)
+
+    if s_all.size > 0:
+        s_bright = np.asarray(bright_samples, dtype=float)
+        s_dark = np.asarray(dark_samples, dtype=float)
         try:
-            s_all = np.asarray(samples, dtype=float)
-            s_all = s_all[np.isfinite(s_all)]
+            s_min = float(np.nanmin(s_all))
+            s_max = float(np.nanmax(s_all))
+            s_min = min(s_min, float(tau))
+            s_max = max(s_max, float(tau))
+            bins_s = max(10, min(80, int(np.sqrt(s_all.size)) * 4))
+            edges_s = np.linspace(s_min, s_max, bins_s + 1)
         except Exception:
-            s_all = np.asarray([], dtype=float)
+            edges_s = 50
 
-        if s_all.size > 0:
-            s_bright = np.asarray(bright_samples, dtype=float)
-            s_dark = np.asarray(dark_samples, dtype=float)
-            try:
-                s_min = float(np.nanmin(s_all))
-                s_max = float(np.nanmax(s_all))
-                s_min = min(s_min, float(tau))
-                s_max = max(s_max, float(tau))
-                bins_s = max(10, min(80, int(np.sqrt(s_all.size)) * 4))
-                edges_s = np.linspace(s_min, s_max, bins_s + 1)
-            except Exception:
-                edges_s = 50
-
-            if s_bright.size > 0:
-                ax_s.hist(
-                    s_bright,
-                    bins=edges_s,
-                    density=True,
-                    alpha=0.6,
-                    color="tab:orange",
-                    edgecolor="none",
-                    label=f"roi_mean bright (n={int(s_bright.size)})",
-                )
-                ax_s.axvline(float(np.mean(s_bright)), color="tab:orange", linestyle="--")
-            if s_dark.size > 0:
-                ax_s.hist(
-                    s_dark,
-                    bins=edges_s,
-                    density=True,
-                    alpha=0.6,
-                    color="navy",
-                    edgecolor="none",
-                    label=f"roi_mean dark (n={int(s_dark.size)})",
-                )
-                ax_s.axvline(float(np.mean(s_dark)), color="navy", linestyle="--")
+        if s_bright.size > 0:
+            ax_s.hist(
+                s_bright,
+                bins=edges_s,
+                density=True,
+                alpha=0.6,
+                color="tab:orange",
+                edgecolor="none",
+                label=f"roi_mean bright (n={int(s_bright.size)})",
+            )
+            ax_s.axvline(float(np.mean(s_bright)), color="tab:orange", linestyle="--")
+        if s_dark.size > 0:
+            ax_s.hist(
+                s_dark,
+                bins=edges_s,
+                density=True,
+                alpha=0.6,
+                color="navy",
+                edgecolor="none",
+                label=f"roi_mean dark (n={int(s_dark.size)})",
+            )
+            ax_s.axvline(float(np.mean(s_dark)), color="navy", linestyle="--")
 
             ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
 
-        ax_s.set_xlabel("roi_mean (used for tau)")
-        ax_s.set_ylabel("Probability density")
-        ax_s.set_title("ROI-mean distribution")
-        ax_s.legend(loc="upper right")
-        ax_s.grid(True, alpha=0.3)
+        try:
+            ax_s.set_xlabel("roi_mean (used for tau)")
+            ax_s.set_ylabel("Probability density")
+            ax_s.set_title("ROI-mean distribution")
+            ax_s.legend(loc="upper right")
+            ax_s.grid(True, alpha=0.3)
 
-        fig.tight_layout()
-        canvas.draw()
-    except Exception:
-        pass
+            fig.tight_layout()
+            canvas.draw()
+        except Exception:
+            pass
 
     if out_dir is not None and out_name:
         try:

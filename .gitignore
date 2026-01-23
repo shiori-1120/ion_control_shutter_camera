@@ -2,6 +2,7 @@ nidaqmx-python-master/
 .venv
 .github
 AGENTS.md
+2026_0121_175303data/
 
 # Python caches
 __pycache__/

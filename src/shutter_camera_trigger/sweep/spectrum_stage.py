@@ -103,7 +103,7 @@ def run_spectrum_stage(
 
         spec_writer = csv.DictWriter(
             f_spec,
-            fieldnames=["step_idx", "freq_hz", "n_processed", "n_bright", "p_bright"],
+            fieldnames=["step_idx", "freq_hz", "n_processed", "n_bright", "p_dark"],
         )
         spec_writer.writeheader()
 
@@ -197,14 +197,14 @@ def run_spectrum_stage(
                     )
                     _pump()
 
-            p_bright = (n_bright / processed) if processed > 0 else 0.0
+            p_dark = (1.0 - (n_bright / processed)) if processed > 0 else 0.0
             spec_writer.writerow(
                 {
                     "step_idx": step_idx,
                     "freq_hz": float(freq),
                     "n_processed": processed,
                     "n_bright": n_bright,
-                    "p_bright": float(p_bright),
+                    "p_dark": float(p_dark),
                 }
             )
             results.append((float(freq), int(processed), int(n_bright)))

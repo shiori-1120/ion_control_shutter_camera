@@ -1,19 +1,23 @@
 {
   "ao_width_ms": 15.0,
-  "ao_insert_index": 0,
+  "ao_insert_index": 2,
   "do_sequence": [
     {
       "value": 1,
       "hold_s": 0.005
     },
     {
-      "value": 5,
-      "hold_s": 0.105
+      "value": 9,
+      "hold_s": 0.01
     },
     {
-      "value": 9,
-      "hold_s": 0.005
+      "value": 1,
+      "hold_s": 0.001
+    },
+    {
+      "value": 5,
+      "hold_s": 0.105
     }
   ],
-  "sequence_text": "0001 0.005  # 冷却\n0101 0.105  # 397, CAM\n1001 0.005  # 854\n\n\n\n"
+  "sequence_text": "0001 0.005  # 冷却\n1001 0.010  # 854\n0001 0.001  # 冷却\n0101 0.105  # 397, CAM\n\n\n\n\n\n\n\n\n\n\n"
 }

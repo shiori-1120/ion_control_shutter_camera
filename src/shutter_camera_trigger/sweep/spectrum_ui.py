@@ -35,12 +35,12 @@ def update_spectrum_plot(
         results.append((freq, processed, n_bright))
 
     xs = [f for f, _, _ in results]
-    ys = [nb / n if n > 0 else 0.0 for _, n, nb in results]
+    ys = [(1.0 - (nb / n)) if n > 0 else 0.0 for _, n, nb in results]
 
     ax.clear()
     ax.plot(xs, ys, marker="o")
     ax.set_xlabel("freq (Hz)")
-    ax.set_ylabel("p_bright")
+    ax.set_ylabel("p_dark")
     ax.grid(True, alpha=0.3)
     canvas.draw()
 
