@@ -137,6 +137,8 @@ class App(tk.Tk):
         self._seq_running = False
         self._seq_stop_polling = False
         self._last_do_value: int | None = None
+        self._seq_preview_thread: threading.Thread | None = None
+        self._seq_preview_running = False
 
         self._fg_handle = None
         self._fg_resource: str | None = None
@@ -301,6 +303,8 @@ class App(tk.Tk):
             nm_729=NM_729,
             nm_854=NM_854,
             ao_rate_hz=AO_RATE_HZ,
+            roi_pulse_s=ROI_PULSE_S,
+            roi_idle_s=ROI_IDLE_S,
         )
 
     def _build_manual_tab(self) -> None:

@@ -11,6 +11,7 @@ from tkinter import ttk
 
 import numpy as np
 
+from ..gui_support.image_utils import robust_gray_limits
 from ..gui_support.diagnostics import set_last_error
 from ..gui_support.camera_worker_manager import build_cam_cfg, ensure_camera_worker
 from ..gui_support.camera_capture import acquire_frame_with_ttl
@@ -52,6 +53,55 @@ def build_camera_tab(app: Any) -> None:
         app._cam_ax = None
         app._cam_canvas = None
         ttk.Label(app.camera_tab, text="matplotlib not available; camera plot disabled").pack()
+
+
+def plot_camera_frame(
+    app: Any,
+    frame: Any,
+    *,
+    title: str | None = None,
+    roi: list[int] | None = None,
+    bg_roi: list[int] | None = None,
+) -> None:
+    if app._cam_fig is None or app._cam_canvas is None:
+        return
+    ax = app._cam_ax
+    if ax is None:
+        return
+    ax.clear()
+    vmin, vmax = robust_gray_limits(frame)
+    ax.imshow(frame, cmap="gray", vmin=vmin, vmax=vmax)
+    if title:
+        ax.set_title(title)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    try:
+        from matplotlib.patches import Rectangle
+
+        def _draw_box(box: list[int] | None, color: str) -> None:
+            if not box or len(box) != 4:
+                return
+            xw, yw, xs, ys = [int(v) for v in box]
+            ax.add_patch(
+                Rectangle(
+                    (xs, ys),
+                    xw,
+                    yw,
+                    fill=False,
+                    edgecolor=color,
+                    linewidth=1.2,
+                )
+            )
+
+        _draw_box(roi, "tab:orange")
+        _draw_box(bg_roi, "tab:green")
+    except Exception:
+        pass
+    try:
+        app._cam_fig.tight_layout()
+    except Exception:
+        pass
+    app._cam_canvas.draw()
 
 
 def _is_external_trigger(trigger_cfg: dict[str, Any]) -> bool:
@@ -236,9 +286,20 @@ def camera_snap(
             npy_path = out_dir / "snap.npy"
             np.save(npy_path, arr)
             app._cam_img = arr
-            app._cam_status.set(f"Snap: OK shape={arr.shape}")
-            app._cam_canvas.draw()
             ui_msg = f"画像を{npy_path}に保存しました。 shape={arr.shape}"
+            app.after(
+                0,
+                lambda: (
+                    app._cam_status.set(f"Snap: OK shape={arr.shape}"),
+                    plot_camera_frame(
+                        app,
+                        arr,
+                        title=f"Snap {ts}",
+                        roi=resp.get("roi"),
+                        bg_roi=resp.get("bg_roi"),
+                    ),
+                ),
+            )
         except Exception as e:
             ui_msg = f"カメラスナップエラー: {e}\n{traceback.format_exc(limit=2)}"
             app._cam_status.set(f"Snap: error {e}")

@@ -64,6 +64,7 @@ def run_timed_sequence(
     cam_resp_q: Any,
     camera_schedule: list[dict[str, Any]],
     ui_pump: Callable[[], None] | None = None,
+    on_cam_resp: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     est_s = 0.0
     try:
@@ -118,7 +119,13 @@ def run_timed_sequence(
 
         while len(cam_responses) < expected_cam:
             try:
-                cam_responses.append(cam_resp_q.get_nowait())
+                resp = cam_resp_q.get_nowait()
+                cam_responses.append(resp)
+                if on_cam_resp is not None and isinstance(resp, dict):
+                    try:
+                        on_cam_resp(resp)
+                    except Exception:
+                        pass
             except queue.Empty:
                 break
 

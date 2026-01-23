@@ -6,7 +6,7 @@ import json
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..sequence.controller import start_sequence, stop_sequence
+from ..sequence.controller import start_sequence, stop_sequence, start_sequence_preview, stop_sequence_preview
 
 
 def _load_sequence_params(path: Path):
@@ -332,6 +332,8 @@ def build_sequence_tab(
     nm_729: int,
     nm_854: int,
     ao_rate_hz: float,
+    roi_pulse_s: float,
+    roi_idle_s: float,
 ) -> None:
     if app.seq_tab is None:
         return
@@ -391,6 +393,35 @@ def build_sequence_tab(
         text="Visualize",
         command=lambda: _show_sequence_plot(app, default_seq_path=default_seq_path),
     ).pack(side=tk.LEFT, padx=4)
+
+    preview_row = ttk.Frame(app.seq_tab)
+    preview_row.pack(fill=tk.X, pady=(2, 6))
+
+    ttk.Label(preview_row, text="Preview N").pack(side=tk.LEFT, padx=4)
+    app.seq_preview_n_var = tk.StringVar(value="5")
+    ttk.Entry(preview_row, textvariable=app.seq_preview_n_var, width=6).pack(side=tk.LEFT, padx=(0, 6))
+    app.seq_preview_btn = ttk.Button(
+        preview_row,
+        text="Run Preview",
+        command=lambda: start_sequence_preview(
+            app,
+            seq_path=_resolve_sequence_path(app, default_seq_path),
+            ao_rate_hz=ao_rate_hz,
+            nm_397=nm_397,
+            n_runs=int(float(app.seq_preview_n_var.get() or "0")),
+            camera_trigger=nm_729,
+            roi_pulse_s=float(roi_pulse_s),
+            roi_idle_s=float(roi_idle_s),
+        ),
+    )
+    app.seq_preview_btn.pack(side=tk.LEFT, padx=4)
+    app.seq_preview_stop_btn = ttk.Button(
+        preview_row,
+        text="Stop Preview",
+        command=lambda: stop_sequence_preview(app),
+        state=tk.DISABLED,
+    )
+    app.seq_preview_stop_btn.pack(side=tk.LEFT, padx=4)
 
     text_row = ttk.Frame(app.seq_tab)
     text_row.pack(fill=tk.BOTH, expand=True)
