@@ -5,14 +5,14 @@
     "mode": "real"
   },
   "camera": {
-    "mode": "dry",
-    "exposure_ms": 100.0,
+    "mode": "real",
+    "exposure_ms": 80.0,
     "subarray": {
-      "enabled": false,
-      "x": 0,
-      "y": 0,
-      "width": 0,
-      "height": 0
+      "enabled": true,
+      "x": 3372,
+      "y": 1320,
+      "width": 144,
+      "height": 100
     },
     "verbose": false,
     "trigger": {
@@ -34,12 +34,12 @@
     "no_fg": true
   },
   "sweep_defaults": {
-    "n_target": 1000,
-    "max_attempt": 1000,
+    "n_target": 100,
+    "max_attempt": 100,
     "settle_s": 0.02,
     "update_interval": 1.0
   },
-  "sequence_json_path": "C:/Users/shiori/Desktop/ion_control_shutter_camera/src/shutter_camera_trigger/sequence_examples/sequence2.json",
+  "sequence_json_path": "C:/Users/tanak/\u30c7\u30b9\u30af\u30c8\u30c3\u30d7/kariyama/single_ion_control/src/shutter_camera_trigger/sequence_examples/sequence2.json",
   "io_paths": {
     "logs_root": "logs",
     "output_root": "data/output"

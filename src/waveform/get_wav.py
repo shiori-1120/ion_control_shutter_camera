@@ -164,13 +164,14 @@ def run_acquisition_mode(channels, visa_resource):
     inst = None
     all_waveforms = {}
     try:
-        inst = rm.open_resource(visa_resource, timeout=20000)
+        inst = rm.open_resource(visa_resource, timeout=60000)
         print(f"接続成功: {inst.query('*IDN?').strip()}")
         inst.write("ACQuire:STATE STOP"); time.sleep(0.1)
 
         for ch in channels:
+            inst.clear()  # バッファクリア
             print(f"CH{ch} のデータを取得中...")
-            time_data, voltage_data = acquire_waveform(inst, ch)
+            time_data, voltage_data = acquire_waveform(inst, ch, points=1000)
             all_waveforms[f'CH{ch}'] = {'time': time_data, 'voltage': voltage_data}
 
         saved_filepath = save_waveforms_to_csv(all_waveforms)
@@ -308,7 +309,7 @@ def main():
     parser.add_argument(
         '--resource',
         type=str,
-        default='USB0::0x0699::0x03A2::C040073::INSTR', # ご自身の環境に合わせて変更
+        default='USB0::0x0699::0x0401::C010155::INSTR', # ご自身の環境に合わせて変更
         help="オシロスコープのVISAリソース文字列。"
     )
     

@@ -5,18 +5,31 @@ from datetime import datetime
 import numpy as np
 
 # TODO: ASCIIのファイルをバイナリに変更する
-def save_to_csv(time_data, voltage_data, output_dir="output"):
+def save_to_csv(time_data, voltage_data_dict, output_dir="output"):
+    """
+    time_data: list of time points
+    voltage_data_dict: {ch: voltage_list}
+    """
     os.makedirs(output_dir, exist_ok=True)
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}_waveform.csv"
     filepath = os.path.join(output_dir, filename)
 
-    rows = zip(time_data, voltage_data)
+    # ヘッダー作成
+    header = ["Time (s)"] + [f"CH{ch} Voltage (V)" for ch in voltage_data_dict.keys()]
+
+    # データ整形
+    rows = []
+    n_points = len(time_data)
+    for i in range(n_points):
+        row = [time_data[i]]
+        for ch in voltage_data_dict.keys():
+            row.append(voltage_data_dict[ch][i])
+        rows.append(row)
 
     with open(filepath, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["Time (s)", "Voltage (V)"])
+        writer.writerow(header)
         writer.writerows(rows)
 
     print(f"データを {filepath} に保存しました。")
@@ -45,10 +58,19 @@ def get_waveform(inst, channel, points=10000):
 
 def main():
     rm = pyvisa.ResourceManager()
-    address = 'USB0::0x0699::0x03A2::C040073::INSTR'
+    address = 'USB0::0x0699::0x0401::C010155::INSTR'
     inst = rm.open_resource(address, timeout=20000)
-    time_list, voltage_list = get_waveform(inst, channel=1, points=10000)
-    save_to_csv(time_list, voltage_list)
+    channels = [1, 2, 3, 4]  # 必要なチャンネル番号に変更
+    voltage_data_dict = {}
+    time_list = None
+    points = 10000
+    for ch in channels:
+        print(f"CH{ch}のデータ取得中...")
+        t_list, v_list = get_waveform(inst, channel=ch, points=points)
+        if time_list is None:
+            time_list = t_list
+        voltage_data_dict[ch] = v_list
+    save_to_csv(time_list, voltage_data_dict)
     inst.close()
 
 if __name__ == "__main__":
