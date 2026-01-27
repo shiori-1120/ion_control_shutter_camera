@@ -9,10 +9,10 @@
     "exposure_ms": 80.0,
     "subarray": {
       "enabled": true,
-      "x": 3372,
-      "y": 1320,
-      "width": 144,
-      "height": 100
+      "x": 3272,
+      "y": 1124,
+      "width": 632,
+      "height": 192
     },
     "verbose": false,
     "trigger": {
@@ -25,7 +25,7 @@
   },
   "fg": {
     "visa_resource": "USB0::0x1AB1::0x0646::DG9R273500535::INSTR",
-    "amp_mvpp": 790.0,
+    "amp_mvpp": 955.0,
     "wave": "SIN",
     "offset_v": 0.0,
     "start_hz": 1000.0,
@@ -34,8 +34,8 @@
     "no_fg": true
   },
   "sweep_defaults": {
-    "n_target": 100,
-    "max_attempt": 100,
+    "n_target": 300,
+    "max_attempt": 300,
     "settle_s": 0.02,
     "update_interval": 1.0
   },
