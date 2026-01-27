@@ -14,7 +14,7 @@ from ..daq.guards import require_connected
 
 from ..gui_support.diagnostics import resolve_log_path, set_last_error
 from ..gui_support.camera_worker_manager import build_cam_cfg, ensure_camera_worker
-from ..gui_tabs.camera_tab import update_camera_plot
+from ..gui_tabs.camera_tab import update_camera_plot, update_camera_thumbnails
 from ..config.device_registry import resolve_output_root
 from ..hardware import DaqClientDevice
 from ..gui_support.output_state import set_output_state
@@ -252,8 +252,8 @@ def sequence_loop(
                                 app._seq_capture_shown = shown + 1
                                 app.after(
                                     0,
-                                    lambda img=arr, i=seq_idx + 1: update_camera_plot(
-                                        app, img, title=f"Sequence frame {i}"
+                                    lambda img=arr, i=seq_idx + 1, n=show_max: _update_seq_ui(
+                                        app, img, i, n
                                     ),
                                 )
                         except Exception:
@@ -283,6 +283,14 @@ def sequence_loop(
     finally:
         app._seq_running = False
         app.after(0, lambda: sequence_stopped_ui(app, nm_397=nm_397))
+
+
+def _update_seq_ui(app: Any, frame: Any, idx: int, max_n: int) -> None:
+    try:
+        update_camera_thumbnails(app, frame, max_n=max_n)
+        update_camera_plot(app, frame, title=f"Sequence frame {idx}")
+    except Exception:
+        pass
 
 
 def _is_external_trigger(trigger_cfg: dict[str, Any]) -> bool:

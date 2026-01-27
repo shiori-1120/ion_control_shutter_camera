@@ -55,23 +55,66 @@ def build_camera_tab(app: Any) -> None:
         ttk.Label(app.camera_tab, text="matplotlib not available; camera plot disabled").pack()
 
 
+def update_camera_thumbnails(app: Any, frame: Any, *, max_n: int) -> None:
+    try:
+        arr = np.asarray(frame)
+    except Exception:
+        return
+    if max_n <= 0:
+        setattr(app, "_cam_thumb_frames", [])
+        return
+    frames = list(getattr(app, "_cam_thumb_frames", []) or [])
+    frames.append(arr)
+    if len(frames) > int(max_n):
+        frames = frames[-int(max_n) :]
+    setattr(app, "_cam_thumb_frames", frames)
+
+
 def update_camera_plot(app: Any, frame: Any, *, title: str | None = None) -> None:
-    if app._cam_ax is None or app._cam_canvas is None:
+    if app._cam_fig is None or app._cam_canvas is None:
         return
     try:
         arr = np.asarray(frame)
     except Exception:
         return
-    app._cam_ax.clear()
-    vmin, vmax = robust_gray_limits(arr)
+    thumbs = list(getattr(app, "_cam_thumb_frames", []) or [])
+    fig = app._cam_fig
+    fig.clear()
     try:
-        if vmin is None or vmax is None:
-            app._cam_ax.imshow(arr, cmap="gray")
+        from matplotlib.gridspec import GridSpec
+
+        if thumbs:
+            cols = max(1, len(thumbs))
+            gs = GridSpec(2, cols, height_ratios=[3, 1], figure=fig)
+            ax_main = fig.add_subplot(gs[0, :])
+            vmin, vmax = robust_gray_limits(arr)
+            if vmin is None or vmax is None:
+                ax_main.imshow(arr, cmap="gray")
+            else:
+                ax_main.imshow(arr, cmap="gray", vmin=vmin, vmax=vmax)
+            if title:
+                ax_main.set_title(str(title))
+            ax_main.set_axis_off()
+
+            for i, thumb in enumerate(thumbs):
+                ax_t = fig.add_subplot(gs[1, i])
+                vmin_t, vmax_t = robust_gray_limits(thumb)
+                if vmin_t is None or vmax_t is None:
+                    ax_t.imshow(thumb, cmap="gray")
+                else:
+                    ax_t.imshow(thumb, cmap="gray", vmin=vmin_t, vmax=vmax_t)
+                ax_t.set_axis_off()
         else:
-            app._cam_ax.imshow(arr, cmap="gray", vmin=vmin, vmax=vmax)
-        if title:
-            app._cam_ax.set_title(str(title))
-        app._cam_ax.set_axis_off()
+            ax_main = fig.add_subplot(111)
+            vmin, vmax = robust_gray_limits(arr)
+            if vmin is None or vmax is None:
+                ax_main.imshow(arr, cmap="gray")
+            else:
+                ax_main.imshow(arr, cmap="gray", vmin=vmin, vmax=vmax)
+            if title:
+                ax_main.set_title(str(title))
+            ax_main.set_axis_off()
+        fig.tight_layout()
         app._cam_canvas.draw()
     except Exception:
         pass
