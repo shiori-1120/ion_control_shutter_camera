@@ -355,6 +355,18 @@ def build_sequence_tab(
         row=3, column=0, columnspan=3, sticky=tk.W, pady=(2, 0)
     )
 
+    capture_row = ttk.Frame(app.seq_tab)
+    capture_row.pack(fill=tk.X, pady=(6, 0))
+    app.seq_capture_enable_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(
+        capture_row,
+        text="Capture image each sequence",
+        variable=app.seq_capture_enable_var,
+    ).pack(side=tk.LEFT, padx=4)
+    ttk.Label(capture_row, text="Display first N").pack(side=tk.LEFT, padx=(12, 4))
+    app.seq_capture_show_n_var = tk.StringVar(value="3")
+    ttk.Entry(capture_row, textvariable=app.seq_capture_show_n_var, width=6).pack(side=tk.LEFT, padx=4)
+
     btn_row = ttk.Frame(app.seq_tab)
     btn_row.pack(fill=tk.X, pady=(6, 6))
 

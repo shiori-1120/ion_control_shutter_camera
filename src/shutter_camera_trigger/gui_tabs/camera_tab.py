@@ -12,6 +12,7 @@ from tkinter import ttk
 import numpy as np
 
 from ..gui_support.diagnostics import set_last_error
+from ..gui_support.image_utils import robust_gray_limits
 from ..gui_support.camera_worker_manager import build_cam_cfg, ensure_camera_worker
 from ..gui_support.camera_capture import acquire_frame_with_ttl
 from ..gui_support.validators import parse_exposure_s_safe
@@ -52,6 +53,28 @@ def build_camera_tab(app: Any) -> None:
         app._cam_ax = None
         app._cam_canvas = None
         ttk.Label(app.camera_tab, text="matplotlib not available; camera plot disabled").pack()
+
+
+def update_camera_plot(app: Any, frame: Any, *, title: str | None = None) -> None:
+    if app._cam_ax is None or app._cam_canvas is None:
+        return
+    try:
+        arr = np.asarray(frame)
+    except Exception:
+        return
+    app._cam_ax.clear()
+    vmin, vmax = robust_gray_limits(arr)
+    try:
+        if vmin is None or vmax is None:
+            app._cam_ax.imshow(arr, cmap="gray")
+        else:
+            app._cam_ax.imshow(arr, cmap="gray", vmin=vmin, vmax=vmax)
+        if title:
+            app._cam_ax.set_title(str(title))
+        app._cam_ax.set_axis_off()
+        app._cam_canvas.draw()
+    except Exception:
+        pass
 
 
 def _is_external_trigger(trigger_cfg: dict[str, Any]) -> bool:
@@ -237,7 +260,7 @@ def camera_snap(
             np.save(npy_path, arr)
             app._cam_img = arr
             app._cam_status.set(f"Snap: OK shape={arr.shape}")
-            app._cam_canvas.draw()
+            update_camera_plot(app, arr, title="Camera snap")
             ui_msg = f"画像を{npy_path}に保存しました。 shape={arr.shape}"
         except Exception as e:
             ui_msg = f"カメラスナップエラー: {e}\n{traceback.format_exc(limit=2)}"
