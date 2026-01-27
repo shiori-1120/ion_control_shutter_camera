@@ -167,6 +167,90 @@ def start_sweep(
         pass
 
 
+def start_fixed_freq(
+    app: Any,
+    *,
+    default_daq_device: str,
+    fg_amp_max_mvpp: float,
+    default_fg_amp_vpp: float,
+) -> None:
+    state = app._sweep_state
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info("fixed_freq_start")
+    except Exception:
+        pass
+
+    raw = str(getattr(app, "fixed_freq_var", None).get() or "").strip()
+    if not raw:
+        try:
+            app._sweep_events.on_input_error("Fixed frequency is empty.")
+        except Exception:
+            pass
+        return
+    try:
+        target_freq = float(raw)
+    except Exception:
+        try:
+            app._sweep_events.on_input_error(f"Invalid fixed frequency: {raw!r}")
+        except Exception:
+            pass
+        return
+
+    n_target_raw = str(getattr(app, "fixed_n_target_var", None).get() or "").strip()
+    max_attempt_raw = str(getattr(app, "fixed_max_attempt_var", None).get() or "").strip()
+    try:
+        n_target = int(float(n_target_raw)) if n_target_raw else None
+    except Exception:
+        n_target = None
+    try:
+        max_attempt = int(float(max_attempt_raw)) if max_attempt_raw else None
+    except Exception:
+        max_attempt = None
+
+    if state.phase is SweepPhase.IDLE:
+        if not prepare_session(app, default_daq_device=default_daq_device):
+            return
+
+    app._sweep_ctrl.start_fixed_freq(
+        state,
+        fig=app.sw_fig,
+        canvas=app.sw_canvas,
+        fg_connected=app._fg_connected,
+        fg_handle=app._fg_handle,
+        fallback_fg_amp_vpp=parse_fg_amp_vpp_safe(
+            app,
+            max_mvpp=fg_amp_max_mvpp,
+            default_vpp=default_fg_amp_vpp,
+        ),
+        target_freq=float(target_freq),
+        n_target_override=n_target,
+        max_attempt_override=max_attempt,
+    )
+
+    try:
+        results = list(getattr(state, "results", []) or [])
+        if results:
+            freq, processed, n_bright = results[-1]
+            p_excite = (float(n_bright) / float(processed)) if processed > 0 else 0.0
+            p_dark = 1.0 - p_excite if processed > 0 else 0.0
+            try:
+                app.fixed_freq_result_var.set(
+                    f"freq={float(freq):.6g} Hz | p_excite={p_excite:.4f} | p_dark={p_dark:.4f} | "
+                    f"n={int(processed)} n_bright={int(n_bright)}"
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        if getattr(app, "_logger", None):
+            app._logger.info("fixed_freq_done")
+    except Exception:
+        pass
+
+
 def stop_sweep(app: Any, *, clean_only: bool = False) -> None:
     try:
         if getattr(app, "_logger", None):

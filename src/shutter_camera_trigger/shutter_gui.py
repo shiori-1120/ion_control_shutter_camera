@@ -41,6 +41,7 @@ from .sweep.ui_tab import build_sweep_tab
 from .sweep.ui_actions import (
     roi_check,
     start_sweep,
+    start_fixed_freq,
     stop_sweep,
     threshold_check,
     threshold_apply_override,
@@ -304,6 +305,9 @@ class App(tk.Tk):
             nm_397_sig=NM_397_SIG,
             nm_729=NM_729,
             nm_854=NM_854,
+            camera_trigger=CAMERA_TRIGGER,
+            roi_pulse_s=ROI_PULSE_S,
+            roi_idle_s=ROI_IDLE_S,
             ao_rate_hz=AO_RATE_HZ,
         )
 
@@ -363,7 +367,16 @@ class App(tk.Tk):
         )
 
     def _build_fixed_tab(self) -> None:
-        build_fixed_freq_tab(self)
+        build_fixed_freq_tab(
+            self,
+            start_fixed_cb=lambda: start_fixed_freq(
+                self,
+                default_daq_device=DEFAULT_DAQ_DEVICE,
+                fg_amp_max_mvpp=FG_AMP_MAX_MVPP,
+                default_fg_amp_vpp=DEFAULT_FG_AMP_VPP,
+            ),
+            stop_cb=lambda: stop_sweep(self),
+        )
 
 def main() -> None:
     App().mainloop()

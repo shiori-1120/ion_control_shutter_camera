@@ -439,6 +439,142 @@ def start_sweep(
         stop_sweep(state=state, events=events, io=io, deps=deps, clean_only=True, fig=fig)
 
 
+def start_fixed_freq(
+    *,
+    state: SweepState,
+    fig: Any,
+    canvas: Any,
+    fg_connected: bool,
+    fg_handle: Any | None,
+    fallback_fg_amp_vpp: float,
+    target_freq: float,
+    n_target_override: int | None,
+    max_attempt_override: int | None,
+    events: SweepEvents,
+    io: SweepIO,
+    deps: SweepDeps,
+) -> None:
+    if state.phase is not SweepPhase.THRESHOLD_DONE or not state.session:
+        events.on_error("Sweep", _MSG_NEED_THRESH)
+        io.set_last_error_cb("Sweep", _MSG_NEED_THRESH, None)
+        return
+
+    if state.phase is SweepPhase.STOPPING:
+        return
+    if state.phase is SweepPhase.RUNNING:
+        return
+
+    freqs: list[float] = [float(target_freq)]
+    do_sequence = state.session["do_sequence"]
+    insert_index = int(state.session["insert_index"])
+    ao_width_ms = float(state.session["ao_width_ms"])
+    seq_cmd = state.session.get("seq_cmd")
+    camera_commands = state.session.get("camera_commands") or []
+    camera_actions = state.session.get("camera_actions") or []
+    sync_markers = state.session.get("sync_markers") or []
+
+    n_target = int(n_target_override) if n_target_override and n_target_override > 0 else int(state.session["n_target"])
+    max_attempt = (
+        int(max_attempt_override)
+        if max_attempt_override and max_attempt_override > 0
+        else int(state.session["max_attempt"])
+    )
+    settle_s = float(state.session["settle_s"])
+    update_interval = float(state.session["update_interval"])
+
+    daq_cmd_q = state.queues["daq_cmd"]
+    daq_resp_q = state.queues["daq_resp"]
+    cam_cmd_q = state.queues["cam_cmd"]
+    cam_resp_q = state.queues["cam_resp"]
+
+    visa_res = str(state.session.get("visa_res") or "")
+    no_fg = bool(state.session.get("no_fg"))
+    fg_amp_vpp = float(state.session.get("fg_amp_vpp") or fallback_fg_amp_vpp)
+
+    base_output = Path(deps.output_root) if deps.output_root else Path("data/output")
+    out_dir = base_output / "fixed_freq" / datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    state.out_dir = out_dir
+    state.freqs = freqs
+    state.results = []
+    state.spectrum_outputs = {}
+
+    if camera_actions:
+        try:
+            cam_actions_path = out_dir / "camera_actions.json"
+            cam_actions_path.write_text(
+                json.dumps(list(camera_actions), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            state.spectrum_outputs["camera_actions"] = cam_actions_path
+        except Exception as e:
+            events.on_warning(f"Failed to write camera_actions.json: {e}")
+    if sync_markers:
+        try:
+            markers_path = out_dir / "sync_markers.json"
+            markers_path.write_text(
+                json.dumps(list(sync_markers), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            state.spectrum_outputs["sync_markers"] = markers_path
+        except Exception as e:
+            events.on_warning(f"Failed to write sync_markers.json: {e}")
+
+    try:
+        if fig is not None and canvas is not None:
+            events.on_plot_reset()
+    except Exception:
+        pass
+
+    _set_phase(state, events, SweepPhase.RUNNING)
+    events.on_status(f"Running: fixed freq {float(target_freq):.6g} Hz")
+    io.refresh_buttons()
+    try:
+        r = run_spectrum_flow(
+            freqs=freqs,
+            do_sequence=do_sequence,
+            insert_index=int(insert_index),
+            ao_width_ms=float(ao_width_ms),
+            seq_cmd=seq_cmd,
+            camera_commands=camera_commands,
+            n_target=int(n_target),
+            max_attempt=int(max_attempt),
+            settle_s=float(settle_s),
+            update_interval_s=float(update_interval),
+            daq_cmd_q=daq_cmd_q,
+            daq_resp_q=daq_resp_q,
+            cam_cmd_q=cam_cmd_q,
+            cam_resp_q=cam_resp_q,
+            ao_rate_hz=deps.AO_RATE_HZ,
+            mpq_get_with_ui=deps.mpq_get_with_ui,
+            should_stop=lambda: (state.phase is not SweepPhase.RUNNING),
+            ui_pump=deps.ui_pump,
+            status_cb=events.on_status,
+            update_point_cb=events.on_plot_update,
+            out_dir=out_dir,
+            fg_connected=fg_connected,
+            fg_handle=fg_handle,
+            fg_amp_vpp=fg_amp_vpp,
+            visa_res=visa_res,
+            no_fg=no_fg,
+            warn_cb=events.on_warning,
+        )
+        state.results = list(r.results)
+        state.spectrum_outputs = {
+            "shots": Path(r.shots_csv),
+            "spectrum": Path(r.spectrum_csv),
+        }
+
+    except Exception as e:
+        events.on_error("Sweep", str(e))
+        _set_phase(state, events, SweepPhase.ERROR)
+        events.on_status("Error (fixed freq)")
+        io.refresh_buttons()
+        io.set_last_error_cb("Sweep", str(e), None)
+
+    finally:
+        stop_sweep(state=state, events=events, io=io, deps=deps, clean_only=True, fig=fig)
+
 def override_threshold(
     *,
     state: SweepState,

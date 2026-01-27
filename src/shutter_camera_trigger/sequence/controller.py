@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,9 @@ def start_sequence(
     seq_path: Path,
     ao_rate_hz: float,
     nm_397: int,
+    camera_trigger: int,
+    roi_pulse_s: float,
+    roi_idle_s: float,
 ) -> None:
     try:
         if not seq_path or not Path(seq_path).exists():
@@ -78,7 +82,21 @@ def start_sequence(
         capture_cfg = None
         if capture_enabled:
             cam_cfg = build_cam_cfg(app)
-            ensure_camera_worker(app, cam_cfg=cam_cfg, ready_timeout_s=90.0)
+            ready_timeout_s = 30.0
+            prime_cb = None
+            trig_cfg = cam_cfg.get("trigger") or {}
+            if cam_cfg.get("mode") == "real" and _is_external_trigger(trig_cfg):
+                if not app._daq.connected:
+                    raise RuntimeError("DAQ not connected (external trigger)")
+                ready_timeout_s = 180.0
+                prime_cb = _build_prime_cb(
+                    app,
+                    nm_397=nm_397,
+                    camera_trigger=camera_trigger,
+                    roi_pulse_s=roi_pulse_s,
+                    roi_idle_s=roi_idle_s,
+                )
+            ensure_camera_worker(app, cam_cfg=cam_cfg, ready_timeout_s=ready_timeout_s, prime_cb=prime_cb)
             cmd_q = getattr(app, "_cam_worker_cmd_q", None)
             resp_q = getattr(app, "_cam_worker_resp_q", None)
             if cmd_q is None or resp_q is None:
@@ -265,6 +283,42 @@ def sequence_loop(
     finally:
         app._seq_running = False
         app.after(0, lambda: sequence_stopped_ui(app, nm_397=nm_397))
+
+
+def _is_external_trigger(trigger_cfg: dict[str, Any]) -> bool:
+    src = str(trigger_cfg.get("source") or "EXTERNAL").strip().upper()
+    return src in ("EXTERNAL", "EXT", "2", "")
+
+
+def _build_prime_cb(
+    app: Any,
+    *,
+    nm_397: int,
+    camera_trigger: int,
+    roi_pulse_s: float,
+    roi_idle_s: float,
+) -> Any:
+    last_fire = {"t": 0.0}
+
+    def _prime() -> None:
+        now = time.time()
+        if now - last_fire["t"] < 0.05:
+            return
+        last_fire["t"] = now
+        daq = DaqClientDevice(app._daq)
+        daq.open(str(getattr(app, "_daq_device", "") or ""))
+        seq_cmd = DaqSequenceCommand(
+            do_sequence=[
+                (nm_397, float(roi_idle_s)),
+                (nm_397 | camera_trigger, float(roi_pulse_s)),
+                (nm_397, float(roi_idle_s)),
+            ],
+            ao_insert_index=-1,
+            ao_width_ms=0.0,
+        )
+        daq.run_sequence_once(seq_cmd)
+
+    return _prime
 
 
 def _resolve_seq_capture_settings(app: Any) -> tuple[bool, int]:
