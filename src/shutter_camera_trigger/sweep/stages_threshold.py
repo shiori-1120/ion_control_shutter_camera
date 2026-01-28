@@ -361,12 +361,12 @@ def run_threshold_stage(
             label=f"roi_mean all (n={int(s_all.size)})",
         )
 
-            ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
-            ax_s.set_xlabel("roi_mean (used for tau)")
-            ax_s.set_ylabel("Count")
-            ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
-            ax_s.legend(loc="upper right")
-            ax_s.grid(True, alpha=0.3)
+        ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
+        ax_s.set_xlabel("roi_mean (used for tau)")
+        ax_s.set_ylabel("Count")
+        ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
+        ax_s.legend(loc="upper right")
+        ax_s.grid(True, alpha=0.3)
 
         fig.tight_layout()
         canvas.draw()
