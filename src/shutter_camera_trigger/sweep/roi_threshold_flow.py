@@ -48,13 +48,11 @@ def run_roi_check_flow(
     if session is not None:
         session["roi"] = roi
 
-    # Set background ROI to the left edge of the subarray (same size as detected ROI)
+    # Set background ROI to the top-left corner (same size as detected ROI)
     try:
         if session is not None and roi is not None and isinstance(roi, (list, tuple)) and len(roi) == 4:
             xw, yw, xs, ys = map(int, roi)
-            # left edge of subarray in full-frame coords is xs
-            bg_xs = int(xs)
-            session["bg_roi"] = [int(xw), int(yw), bg_xs, int(ys)]
+            session["bg_roi"] = [int(xw), int(yw), 0, 0]
     except Exception:
         pass
 

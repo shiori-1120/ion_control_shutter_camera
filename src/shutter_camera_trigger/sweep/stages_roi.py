@@ -259,6 +259,8 @@ def run_roi_check_stage(
                     from matplotlib.patches import Rectangle
 
                     ax_img.add_patch(Rectangle((xs, ys), xw, yw, fill=False, edgecolor="tab:red", linewidth=2))
+                    # Background ROI: same size, top-left corner.
+                    ax_img.add_patch(Rectangle((0, 0), xw, yw, fill=False, edgecolor="tab:blue", linewidth=2))
                 except Exception:
                     pass
 

@@ -97,12 +97,10 @@ def analyze_threshold_samples(
         except Exception:
             edges_s = 50
 
-        total = float(s_all.size)
         if s_bright.size > 0:
             ax_s.hist(
                 s_bright,
                 bins=edges_s,
-                weights=np.ones_like(s_bright, dtype=float) / total,
                 alpha=0.6,
                 color="tab:orange",
                 edgecolor="none",
@@ -112,7 +110,6 @@ def analyze_threshold_samples(
             ax_s.hist(
                 s_dark,
                 bins=edges_s,
-                weights=np.ones_like(s_dark, dtype=float) / total,
                 alpha=0.6,
                 color="navy",
                 edgecolor="none",
@@ -122,7 +119,6 @@ def analyze_threshold_samples(
         ax_s.hist(
             s_all,
             bins=edges_s,
-            weights=np.ones_like(s_all, dtype=float) / total,
             alpha=0.25,
             color="gray",
             edgecolor="none",
@@ -133,7 +129,7 @@ def analyze_threshold_samples(
 
         try:
             ax_s.set_xlabel("roi_mean (used for tau)")
-            ax_s.set_ylabel("Probability")
+            ax_s.set_ylabel("Count")
             ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
             ax_s.legend(loc="upper right")
             ax_s.grid(True, alpha=0.3)
@@ -337,41 +333,37 @@ def run_threshold_stage(
             except Exception:
                 edges_s = 50
 
-            total = float(s_all.size)
-            if s_bright.size > 0:
-                ax_s.hist(
-                    s_bright,
-                    bins=edges_s,
-                    weights=np.ones_like(s_bright, dtype=float) / total,
-                    alpha=0.6,
-                    color="tab:orange",
-                    edgecolor="none",
-                    label=f"roi_mean bright (n={int(s_bright.size)})",
-                )
-            if s_dark.size > 0:
-                ax_s.hist(
-                    s_dark,
-                    bins=edges_s,
-                    weights=np.ones_like(s_dark, dtype=float) / total,
-                    alpha=0.6,
-                    color="navy",
-                    edgecolor="none",
-                    label=f"roi_mean dark (n={int(s_dark.size)})",
-                )
-
+        if s_bright.size > 0:
             ax_s.hist(
-                s_all,
+                s_bright,
                 bins=edges_s,
-                weights=np.ones_like(s_all, dtype=float) / total,
-                alpha=0.25,
-                color="gray",
+                alpha=0.6,
+                color="tab:orange",
                 edgecolor="none",
-                label=f"roi_mean all (n={int(s_all.size)})",
+                label=f"roi_mean bright (n={int(s_bright.size)})",
             )
+        if s_dark.size > 0:
+            ax_s.hist(
+                s_dark,
+                bins=edges_s,
+                alpha=0.6,
+                color="navy",
+                edgecolor="none",
+                label=f"roi_mean dark (n={int(s_dark.size)})",
+            )
+
+        ax_s.hist(
+            s_all,
+            bins=edges_s,
+            alpha=0.25,
+            color="gray",
+            edgecolor="none",
+            label=f"roi_mean all (n={int(s_all.size)})",
+        )
 
             ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
             ax_s.set_xlabel("roi_mean (used for tau)")
-            ax_s.set_ylabel("Probability")
+            ax_s.set_ylabel("Count")
             ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
             ax_s.legend(loc="upper right")
             ax_s.grid(True, alpha=0.3)

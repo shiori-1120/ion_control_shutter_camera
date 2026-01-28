@@ -308,8 +308,8 @@ def generate_rois_from_analyze_results(results: dict, img_shape) -> list:
     v_fwhm = float(vert['fwhm'])
     centers_x = [float(c) for c in horiz['centers']]
     fwhms_x = [float(w) for w in horiz['fwhms']]
-    avg_linewidth = float((v_fwhm + np.mean(fwhms_x)) / 2.0)
-    width_px = max(1, int(round(avg_linewidth)))
+    # Use vertical FWHM only, and expand ROI to 2x FWHM (square ROI).
+    width_px = max(1, int(round(float(v_fwhm) * 2.0)))
     x_width = width_px
     y_width = width_px
     X = int(img_shape[1])
