@@ -331,6 +331,9 @@ def build_sequence_tab(
     nm_397_sig: int,
     nm_729: int,
     nm_854: int,
+    camera_trigger: int,
+    roi_pulse_s: float,
+    roi_idle_s: float,
     ao_rate_hz: float,
 ) -> None:
     if app.seq_tab is None:
@@ -355,6 +358,18 @@ def build_sequence_tab(
         row=3, column=0, columnspan=3, sticky=tk.W, pady=(2, 0)
     )
 
+    capture_row = ttk.Frame(app.seq_tab)
+    capture_row.pack(fill=tk.X, pady=(6, 0))
+    app.seq_capture_enable_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(
+        capture_row,
+        text="Capture image each sequence",
+        variable=app.seq_capture_enable_var,
+    ).pack(side=tk.LEFT, padx=4)
+    ttk.Label(capture_row, text="Display first N").pack(side=tk.LEFT, padx=(12, 4))
+    app.seq_capture_show_n_var = tk.StringVar(value="3")
+    ttk.Entry(capture_row, textvariable=app.seq_capture_show_n_var, width=6).pack(side=tk.LEFT, padx=4)
+
     btn_row = ttk.Frame(app.seq_tab)
     btn_row.pack(fill=tk.X, pady=(6, 6))
 
@@ -366,6 +381,9 @@ def build_sequence_tab(
             seq_path=_resolve_sequence_path(app, default_seq_path),
             ao_rate_hz=ao_rate_hz,
             nm_397=nm_397,
+            camera_trigger=camera_trigger,
+            roi_pulse_s=roi_pulse_s,
+            roi_idle_s=roi_idle_s,
         ),
     )
     app.start_btn.pack(side=tk.LEFT, padx=4)

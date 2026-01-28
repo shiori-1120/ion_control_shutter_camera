@@ -41,6 +41,7 @@ from .sweep.ui_tab import build_sweep_tab
 from .sweep.ui_actions import (
     roi_check,
     start_sweep,
+    start_fixed_freq,
     stop_sweep,
     threshold_check,
     threshold_apply_override,
@@ -51,6 +52,7 @@ from .gui_tabs.diagnostics_tab import build_diagnostics_tab
 from .gui_tabs.sequence_tab import build_sequence_tab
 from .gui_tabs.manual_tab import build_manual_tab
 from .gui_tabs.top_bar import build_top_bar
+from .gui_tabs.fixed_freq_tab import build_fixed_freq_tab
 from .daq.controller import connect_daq, disconnect_daq
 from .fg.controller import connect_fg, disconnect_fg
 
@@ -256,9 +258,11 @@ class App(tk.Tk):
         self.seq_tab = ttk.Frame(run_nb, padding=10)
         self.sweep_tab = ttk.Frame(run_nb, padding=10)
         self.camera_tab = ttk.Frame(run_nb, padding=10)
+        self.fixed_tab = ttk.Frame(run_nb, padding=10)
         run_nb.add(self.sweep_tab, text="Sweep")
         run_nb.add(self.seq_tab, text="Sequence")
         run_nb.add(self.camera_tab, text="Camera")
+        run_nb.add(self.fixed_tab, text="Fixed freq")
 
         diag_nb = ttk.Notebook(self.diag_tab)
         diag_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -276,6 +280,7 @@ class App(tk.Tk):
         self._build_manual_tab()
         self._build_sweep_tab()
         self._build_camera_tab()
+        self._build_fixed_tab()
         self._build_diagnostics_tab()
 
         # 右: ログパネル
@@ -300,6 +305,9 @@ class App(tk.Tk):
             nm_397_sig=NM_397_SIG,
             nm_729=NM_729,
             nm_854=NM_854,
+            camera_trigger=CAMERA_TRIGGER,
+            roi_pulse_s=ROI_PULSE_S,
+            roi_idle_s=ROI_IDLE_S,
             ao_rate_hz=AO_RATE_HZ,
         )
 
@@ -356,6 +364,18 @@ class App(tk.Tk):
                 roi_idle_s=ROI_IDLE_S,
                 ao_rate_hz=AO_RATE_HZ,
             ),
+        )
+
+    def _build_fixed_tab(self) -> None:
+        build_fixed_freq_tab(
+            self,
+            start_fixed_cb=lambda: start_fixed_freq(
+                self,
+                default_daq_device=DEFAULT_DAQ_DEVICE,
+                fg_amp_max_mvpp=FG_AMP_MAX_MVPP,
+                default_fg_amp_vpp=DEFAULT_FG_AMP_VPP,
+            ),
+            stop_cb=lambda: stop_sweep(self),
         )
 
 def main() -> None:

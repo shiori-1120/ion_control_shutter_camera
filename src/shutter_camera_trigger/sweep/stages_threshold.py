@@ -73,68 +73,9 @@ def analyze_threshold_samples(
 
     try:
         fig.clear()
-        ax_ph = fig.add_subplot(211)
-        ax_s = fig.add_subplot(212)
+        ax_s = fig.add_subplot(111)
     except Exception:
-        # 例外時の処理（必要に応じて修正）
-        pass
-
-    def _flatten_roi_pixels(profiles: list[np.ndarray], roi: list[int]) -> np.ndarray:
-        # profilesはsum(axis=0)なので、元画像のROI全体のピクセル値はsamplesから取得する必要がある
-        # ここではsamplesはroi_meanなので、元画像の全ピクセル値は取得できない
-        # ただし、profilesは各サンプルのROI内のy方向積分（1D）
-        # ここでは「全サンプルの全ROIピクセル値」をflattenしてヒストグラム化する
-        # そのためには、元画像のROI部分のflatten値を保存しておく必要がある
-        # ここでは近似的にprofilesの値を使う（本来は元画像のROI flatten値を保存すべき）
-        arrs = []
-        for p in profiles:
-            a = np.asarray(p, dtype=float)
-            a = a[np.isfinite(a)]
-            if a.size:
-                arrs.append(a)
-        return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
-
-    # 近似的にprofilesの値をflattenして使う（本来は元画像のROI flatten値を使うべき）
-    light_pixels = _flatten_roi_pixels(bright_profiles, roi)
-    dark_pixels = _flatten_roi_pixels(dark_profiles, roi)
-    combined = np.concatenate([c for c in (light_pixels, dark_pixels) if c.size > 0])
-    if combined.size == 0:
-        raise RuntimeError("No valid photon-count samples")
-
-    start = int(np.floor(float(np.nanmin(combined))))
-    end = int(np.ceil(float(np.nanmax(combined))))
-    bin_edges = np.arange(start - 0.5, end + 1.5, 1)
-
-    if light_pixels.size > 0:
-        mean_light = float(np.mean(light_pixels))
-        ax_ph.hist(
-            light_pixels,
-            bins=bin_edges,
-            density=True,
-            alpha=0.6,
-            color="tab:orange",
-            edgecolor="none",
-            label=f"Light (mean={mean_light:.2f})",
-        )
-        ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
-    if dark_pixels.size > 0:
-        mean_dark = float(np.mean(dark_pixels))
-        ax_ph.hist(
-            dark_pixels,
-            bins=bin_edges,
-            density=True,
-            alpha=0.6,
-            color="navy",
-            edgecolor="none",
-            label=f"Dark (mean={mean_dark:.2f})",
-        )
-        ax_ph.axvline(mean_dark, color="navy", linestyle="--")
-
-    ax_ph.set_xlabel("Photon Count (per pixel; integer bins)")
-    ax_ph.set_ylabel("Probability density")
-    ax_ph.set_title(f"Pixel-wise photon count distribution | agree={acc*100:.1f}%")
-    ax_ph.legend(loc="upper right")
-    ax_ph.grid(True, alpha=0.3)
+        ax_s = None
 
     try:
         s_all = np.asarray(samples, dtype=float)
@@ -142,7 +83,8 @@ def analyze_threshold_samples(
     except Exception:
         s_all = np.asarray([], dtype=float)
 
-    if s_all.size > 0:
+
+    if s_all.size > 0 and ax_s is not None:
         s_bright = np.asarray(bright_samples, dtype=float)
         s_dark = np.asarray(dark_samples, dtype=float)
         try:
@@ -155,35 +97,44 @@ def analyze_threshold_samples(
         except Exception:
             edges_s = 50
 
+        total = float(s_all.size)
         if s_bright.size > 0:
             ax_s.hist(
                 s_bright,
                 bins=edges_s,
-                density=True,
+                weights=np.ones_like(s_bright, dtype=float) / total,
                 alpha=0.6,
                 color="tab:orange",
                 edgecolor="none",
                 label=f"roi_mean bright (n={int(s_bright.size)})",
             )
-            ax_s.axvline(float(np.mean(s_bright)), color="tab:orange", linestyle="--")
         if s_dark.size > 0:
             ax_s.hist(
                 s_dark,
                 bins=edges_s,
-                density=True,
+                weights=np.ones_like(s_dark, dtype=float) / total,
                 alpha=0.6,
                 color="navy",
                 edgecolor="none",
                 label=f"roi_mean dark (n={int(s_dark.size)})",
             )
-            ax_s.axvline(float(np.mean(s_dark)), color="navy", linestyle="--")
 
-            ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
+        ax_s.hist(
+            s_all,
+            bins=edges_s,
+            weights=np.ones_like(s_all, dtype=float) / total,
+            alpha=0.25,
+            color="gray",
+            edgecolor="none",
+            label=f"roi_mean all (n={int(s_all.size)})",
+        )
+
+        ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
 
         try:
             ax_s.set_xlabel("roi_mean (used for tau)")
-            ax_s.set_ylabel("Probability density")
-            ax_s.set_title("ROI-mean distribution")
+            ax_s.set_ylabel("Probability")
+            ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
             ax_s.legend(loc="upper right")
             ax_s.grid(True, alpha=0.3)
 
@@ -361,81 +312,11 @@ def run_threshold_stage(
     except Exception:
         acc = 0.0
 
-    # Plot (same layout as before)
+
+    # Plot (ROI-mean only)
     try:
         fig.clear()
-        ax_ph = fig.add_subplot(211)
-        ax_s = fig.add_subplot(212)
-
-        def _concat_profiles(ps: list[np.ndarray]) -> np.ndarray:
-            arrs = []
-            for p in ps:
-                a = np.asarray(p, dtype=float)
-                a = a[np.isfinite(a)]
-                if a.size:
-                    arrs.append(a)
-            return np.concatenate(arrs) if arrs else np.asarray([], dtype=float)
-
-        light_counts = _concat_profiles(bright_profiles)
-        dark_counts = _concat_profiles(dark_profiles)
-        combined = np.concatenate([c for c in (light_counts, dark_counts) if c.size > 0])
-        if combined.size == 0:
-            raise RuntimeError("No valid photon-count samples")
-
-        try:
-            tau_plot = float(tau) * float(roi[1])
-        except Exception:
-            tau_plot = float(tau)
-
-        start = int(np.floor(float(np.nanmin(combined))))
-        end = int(np.ceil(float(np.nanmax(combined))))
-        try:
-            start = int(min(start, np.floor(float(tau_plot))))
-            end = int(max(end, np.ceil(float(tau_plot))))
-        except Exception:
-            pass
-        bin_edges = np.arange(start - 0.5, end + 1.5, 1)
-
-        if light_counts.size > 0:
-            mean_light = float(np.mean(light_counts))
-            ax_ph.hist(
-                light_counts,
-                bins=bin_edges,
-                density=True,
-                alpha=0.6,
-                color="tab:orange",
-                edgecolor="none",
-                label=f"Light (mean={mean_light:.2f})",
-            )
-            ax_ph.axvline(mean_light, color="tab:orange", linestyle="--")
-        if dark_counts.size > 0:
-            mean_dark = float(np.mean(dark_counts))
-            ax_ph.hist(
-                dark_counts,
-                bins=bin_edges,
-                density=True,
-                alpha=0.6,
-                color="navy",
-                edgecolor="none",
-                label=f"Dark (mean={mean_dark:.2f})",
-            )
-            ax_ph.axvline(mean_dark, color="navy", linestyle="--")
-
-        try:
-            ax_ph.axvline(
-                float(tau_plot),
-                color="tab:red",
-                linestyle="-",
-                linewidth=2,
-                label=f"Threshold (tau*yw={float(tau_plot):.2f})",
-            )
-        except Exception:
-            pass
-        ax_ph.set_xlabel("Photon Count (per-column sum; integer bins)")
-        ax_ph.set_ylabel("Probability density")
-        ax_ph.set_title(f"Photon Distribution (integrated over y-axis) | agree={acc*100:.1f}%")
-        ax_ph.legend(loc="upper right")
-        ax_ph.grid(True, alpha=0.3)
+        ax_s = fig.add_subplot(111)
 
         try:
             s_all = np.asarray(samples, dtype=float)
@@ -456,36 +337,44 @@ def run_threshold_stage(
             except Exception:
                 edges_s = 50
 
+            total = float(s_all.size)
             if s_bright.size > 0:
                 ax_s.hist(
                     s_bright,
                     bins=edges_s,
-                    density=True,
+                    weights=np.ones_like(s_bright, dtype=float) / total,
                     alpha=0.6,
                     color="tab:orange",
                     edgecolor="none",
                     label=f"roi_mean bright (n={int(s_bright.size)})",
                 )
-                ax_s.axvline(float(np.mean(s_bright)), color="tab:orange", linestyle="--")
             if s_dark.size > 0:
                 ax_s.hist(
                     s_dark,
                     bins=edges_s,
-                    density=True,
+                    weights=np.ones_like(s_dark, dtype=float) / total,
                     alpha=0.6,
                     color="navy",
                     edgecolor="none",
                     label=f"roi_mean dark (n={int(s_dark.size)})",
                 )
-                ax_s.axvline(float(np.mean(s_dark)), color="navy", linestyle="--")
+
+            ax_s.hist(
+                s_all,
+                bins=edges_s,
+                weights=np.ones_like(s_all, dtype=float) / total,
+                alpha=0.25,
+                color="gray",
+                edgecolor="none",
+                label=f"roi_mean all (n={int(s_all.size)})",
+            )
 
             ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
-
-        ax_s.set_xlabel("roi_mean (used for tau)")
-        ax_s.set_ylabel("Probability density")
-        ax_s.set_title("ROI-mean distribution")
-        ax_s.legend(loc="upper right")
-        ax_s.grid(True, alpha=0.3)
+            ax_s.set_xlabel("roi_mean (used for tau)")
+            ax_s.set_ylabel("Probability")
+            ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
+            ax_s.legend(loc="upper right")
+            ax_s.grid(True, alpha=0.3)
 
         fig.tight_layout()
         canvas.draw()

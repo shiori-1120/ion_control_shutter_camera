@@ -10,6 +10,9 @@ __pycache__/
 
 # Local outputs
 data/output/
+# Allow keeping the sequence_capture subfolder under version control
+!data/output/sequence_capture/
+!data/output/sequence_capture/**
 logs/
 
 # Local GUI/runtime state

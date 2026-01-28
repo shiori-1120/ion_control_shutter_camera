@@ -7,7 +7,15 @@ from .model import SweepDeps, SweepEvents, SweepInput, SweepIO, SweepPhase, Swee
 _MSG_BUSY = "Sweep is busy. Stop the current run first."
 _MSG_NEED_ROI = "Run '1) ROI check' first."
 _MSG_NEED_THRESH = "Run '1) ROI check' and '2) Threshold' first."
-from .workflow import prepare_session, roi_check, start_sweep, stop_sweep, threshold_check, override_threshold
+from .workflow import (
+    prepare_session,
+    roi_check,
+    start_sweep,
+    start_fixed_freq,
+    stop_sweep,
+    threshold_check,
+    override_threshold,
+)
 
 
 class SweepController:
@@ -104,6 +112,42 @@ class SweepController:
             fg_connected=fg_connected,
             fg_handle=fg_handle,
             fallback_fg_amp_vpp=fallback_fg_amp_vpp,
+            events=self._events,
+            io=self._io,
+            deps=self._deps,
+        )
+
+    def start_fixed_freq(
+        self,
+        state: SweepState,
+        *,
+        fig: Any,
+        canvas: Any,
+        fg_connected: bool,
+        fg_handle: Any | None,
+        fallback_fg_amp_vpp: float,
+        target_freq: float,
+        n_target_override: int | None,
+        max_attempt_override: int | None,
+    ) -> None:
+        if state.phase is SweepPhase.RUNNING:
+            return
+        if not self._require_phase(
+            state,
+            allowed={SweepPhase.THRESHOLD_DONE},
+            message=_MSG_NEED_THRESH,
+        ):
+            return
+        start_fixed_freq(
+            state=state,
+            fig=fig,
+            canvas=canvas,
+            fg_connected=fg_connected,
+            fg_handle=fg_handle,
+            fallback_fg_amp_vpp=fallback_fg_amp_vpp,
+            target_freq=float(target_freq),
+            n_target_override=n_target_override,
+            max_attempt_override=max_attempt_override,
             events=self._events,
             io=self._io,
             deps=self._deps,
