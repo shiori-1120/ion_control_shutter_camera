@@ -48,6 +48,16 @@ def run_roi_check_flow(
     if session is not None:
         session["roi"] = roi
 
+    # Set background ROI to the left edge of the subarray (same size as detected ROI)
+    try:
+        if session is not None and roi is not None and isinstance(roi, (list, tuple)) and len(roi) == 4:
+            xw, yw, xs, ys = map(int, roi)
+            # left edge of subarray in full-frame coords is xs
+            bg_xs = int(xs)
+            session["bg_roi"] = [int(xw), int(yw), bg_xs, int(ys)]
+    except Exception:
+        pass
+
     # Propagate ROI to camera worker so get_state uses the same ROI scalar as Step 2.
     try:
         CameraQueueDevice(cmd_q=cam_cmd_q).set_roi(list(roi) if roi is not None else None)
