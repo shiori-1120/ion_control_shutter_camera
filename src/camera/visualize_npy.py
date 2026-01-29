@@ -7,7 +7,7 @@ visualize_npy.py
 スタイルは initial_preparation.py の show_npy_2d に合わせ、軸ラベル・1/99パーセンタイルでの表示範囲を使用。
 
 使い方（PowerShell）:
-    python src\camera\visualize_npy.py C:\path\to\...\output\YYYYMMDD_HHMMSS\raw-data
+    python -m src.camera.visualize_npy C:\Users\tanak\デスクトップ\kariyama\single_ion_control\data\output\spectrum\20260129_134129\threshold_frames
 
 依存: numpy, matplotlib
 """
