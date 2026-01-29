@@ -130,6 +130,7 @@ def start_sequence(
         daemon=True,
     )
     app._seq_thread.start()
+    _seq_log(app, "sequence_start")
 
     app.status_var.set(f"Connected: {app._daq_device} ({app._daq_mode}) | Sequence running")
     app.start_btn.configure(state=tk.DISABLED)
@@ -198,6 +199,7 @@ def sequence_loop(
     capture_cfg: dict[str, Any] | None = None,
 ) -> None:
     try:
+        t0 = time.perf_counter()
         est_s = 0.0
         try:
             est_s = float(sum(float(hold_s) for _, hold_s in seq_cmd.do_sequence))
@@ -214,6 +216,7 @@ def sequence_loop(
         seq_idx = 0
 
         while app._seq_running:
+            t_seq_start = time.perf_counter()
             if capture_enabled and cmd_q is not None:
                 try:
                     cmd_q.put(
@@ -225,9 +228,7 @@ def sequence_loop(
                     )
                 except Exception:
                     pass
-            DaqClientDevice(app._daq).run_sequence_once(
-                seq_cmd
-            )
+            DaqClientDevice(app._daq).run_sequence_once(seq_cmd)
             if capture_enabled and resp_q is not None:
                 try:
                     resp = resp_q.get(timeout=float(resp_timeout_s))
@@ -239,6 +240,14 @@ def sequence_loop(
                     except Exception:
                         arr = None
                     if arr is not None:
+                        _seq_log(
+                            app,
+                            "sequence_capture_ok",
+                            idx=seq_idx,
+                            dt_since_start_s=f"{(time.perf_counter() - t0):.6f}",
+                            dt_since_seq_s=f"{(time.perf_counter() - t_seq_start):.6f}",
+                            shape=str(arr.shape),
+                        )
                         try:
                             if out_dir is not None:
                                 idx = int(getattr(app, "_seq_capture_count", 0))
@@ -345,6 +354,27 @@ def _resolve_seq_capture_settings(app: Any) -> tuple[bool, int]:
     if show_n < 0:
         show_n = 0
     return enabled, show_n
+
+
+def _resolve_seq_log_enabled(app: Any) -> bool:
+    try:
+        return bool(getattr(app, "seq_log_enable_var", None) and app.seq_log_enable_var.get())
+    except Exception:
+        return False
+
+
+def _seq_log(app: Any, event: str, **kv: Any) -> None:
+    if not _resolve_seq_log_enabled(app):
+        return
+    logger = getattr(app, "_logger", None)
+    if logger is None:
+        return
+    extras = " ".join(f"{k}={v}" for k, v in kv.items())
+    msg = f"{event} {extras}".strip()
+    try:
+        logger.info(msg)
+    except Exception:
+        pass
 
 
 def _resolve_sequence_capture_dir(app: Any) -> Path:

@@ -366,6 +366,12 @@ def build_sequence_tab(
         text="Capture image each sequence",
         variable=app.seq_capture_enable_var,
     ).pack(side=tk.LEFT, padx=4)
+    app.seq_log_enable_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(
+        capture_row,
+        text="Sequence log",
+        variable=app.seq_log_enable_var,
+    ).pack(side=tk.LEFT, padx=(12, 4))
     ttk.Label(capture_row, text="Display first N").pack(side=tk.LEFT, padx=(12, 4))
     app.seq_capture_show_n_var = tk.StringVar(value="3")
     ttk.Entry(capture_row, textvariable=app.seq_capture_show_n_var, width=6).pack(side=tk.LEFT, padx=4)
