@@ -288,13 +288,7 @@ def run_roi_check_stage(
                             linewidth=1.5,
                             label="fit",
                         )
-                    fwhms = horiz.get("fwhms")
                     title = "X profile"
-                    try:
-                        if isinstance(fwhms, (list, tuple)) and fwhms:
-                            title += f" (FWHM~{float(np.mean([float(w) for w in fwhms])):.1f}px)"
-                    except Exception:
-                        pass
                     ax_x.set_title(title)
                     ax_x.grid(True, alpha=0.2)
                     ax_x.tick_params(labelsize=8)
@@ -323,11 +317,6 @@ def run_roi_check_stage(
                             label="fit",
                         )
                     title = "Y profile"
-                    try:
-                        if vert.get("fwhm") is not None:
-                            title += f" (FWHM~{float(vert.get('fwhm')):.1f}px)"
-                    except Exception:
-                        pass
                     ax_y.set_title(title)
                     ax_y.grid(True, alpha=0.2)
                     ax_y.tick_params(labelsize=8)

@@ -101,5 +101,6 @@ class SweepIO:
     format_worker_failure: Callable[..., str]
     confirm_threshold: Callable[[dict[str, Any], float, float], bool]
     update_threshold_ui: Callable[[float, float, float], None]
+    get_threshold_save_frames: Callable[[], bool]
     join_with_ui: Callable[[Any, float], None]
     set_last_error_cb: Callable[[str, str, str | None], None]

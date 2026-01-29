@@ -144,6 +144,15 @@ def build_sweep_tab(
     app.sw_status = tk.StringVar(value="Idle")
     ttk.Label(btn_row, textvariable=app.sw_status).pack(side=tk.LEFT, padx=12)
 
+    thr_opts = ttk.LabelFrame(app.sweep_tab, text="Threshold options")
+    thr_opts.pack(fill=tk.X, pady=(0, 8))
+    app.sw_thr_save_frames_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(
+        thr_opts,
+        text="Save threshold frames (.npy)",
+        variable=app.sw_thr_save_frames_var,
+    ).pack(anchor=tk.W, padx=6, pady=4)
+
     thr_override = ttk.LabelFrame(app.sweep_tab, text="Threshold override")
     thr_override.pack(fill=tk.X, pady=(0, 8))
     ttk.Label(thr_override, text="tau (roi_mean)").grid(row=0, column=0, sticky=tk.W)
@@ -214,6 +223,7 @@ def build_sweep_tab(
                 parent=app,
             ),
             update_threshold_ui=lambda tau, tau_on, tau_off: app.sw_thr_tau_var.set(f"{float(tau):.3g}"),
+            get_threshold_save_frames=lambda: bool(app.sw_thr_save_frames_var.get()),
             join_with_ui=lambda proc, timeout: join_with_ui(app, proc, timeout=timeout),
             set_last_error_cb=lambda label, message, log_path: set_last_error(
                 app,

@@ -264,6 +264,7 @@ def threshold_check(
             canvas=canvas,
             out_dir=state.out_dir,
             confirm_apply_cb=io.confirm_threshold,
+            save_frames=io.get_threshold_save_frames(),
         )
         state.threshold_samples = list(r.samples)
         state.threshold_profiles = list(r.profiles)

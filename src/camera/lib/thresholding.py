@@ -139,14 +139,13 @@ def normalize_count(
     exposure_s: float = 1.0,
 ) -> dict:
     """
-    ROI合計を「1秒あたり」に正規化して返す（ROI画素数では割らない）。
-    S = (sum(ROI) - mean(bg_roi)*Npx) / exposure_s
-    背景差分は bg_roi（背景ROI）を指定した場合に、bg の平均×Npx を差し引きます。
+    ROI?????????????????????????????OI?????????????????????
+    S = sum(ROI) - sum(bg_roi)
     Returns:
       {
-        "S_norm": float,     # 正規化スカラー（1秒あたり）
-        "S_raw": float,      # 背景差し後の生合計（ADU）
-        "Npx": int, "bg_mean": float
+        "S_norm": float,     # S = sum(ROI) - sum(bg_roi)
+        "S_raw": float,      # same as S_norm (compat)
+        "Npx": int, "bg_mean": float, "bg_sum": float, "roi_sum": float
       }
     """
     roi_img = _crop_roi_np(np.asarray(img), roi)
@@ -157,16 +156,23 @@ def normalize_count(
     if bg_roi is not None:
         bg_img = _crop_roi_np(np.asarray(img), bg_roi)
         bg_mean = float(np.mean(bg_img)) if bg_img.size > 0 else 0.0
+        bg_sum = float(np.sum(bg_img)) if bg_img.size > 0 else 0.0
     else:
         bg_mean = 0.0
+        bg_sum = 0.0
 
     roi_sum = float(np.sum(roi_img))
-    S_raw = roi_sum - bg_mean * Npx
+    S_raw = roi_sum - bg_sum
+    S_norm = S_raw
 
-    denom = float(exposure_s)
-    S_norm = S_raw / (denom if denom > 0 else 1.0)
-
-    return {"S_norm": float(S_norm), "S_raw": float(S_raw), "Npx": Npx, "bg_mean": float(bg_mean)}
+    return {
+        "S_norm": float(S_norm),
+        "S_raw": float(S_raw),
+        "Npx": Npx,
+        "bg_mean": float(bg_mean),
+        "bg_sum": float(bg_sum),
+        "roi_sum": float(roi_sum),
+    }
 
 
 def quick_threshold_from_samples(

@@ -184,6 +184,7 @@ def run_threshold_stage(
     fig: Any,
     canvas: Any,
     out_dir: Any | None = None,
+    save_frames: bool = False,
 ) -> ThresholdStageResult:
     # Derive a safe get_frame timeout based on exposure + total shot duration.
     seq_s = 0.0
@@ -215,6 +216,14 @@ def run_threshold_stage(
     from src.camera.lib.image_ops import crop_roi
     cam_device = CameraQueueDevice(cmd_q=cam_cmd_q)
 
+    save_dir = None
+    if out_dir is not None and save_frames:
+        try:
+            save_dir = Path(out_dir) / "threshold_frames"
+            save_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            save_dir = None
+
     for attempt_idx in range(int(max_attempt)):
         if len(samples) >= int(n_target):
             break
@@ -241,6 +250,12 @@ def run_threshold_stage(
         frame = np.asarray(cam_resp.get("frame"))
         if frame.ndim < 2:
             continue
+
+        if save_dir is not None:
+            try:
+                np.save(save_dir / f"thr_{len(samples):05d}.npy", frame)
+            except Exception:
+                pass
         crop = crop_roi(np.asarray(frame), roi)
         if crop.size == 0:
             continue

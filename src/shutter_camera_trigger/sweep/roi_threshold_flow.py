@@ -95,6 +95,7 @@ def run_threshold_flow(
     canvas: Any,
     out_dir: Any,
     confirm_apply_cb: Callable[[dict[str, Any], float, float], bool],
+    save_frames: bool = False,
 ) -> tuple[ThresholdStageResult, bool]:
     r: ThresholdStageResult = run_threshold_stage(
         daq_cmd_q=daq_cmd_q,
@@ -112,6 +113,7 @@ def run_threshold_flow(
         fig=fig,
         canvas=canvas,
         out_dir=out_dir,
+        save_frames=bool(save_frames),
     )
 
     tau = float(r.tau)

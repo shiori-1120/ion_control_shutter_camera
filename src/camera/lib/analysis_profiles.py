@@ -24,6 +24,8 @@ def _moving_average_1d(profile: np.ndarray, window: int) -> np.ndarray:
 _EDGE_MARGIN_ENV = "ION_ROI_EDGE_MARGIN_PX"
 _SINGLE_ION_ENV = "ION_SINGLE_ION"
 _PROFILE_AVG_WINDOW_ENV = "ION_PROFILE_AVG_WINDOW"
+_ROI_FIXED_PX_ENV = "ION_ROI_FIXED_PX"
+ROI_FIXED_PX = 52
 DEFAULT_PROFILE_AVG_WINDOW = 21
 
 
@@ -47,6 +49,17 @@ def _get_profile_avg_window(default: int) -> int:
         return max(1, n)
     except Exception:
         return max(1, w)
+
+
+def _get_fixed_roi_px() -> int:
+    try:
+        v = (os.environ.get(_ROI_FIXED_PX_ENV, "") or "").strip()
+        if not v:
+            return int(ROI_FIXED_PX)
+        n = int(v)
+        return max(4, n)
+    except Exception:
+        return int(ROI_FIXED_PX)
 
 
 def _is_single_ion_mode() -> bool:
@@ -140,12 +153,8 @@ def _generate_single_ion_roi(img: np.ndarray) -> list:
     # Find brightest location in the inner-cropped coordinates.
     iy, ix = np.unravel_index(int(np.nanargmax(sm)), sm.shape)
 
-    # ROI box size (square) – keep conservative default; user can override.
-    try:
-        box = int(os.environ.get("ION_ROI_BOX_PX", "200"))
-    except Exception:
-        box = 200
-    box = max(10, int(box))
+    # ROI box size (square). Use fixed size unless overridden.
+    box = _get_fixed_roi_px()
 
     Y, X = int(np.asarray(img).shape[0]), int(np.asarray(img).shape[1])
     x_center = int(ix + x0)
@@ -300,18 +309,16 @@ def lorentz_fit_profiles(img: np.ndarray, plot: bool = False) -> dict:
 def generate_rois_from_analyze_results(results: dict, img_shape) -> list:
     vert = results.get('vertical') or {}
     horiz = results.get('horizontal') or {}
-    if not vert or vert.get('center') is None or vert.get('fwhm') is None:
-        raise ValueError('Vertical fit result is missing center/fwhm')
-    if not horiz or not horiz.get('centers') or not horiz.get('fwhms'):
-        raise ValueError('Horizontal fit result is missing centers/fwhms')
+    if not vert or vert.get('center') is None:
+        raise ValueError('Vertical fit result is missing center')
+    if not horiz or not horiz.get('centers'):
+        raise ValueError('Horizontal fit result is missing centers')
     y_center = float(vert['center'])
-    v_fwhm = float(vert['fwhm'])
     centers_x = [float(c) for c in horiz['centers']]
-    fwhms_x = [float(w) for w in horiz['fwhms']]
-    # Use vertical FWHM only, and expand ROI to 2x FWHM (square ROI).
-    width_px = max(1, int(round(float(v_fwhm) * 2.0)))
-    x_width = width_px
-    y_width = width_px
+    # Fixed ROI size (square), independent of FWHM.
+    width_px = int(_get_fixed_roi_px())
+    x_width = max(1, width_px)
+    y_width = max(1, width_px)
     X = int(img_shape[1])
     Y = int(img_shape[0])
     rois = []
