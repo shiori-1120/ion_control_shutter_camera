@@ -71,7 +71,7 @@ def format_threshold_prompt(threshold: dict[str, Any], agreement: float, tau: fl
         "Apply threshold?\n"
         f"mode={threshold.get('mode')}\n"
         f"agreement={agreement * 100:.1f}% (hysteresis OFF)\n\n"
-        " metric=roi_mean\n"
+        " metric=S_norm\n"
         f" tau={tau:.3g}"
     )
 
@@ -84,6 +84,7 @@ def run_threshold_flow(
     cam_resp_q: Any,
     do_sequence: list[tuple[int, float]],
     roi: list[int],
+    bg_roi: list[int] | None,
     n_target: int,
     max_attempt: int,
     cam_exposure_s: float,
@@ -104,6 +105,7 @@ def run_threshold_flow(
         cam_resp_q=cam_resp_q,
         do_sequence=do_sequence,
         roi=[int(v) for v in roi],
+        bg_roi=[int(v) for v in bg_roi] if bg_roi is not None else None,
         n_target=int(n_target),
         max_attempt=int(max_attempt),
         cam_exposure_s=float(cam_exposure_s),

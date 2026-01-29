@@ -104,7 +104,7 @@ def analyze_threshold_samples(
                 alpha=0.6,
                 color="tab:orange",
                 edgecolor="none",
-                label=f"roi_mean bright (n={int(s_bright.size)})",
+                label=f"S_norm bright (n={int(s_bright.size)})",
             )
         if s_dark.size > 0:
             ax_s.hist(
@@ -113,7 +113,7 @@ def analyze_threshold_samples(
                 alpha=0.6,
                 color="navy",
                 edgecolor="none",
-                label=f"roi_mean dark (n={int(s_dark.size)})",
+                label=f"S_norm dark (n={int(s_dark.size)})",
             )
 
         ax_s.hist(
@@ -122,15 +122,15 @@ def analyze_threshold_samples(
             alpha=0.25,
             color="gray",
             edgecolor="none",
-            label=f"roi_mean all (n={int(s_all.size)})",
+            label=f"S_norm all (n={int(s_all.size)})",
         )
 
         ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
 
         try:
-            ax_s.set_xlabel("roi_mean (used for tau)")
+            ax_s.set_xlabel("S_norm (used for tau)")
             ax_s.set_ylabel("Count")
-            ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
+            ax_s.set_title(f"S_norm distribution (per image) | agree={acc*100:.1f}%")
             ax_s.legend(loc="upper right")
             ax_s.grid(True, alpha=0.3)
 
@@ -148,7 +148,7 @@ def analyze_threshold_samples(
                 "dark_samples_n": len(dark_samples),
                 "samples_n": int(len(samples)),
                 "roi": list(roi) if isinstance(roi, (list, tuple)) else None,
-                "sample_metric": "roi_mean",
+                "sample_metric": "S_norm",
                 "threshold": dict(threshold_meta or {}),
                 "agreement": float(acc),
             }
@@ -175,6 +175,7 @@ def run_threshold_stage(
     cam_resp_q: Any,
     do_sequence: list[tuple[int, float]],
     roi: list[int],
+    bg_roi: list[int] | None = None,
     n_target: int,
     max_attempt: int,
     cam_exposure_s: float,
@@ -214,6 +215,7 @@ def run_threshold_stage(
             pass
 
     from src.camera.lib.image_ops import crop_roi
+    from src.camera.lib.thresholding import normalize_count
     cam_device = CameraQueueDevice(cmd_q=cam_cmd_q)
 
     save_dir = None
@@ -261,7 +263,13 @@ def run_threshold_stage(
             continue
 
         try:
-            s = float(np.mean(np.asarray(crop, dtype=float)))
+            norm = normalize_count(
+                np.asarray(frame),
+                tuple(roi),
+                bg_roi=tuple(bg_roi) if bg_roi is not None else None,
+                exposure_s=float(cam_exposure_s),
+            )
+            s = float(norm["S_norm"])
             samples.append(s)
             profiles.append(np.asarray(np.sum(np.asarray(crop, dtype=float), axis=0), dtype=float))
         except Exception:
@@ -324,7 +332,7 @@ def run_threshold_stage(
         acc = 0.0
 
 
-    # Plot (ROI-mean only)
+    # Plot (S_norm only)
     try:
         fig.clear()
         ax_s = fig.add_subplot(111)
@@ -355,7 +363,7 @@ def run_threshold_stage(
                 alpha=0.6,
                 color="tab:orange",
                 edgecolor="none",
-                label=f"roi_mean bright (n={int(s_bright.size)})",
+                label=f"S_norm bright (n={int(s_bright.size)})",
             )
         if s_dark.size > 0:
             ax_s.hist(
@@ -364,7 +372,7 @@ def run_threshold_stage(
                 alpha=0.6,
                 color="navy",
                 edgecolor="none",
-                label=f"roi_mean dark (n={int(s_dark.size)})",
+                label=f"S_norm dark (n={int(s_dark.size)})",
             )
 
         ax_s.hist(
@@ -373,13 +381,13 @@ def run_threshold_stage(
             alpha=0.25,
             color="gray",
             edgecolor="none",
-            label=f"roi_mean all (n={int(s_all.size)})",
+            label=f"S_norm all (n={int(s_all.size)})",
         )
 
         ax_s.axvline(float(tau), color="tab:red", linestyle="-", linewidth=2, label=f"tau={float(tau):.3g}")
-        ax_s.set_xlabel("roi_mean (used for tau)")
+        ax_s.set_xlabel("S_norm (used for tau)")
         ax_s.set_ylabel("Count")
-        ax_s.set_title(f"ROI-mean distribution (per image) | agree={acc*100:.1f}%")
+        ax_s.set_title(f"S_norm distribution (per image) | agree={acc*100:.1f}%")
         ax_s.legend(loc="upper right")
         ax_s.grid(True, alpha=0.3)
 
@@ -399,7 +407,7 @@ def run_threshold_stage(
                         "dark_samples_n": len(dark_samples),
                         "samples_n": int(len(samples)),
                         "roi": list(roi) if isinstance(roi, (list, tuple)) else None,
-                        "sample_metric": "roi_mean",
+                        "sample_metric": "S_norm",
                         "threshold": th,
                         "agreement": acc,
                     },
@@ -419,7 +427,7 @@ def run_threshold_stage(
         bright_samples_n=int(len(bright_samples)),
         dark_samples_n=int(len(dark_samples)),
         samples_n=int(len(samples)),
-        sample_metric="roi_mean",
+        sample_metric="S_norm",
         threshold=dict(th),
         samples=list(samples),
         profiles=list(profiles),

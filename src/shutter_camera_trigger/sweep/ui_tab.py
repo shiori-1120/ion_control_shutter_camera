@@ -155,7 +155,7 @@ def build_sweep_tab(
 
     thr_override = ttk.LabelFrame(app.sweep_tab, text="Threshold override")
     thr_override.pack(fill=tk.X, pady=(0, 8))
-    ttk.Label(thr_override, text="tau (roi_mean)").grid(row=0, column=0, sticky=tk.W)
+    ttk.Label(thr_override, text="tau (S_norm)").grid(row=0, column=0, sticky=tk.W)
     app.sw_thr_tau_var = tk.StringVar(value="")
     ttk.Entry(thr_override, textvariable=app.sw_thr_tau_var, width=12).grid(row=0, column=1, padx=4)
     app.sw_thr_replot_btn = ttk.Button(

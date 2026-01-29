@@ -226,6 +226,9 @@ def threshold_check(
         events.on_error("Sweep", _MSG_NEED_ROI_SET)
         io.set_last_error_cb("Sweep", _MSG_NEED_ROI_SET, None)
         return
+    bg_roi = state.session.get("bg_roi")
+    if not (isinstance(bg_roi, (list, tuple)) and len(bg_roi) == 4):
+        bg_roi = None
 
     if fig is None or canvas is None:
         return
@@ -253,6 +256,7 @@ def threshold_check(
             cam_resp_q=cam_resp_q,
             do_sequence=do_sequence,
             roi=[int(v) for v in roi],
+            bg_roi=[int(v) for v in bg_roi] if bg_roi is not None else None,
             n_target=int(n),
             max_attempt=int(max_attempt),
             cam_exposure_s=float(cam_exposure_s),
