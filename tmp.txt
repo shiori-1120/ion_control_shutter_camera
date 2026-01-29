@@ -1,20 +1,48 @@
-
-ご指摘の通り、「シーケンスごとに画像取得（capture image each sequence）」の実装は、ROIやシーケンスと同じくコマンドキュー経由でカメラワーカープロセスに"get_frame"コマンドを送る形が基本です。
-
-現状の実装構造（抜粋）
-controller.py の sequence_loop で
-
-DAQシーケンス実行ごとに cam_cmd_q へ {"cmd": "get_frame", ...} を送信
-カメラワーカーは既にOPEN済みのカメラでフレーム取得のみ行う
-取得画像は np.save で保存、必要ならUIに表示
-ROIやしきい値も同じく「コマンド送信→ワーカーで処理→結果をメインに返す」流れ
-
-「OPENなのにさらにOPENしようとしても意味ない」について
-正しいです。
-カメラワーカーはプロセス起動時に一度だけ OpenCamera_GetHandle() し、その後は「get_frame」等のコマンドで都度フレーム取得する設計です。
-もし「シーケンスごとに毎回Openし直している」実装があれば、それは冗長・非効率です。
-まとめ
-カメラのOPENは最初のワーカー起動時だけでOK
-シーケンスやROIと同じく「コマンドキューで 'get_frame' を送る」方式に統一すべき
-既存の sequence_loop や CameraQueueDevice.send_get_frame() の流れを参考にすればよい
-もし「毎回Openしている」コードや、うまく動かない箇所があれば、その該当部分を教えてもらえれば具体的に修正案を出せます。
+2026-01-29 14:39:45,929 20260129_143800 INFO shutter.app sweep_threshold_done
+2026-01-29 14:39:51,981 20260129_143800 INFO shutter.app daq_disconnect
+2026-01-29 14:39:53,057 20260129_143800 INFO shutter.app daq_connect_ok device=Dev1 mode=real
+2026-01-29 14:40:04,891 20260129_143800 INFO shutter.app sweep_stop clean_only=True
+2026-01-29 14:40:04,891 20260129_143800 INFO shutter.app diagnostics_state prev=error next=stopping
+2026-01-29 14:40:06,124 20260129_143800 INFO shutter.app sweep_stop clean_only=True
+2026-01-29 14:40:07,629 20260129_143800 INFO shutter.app sweep_stop clean_only=True
+2026-01-29 14:40:15,676 20260129_143800 INFO shutter.app diagnostics_state prev=stopping next=idle
+2026-01-29 14:40:15,804 20260129_143800 INFO shutter.app daq_disconnect
+2026-01-29 14:40:15,805 20260129_143800 INFO shutter.app fg_disconnect
+2026-01-29 14:40:15,869 20260129_143800 INFO shutter.app fg_disconnect
+2026-01-29 14:40:15,903 20260129_143800 INFO shutter.app fg_disconnect
+2026-01-29 14:40:18,436 20260129_144018 INFO shutter.app app_start
+2026-01-29 14:40:22,350 20260129_144018 INFO shutter.app daq_connect_ok device=Dev1 mode=real
+2026-01-29 14:40:30,266 20260129_144018 ERROR shutter.app diagnostics_error label=Camera message=カメラ接続OK log_path=
+2026-01-29 14:40:32,291 20260129_144018 INFO shutter.app sweep_roi_check_start
+2026-01-29 14:40:32,291 20260129_144018 INFO shutter.app sweep_prepare_start
+2026-01-29 14:40:38,684 20260129_144018 INFO shutter.app diagnostics_state prev=idle next=prepared
+2026-01-29 14:40:38,685 20260129_144018 INFO shutter.app sweep_prepare_done ok=True
+2026-01-29 14:40:38,685 20260129_144018 INFO shutter.app sweep_sequence_meta camera_actions=0 sync_markers=0
+2026-01-29 14:40:40,386 20260129_144018 INFO shutter.app diagnostics_state prev=prepared next=roi_done
+2026-01-29 14:40:40,386 20260129_144018 INFO shutter.app sweep_roi_check_done
+2026-01-29 14:40:53,812 20260129_144018 INFO shutter.app sweep_threshold_start
+2026-01-29 14:42:58,559 20260129_144018 INFO shutter.app diagnostics_state prev=roi_done next=threshold_done
+2026-01-29 14:42:58,559 20260129_144018 INFO shutter.app sweep_threshold_done
+2026-01-29 14:43:10,823 20260129_144018 INFO shutter.app sweep_stop clean_only=True
+2026-01-29 14:43:10,824 20260129_144018 INFO shutter.app diagnostics_state prev=threshold_done next=stopping
+2026-01-29 14:43:11,053 20260129_144018 INFO shutter.app diagnostics_state prev=stopping next=idle
+2026-01-29 14:43:11,141 20260129_144018 INFO shutter.app daq_disconnect
+2026-01-29 14:43:11,141 20260129_144018 INFO shutter.app fg_disconnect
+2026-01-29 14:43:29,778 20260129_144329 INFO shutter.app app_start
+2026-01-29 14:43:39,632 20260129_144329 INFO shutter.app daq_connect_ok device=Dev1 mode=real
+2026-01-29 14:43:48,867 20260129_144329 ERROR shutter.app diagnostics_error label=Camera message=カメラ接続OK log_path=
+2026-01-29 14:43:55,784 20260129_144329 INFO shutter.app sweep_roi_check_start
+2026-01-29 14:43:55,785 20260129_144329 INFO shutter.app sweep_prepare_start
+2026-01-29 14:44:02,776 20260129_144329 INFO shutter.app diagnostics_state prev=idle next=prepared
+2026-01-29 14:44:02,776 20260129_144329 INFO shutter.app sweep_prepare_done ok=True
+2026-01-29 14:44:02,777 20260129_144329 INFO shutter.app sweep_sequence_meta camera_actions=0 sync_markers=0
+2026-01-29 14:44:05,117 20260129_144329 INFO shutter.app diagnostics_state prev=prepared next=roi_done
+2026-01-29 14:44:05,118 20260129_144329 INFO shutter.app sweep_roi_check_done
+2026-01-29 14:44:12,234 20260129_144329 INFO shutter.app sweep_threshold_start
+2026-01-29 14:44:33,671 20260129_144329 INFO shutter.app diagnostics_state prev=roi_done next=threshold_done
+2026-01-29 14:44:33,671 20260129_144329 INFO shutter.app sweep_threshold_done
+2026-01-29 14:44:37,979 20260129_144329 INFO shutter.app sweep_stop clean_only=False
+2026-01-29 14:44:37,980 20260129_144329 INFO shutter.app diagnostics_state prev=threshold_done next=stopping
+2026-01-29 14:44:38,200 20260129_144329 INFO shutter.app diagnostics_state prev=stopping next=idle
+2026-01-29 14:44:47,045 20260129_144329 INFO shutter.app sequence_start
+2026-01-29 14:44:47,045 20260129_144329 INFO shutter.app sequence_start
