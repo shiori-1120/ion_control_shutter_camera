@@ -1,48 +1,28 @@
-2026-01-29 14:39:45,929 20260129_143800 INFO shutter.app sweep_threshold_done
-2026-01-29 14:39:51,981 20260129_143800 INFO shutter.app daq_disconnect
-2026-01-29 14:39:53,057 20260129_143800 INFO shutter.app daq_connect_ok device=Dev1 mode=real
-2026-01-29 14:40:04,891 20260129_143800 INFO shutter.app sweep_stop clean_only=True
-2026-01-29 14:40:04,891 20260129_143800 INFO shutter.app diagnostics_state prev=error next=stopping
-2026-01-29 14:40:06,124 20260129_143800 INFO shutter.app sweep_stop clean_only=True
-2026-01-29 14:40:07,629 20260129_143800 INFO shutter.app sweep_stop clean_only=True
-2026-01-29 14:40:15,676 20260129_143800 INFO shutter.app diagnostics_state prev=stopping next=idle
-2026-01-29 14:40:15,804 20260129_143800 INFO shutter.app daq_disconnect
-2026-01-29 14:40:15,805 20260129_143800 INFO shutter.app fg_disconnect
-2026-01-29 14:40:15,869 20260129_143800 INFO shutter.app fg_disconnect
-2026-01-29 14:40:15,903 20260129_143800 INFO shutter.app fg_disconnect
-2026-01-29 14:40:18,436 20260129_144018 INFO shutter.app app_start
-2026-01-29 14:40:22,350 20260129_144018 INFO shutter.app daq_connect_ok device=Dev1 mode=real
-2026-01-29 14:40:30,266 20260129_144018 ERROR shutter.app diagnostics_error label=Camera message=カメラ接続OK log_path=
-2026-01-29 14:40:32,291 20260129_144018 INFO shutter.app sweep_roi_check_start
-2026-01-29 14:40:32,291 20260129_144018 INFO shutter.app sweep_prepare_start
-2026-01-29 14:40:38,684 20260129_144018 INFO shutter.app diagnostics_state prev=idle next=prepared
-2026-01-29 14:40:38,685 20260129_144018 INFO shutter.app sweep_prepare_done ok=True
-2026-01-29 14:40:38,685 20260129_144018 INFO shutter.app sweep_sequence_meta camera_actions=0 sync_markers=0
-2026-01-29 14:40:40,386 20260129_144018 INFO shutter.app diagnostics_state prev=prepared next=roi_done
-2026-01-29 14:40:40,386 20260129_144018 INFO shutter.app sweep_roi_check_done
-2026-01-29 14:40:53,812 20260129_144018 INFO shutter.app sweep_threshold_start
-2026-01-29 14:42:58,559 20260129_144018 INFO shutter.app diagnostics_state prev=roi_done next=threshold_done
-2026-01-29 14:42:58,559 20260129_144018 INFO shutter.app sweep_threshold_done
-2026-01-29 14:43:10,823 20260129_144018 INFO shutter.app sweep_stop clean_only=True
-2026-01-29 14:43:10,824 20260129_144018 INFO shutter.app diagnostics_state prev=threshold_done next=stopping
-2026-01-29 14:43:11,053 20260129_144018 INFO shutter.app diagnostics_state prev=stopping next=idle
-2026-01-29 14:43:11,141 20260129_144018 INFO shutter.app daq_disconnect
-2026-01-29 14:43:11,141 20260129_144018 INFO shutter.app fg_disconnect
-2026-01-29 14:43:29,778 20260129_144329 INFO shutter.app app_start
-2026-01-29 14:43:39,632 20260129_144329 INFO shutter.app daq_connect_ok device=Dev1 mode=real
-2026-01-29 14:43:48,867 20260129_144329 ERROR shutter.app diagnostics_error label=Camera message=カメラ接続OK log_path=
-2026-01-29 14:43:55,784 20260129_144329 INFO shutter.app sweep_roi_check_start
-2026-01-29 14:43:55,785 20260129_144329 INFO shutter.app sweep_prepare_start
-2026-01-29 14:44:02,776 20260129_144329 INFO shutter.app diagnostics_state prev=idle next=prepared
-2026-01-29 14:44:02,776 20260129_144329 INFO shutter.app sweep_prepare_done ok=True
-2026-01-29 14:44:02,777 20260129_144329 INFO shutter.app sweep_sequence_meta camera_actions=0 sync_markers=0
-2026-01-29 14:44:05,117 20260129_144329 INFO shutter.app diagnostics_state prev=prepared next=roi_done
-2026-01-29 14:44:05,118 20260129_144329 INFO shutter.app sweep_roi_check_done
-2026-01-29 14:44:12,234 20260129_144329 INFO shutter.app sweep_threshold_start
-2026-01-29 14:44:33,671 20260129_144329 INFO shutter.app diagnostics_state prev=roi_done next=threshold_done
-2026-01-29 14:44:33,671 20260129_144329 INFO shutter.app sweep_threshold_done
-2026-01-29 14:44:37,979 20260129_144329 INFO shutter.app sweep_stop clean_only=False
-2026-01-29 14:44:37,980 20260129_144329 INFO shutter.app diagnostics_state prev=threshold_done next=stopping
-2026-01-29 14:44:38,200 20260129_144329 INFO shutter.app diagnostics_state prev=stopping next=idle
-2026-01-29 14:44:47,045 20260129_144329 INFO shutter.app sequence_start
-2026-01-29 14:44:47,045 20260129_144329 INFO shutter.app sequence_start
+2026-01-29 14:50:14,104 20260129_144924 ERROR shutter.app diagnostics_error label=Camera message=カメラ接続OK log_path=
+2026-01-29 14:50:47,140 20260129_144924 INFO shutter.app sequence_start
+2026-01-29 14:51:28,984 20260129_144924 INFO shutter.app sequence_start
+2026-01-29 14:51:29,271 20260129_144924 INFO shutter.app sequence_capture_ok idx=0 dt_since_start_s=0.287327 dt_since_seq_s=0.287326 shape=(192, 492)
+2026-01-29 14:51:29,605 20260129_144924 INFO shutter.app sequence_capture_ok idx=1 dt_since_start_s=0.621044 dt_since_seq_s=0.285487 shape=(192, 492)
+2026-01-29 14:51:29,945 20260129_144924 INFO shutter.app sequence_capture_ok idx=2 dt_since_start_s=0.961033 dt_since_seq_s=0.286296 shape=(192, 492)
+2026-01-29 14:51:30,291 20260129_144924 INFO shutter.app sequence_capture_ok idx=3 dt_since_start_s=1.306710 dt_since_seq_s=0.286831 shape=(192, 492)
+2026-01-29 14:51:30,583 20260129_144924 INFO shutter.app sequence_capture_ok idx=4 dt_since_start_s=1.598841 dt_since_seq_s=0.287296 shape=(192, 492)
+2026-01-29 14:51:30,871 20260129_144924 INFO shutter.app sequence_capture_ok idx=5 dt_since_start_s=1.887159 dt_since_seq_s=0.285197 shape=(192, 492)
+2026-01-29 14:51:31,163 20260129_144924 INFO shutter.app sequence_capture_ok idx=6 dt_since_start_s=2.178995 dt_since_seq_s=0.287825 shape=(192, 492)
+2026-01-29 14:51:31,454 20260129_144924 INFO shutter.app sequence_capture_ok idx=7 dt_since_start_s=2.469720 dt_since_seq_s=0.286355 shape=(192, 492)
+2026-01-29 14:51:31,744 20260129_144924 INFO shutter.app sequence_capture_ok idx=8 dt_since_start_s=2.760132 dt_since_seq_s=0.286024 shape=(192, 492)
+2026-01-29 14:51:32,035 20260129_144924 INFO shutter.app sequence_capture_ok idx=9 dt_since_start_s=3.051203 dt_since_seq_s=0.286603 shape=(192, 492)
+2026-01-29 14:51:32,327 20260129_144924 INFO shutter.app sequence_capture_ok idx=10 dt_since_start_s=3.343226 dt_since_seq_s=0.287438 shape=(192, 492)
+2026-01-29 14:51:32,614 20260129_144924 INFO shutter.app sequence_capture_ok idx=11 dt_since_start_s=3.629553 dt_since_seq_s=0.284611 shape=(192, 492)
+2026-01-29 14:51:32,902 20260129_144924 INFO shutter.app sequence_capture_ok idx=12 dt_since_start_s=3.917939 dt_since_seq_s=0.284039 shape=(192, 492)
+2026-01-29 14:51:33,189 20260129_144924 INFO shutter.app sequence_capture_ok idx=13 dt_since_start_s=4.204492 dt_since_seq_s=0.285030 shape=(192, 492)
+2026-01-29 14:51:33,478 20260129_144924 INFO shutter.app sequence_capture_ok idx=14 dt_since_start_s=4.493832 dt_since_seq_s=0.284660 shape=(192, 492)
+2026-01-29 14:51:33,768 20260129_144924 INFO shutter.app sequence_capture_ok idx=15 dt_since_start_s=4.783966 dt_since_seq_s=0.286487 shape=(192, 492)
+2026-01-29 14:51:34,059 20260129_144924 INFO shutter.app sequence_capture_ok idx=16 dt_since_start_s=5.074343 dt_since_seq_s=0.286745 shape=(192, 492)
+2026-01-29 14:51:34,349 20260129_144924 INFO shutter.app sequence_capture_ok idx=17 dt_since_start_s=5.364346 dt_since_seq_s=0.284983 shape=(192, 492)
+2026-01-29 14:51:34,642 20260129_144924 INFO shutter.app sequence_capture_ok idx=18 dt_since_start_s=5.657320 dt_since_seq_s=0.287564 shape=(192, 492)
+2026-01-29 14:51:34,934 20260129_144924 INFO shutter.app sequence_capture_ok idx=19 dt_since_start_s=5.949648 dt_since_seq_s=0.288116 shape=(192, 492)
+2026-01-29 14:51:35,220 20260129_144924 INFO shutter.app sequence_capture_ok idx=20 dt_since_start_s=6.236093 dt_since_seq_s=0.285535 shape=(192, 492)
+2026-01-29 14:51:35,511 20260129_144924 INFO shutter.app sequence_capture_ok idx=21 dt_since_start_s=6.526671 dt_since_seq_s=0.285878 shape=(192, 492)
+2026-01-29 14:51:35,802 20260129_144924 INFO shutter.app sequence_capture_ok idx=22 dt_since_start_s=6.817881 dt_since_seq_s=0.287166 shape=(192, 492)
+2026-01-29 14:51:36,095 20260129_144924 INFO shutter.app sequence_capture_ok idx=23 dt_since_start_s=7.110198 dt_since_seq_s=0.287665 shape=(192, 492)
+2026-01-29 14:51:36,385 20260129_144924 INFO shutter.app sequence_capture_ok idx=24 dt_since_start_s=7.400726 dt_since_seq_s=0.286715 shape=(192, 492)
