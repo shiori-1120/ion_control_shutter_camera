@@ -309,7 +309,7 @@ def main():
     parser.add_argument(
         '--resource',
         type=str,
-        default='USB0::0x0699::0x0401::C010155::INSTR', # ご自身の環境に合わせて変更
+        default='USB0::0x0699::0x03A2::C040073::INSTR', # ご自身の環境に合わせて変更
         help="オシロスコープのVISAリソース文字列。"
     )
     
