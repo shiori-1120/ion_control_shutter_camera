@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env python3
 # Run: python src\camera\visualize_npy.py "C:\\path\\to\\output\\YYYYMMDD_HHMMSS\\raw-data"
-"""
+r"""
 visualize_npy.py
 
 目的: raw-data フォルダにある .npy フレームを一括で PNG 画像化し、同セッションの plots フォルダへ保存する。
