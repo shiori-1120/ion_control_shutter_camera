@@ -1,0 +1,13 @@
+{
+  "run_type": "spectrum",
+  "files": [
+    {
+      "name": "config",
+      "path": "config.json"
+    },
+    {
+      "name": "plot",
+      "path": "spectrum.png"
+    }
+  ]
+}

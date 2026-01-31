@@ -6,13 +6,13 @@
   },
   "camera": {
     "mode": "real",
-    "exposure_ms": 80.0,
+    "exposure_ms": 100.0,
     "subarray": {
       "enabled": true,
-      "x": 3272,
-      "y": 1124,
-      "width": 632,
-      "height": 192
+      "x": 3176,
+      "y": 1312,
+      "width": 360,
+      "height": 112
     },
     "verbose": false,
     "trigger": {
@@ -34,8 +34,8 @@
     "no_fg": true
   },
   "sweep_defaults": {
-    "n_target": 300,
-    "max_attempt": 300,
+    "n_target": 1000,
+    "max_attempt": 1000,
     "settle_s": 0.02,
     "update_interval": 1.0
   },

@@ -1,0 +1,24 @@
+{
+  "bright_samples_n": 722,
+  "dark_samples_n": 277,
+  "samples_n": 999,
+  "roi": [
+    52,
+    52,
+    190,
+    18
+  ],
+  "sample_metric": "S_norm",
+  "threshold": {
+    "tau": 1025.75,
+    "tau_on": 1026.75,
+    "tau_off": 1024.75,
+    "mode": "BIMODAL",
+    "q05": 869.9,
+    "q50": 1092.0,
+    "q95": 1216.1,
+    "p_low": 0.2772772772772773,
+    "p_high": 0.7227227227227226
+  },
+  "agreement": 1.0
+}

@@ -1,0 +1,28 @@
+{
+  "freqs": [
+    199000000.0,
+    199500000.0,
+    200000000.0,
+    200500000.0,
+    201000000.0
+  ],
+  "n_target": 1000,
+  "max_attempt": 1000,
+  "settle_s": 0.02,
+  "update_interval": 1.0,
+  "daq_mode": "real",
+  "device": "Dev1",
+  "sequence_json": "C:\\Users\\tanak\\デスクトップ\\kariyama\\single_ion_control\\src\\shutter_camera_trigger\\sequence_examples\\sequence2.json",
+  "insert_index": 4,
+  "ao_width_ms": 100.0,
+  "camera_actions": [],
+  "sync_markers": [],
+  "camera_mode": "real",
+  "camera_exposure_s": 0.1,
+  "fg_amp_mvpp": 790.0,
+  "roi_bootstrap": {
+    "pulse_s": 0.002,
+    "idle_s": 0.002,
+    "max_attempt": 5
+  }
+}

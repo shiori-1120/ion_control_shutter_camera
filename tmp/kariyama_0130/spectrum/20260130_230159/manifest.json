@@ -1,0 +1,9 @@
+{
+  "run_type": "spectrum",
+  "files": [
+    {
+      "name": "config",
+      "path": "config.json"
+    }
+  ]
+}
