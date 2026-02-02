@@ -242,6 +242,8 @@ def threshold_check(
 
     try:
         do_sequence = state.session["do_sequence"]
+        insert_index = int(state.session.get("insert_index") or -1)
+        ao_width_ms = float(state.session.get("ao_width_ms") or 0.0)
         n = int(state.session.get("n_target") or 50)
         max_attempt = int(state.session.get("max_attempt") or max(100, n))
         try:
@@ -255,6 +257,8 @@ def threshold_check(
             cam_cmd_q=cam_cmd_q,
             cam_resp_q=cam_resp_q,
             do_sequence=do_sequence,
+            insert_index=int(insert_index),
+            ao_width_ms=float(ao_width_ms),
             roi=[int(v) for v in roi],
             bg_roi=[int(v) for v in bg_roi] if bg_roi is not None else None,
             n_target=int(n),

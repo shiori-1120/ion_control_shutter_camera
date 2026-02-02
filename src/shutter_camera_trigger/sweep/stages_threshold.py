@@ -174,6 +174,8 @@ def run_threshold_stage(
     cam_cmd_q: Any,
     cam_resp_q: Any,
     do_sequence: list[tuple[int, float]],
+    insert_index: int,
+    ao_width_ms: float,
     roi: list[int],
     bg_roi: list[int] | None = None,
     n_target: int,
@@ -235,8 +237,8 @@ def run_threshold_stage(
             DaqQueueDevice(cmd_q=daq_cmd_q, resp_q=daq_resp_q).run_sequence_once(
                 DaqSequenceCommand(
                     do_sequence=do_sequence,
-                    ao_insert_index=-1,
-                    ao_width_ms=0.0,
+                    ao_insert_index=int(insert_index),
+                    ao_width_ms=float(ao_width_ms),
                 )
             )
         except Exception as e:
